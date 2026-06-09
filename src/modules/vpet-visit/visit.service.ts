@@ -7,16 +7,22 @@ import { BaseService } from '~/helper/crud/base.service'
 import { paginate } from '~/helper/paginate'
 import { AppointmentEntity } from '../vpet-appointment/entities/appointment.entity'
 import { CustomerEntity } from '../vpet-customer/entities/customer.entity'
+import { LabOrderEntity } from '../vpet-lab/entities/lab-order.entity'
 import { PetEntity } from '../vpet-pet/entities/pet.entity'
+import { PrescriptionEntity } from '../vpet-prescription/entities/prescription.entity'
 import {
   CreateChronicCaseDto,
   CreateChronicFollowupDto,
+  CreateDiagnosisCodeDto,
+  CreateVisitCareFollowupDto,
   CreateVisitDto,
   LockEmrDto,
+  QueryDiagnosisCodeDto,
   QueryVisitDto,
   RequestUnlockEmrDto,
   ReviewUnlockEmrDto,
   SignEmrDto,
+  UpdateDiagnosisCodeDto,
   UpdateVisitDto,
 } from './dto/visit.dto'
 import { ChronicCaseEntity } from './entities/chronic-case.entity'
@@ -25,6 +31,9 @@ import { DiagnosisCodeEntity } from './entities/diagnosis-code.entity'
 import { ESignatureRecordEntity } from './entities/e-signature-record.entity'
 import { EmrAuditLogEntity } from './entities/emr-audit-log.entity'
 import { EmrUnlockRequestEntity } from './entities/emr-unlock-request.entity'
+import { VisitCareFollowupLabEntity } from './entities/visit-care-followup-lab.entity'
+import { VisitCareFollowupPrescriptionEntity } from './entities/visit-care-followup-prescription.entity'
+import { VisitCareFollowupEntity } from './entities/visit-care-followup.entity'
 import { VisitDiagnosisEntity } from './entities/visit-diagnosis.entity'
 import { VisitEmrEntity } from './entities/visit-emr.entity'
 import { VisitPlanBatchEntity } from './entities/visit-plan-batch.entity'
@@ -45,6 +54,12 @@ export class VisitService extends BaseService<VisitEntity> {
     private chronicCaseRepository: Repository<ChronicCaseEntity>,
     @InjectRepository(ChronicFollowupEntity)
     private chronicFollowupRepository: Repository<ChronicFollowupEntity>,
+    @InjectRepository(VisitCareFollowupEntity)
+    private careFollowupRepository: Repository<VisitCareFollowupEntity>,
+    @InjectRepository(VisitCareFollowupLabEntity)
+    private careFollowupLabRepository: Repository<VisitCareFollowupLabEntity>,
+    @InjectRepository(VisitCareFollowupPrescriptionEntity)
+    private careFollowupPrescriptionRepository: Repository<VisitCareFollowupPrescriptionEntity>,
     @InjectRepository(VisitProgressBatchEntity)
     private progressBatchRepository: Repository<VisitProgressBatchEntity>,
     @InjectRepository(VisitPlanBatchEntity)
@@ -65,6 +80,10 @@ export class VisitService extends BaseService<VisitEntity> {
     private customerRepository: Repository<CustomerEntity>,
     @InjectRepository(PetEntity)
     private petRepository: Repository<PetEntity>,
+    @InjectRepository(LabOrderEntity)
+    private labOrderRepository: Repository<LabOrderEntity>,
+    @InjectRepository(PrescriptionEntity)
+    private prescriptionRepository: Repository<PrescriptionEntity>,
   ) {
     super(visitRepository)
   }
@@ -577,10 +596,62 @@ export class VisitService extends BaseService<VisitEntity> {
     return qb.take(50).getMany()
   }
 
+  async listDiagnosisCodes(dto: QueryDiagnosisCodeDto) {
+    const { page = 1, pageSize = 10, keyword, category, species } = dto
+    const qb = this.diagnosisCodeRepository.createQueryBuilder('d')
+
+    if (keyword) {
+      qb.andWhere(new Brackets((subQb) => {
+        subQb
+          .where('d.code LIKE :keyword', { keyword: `%${keyword}%` })
+          .orWhere('d.name LIKE :keyword', { keyword: `%${keyword}%` })
+      }))
+    }
+    if (category)
+      qb.andWhere('d.category = :category', { category })
+    if (species)
+      qb.andWhere('d.speciesScope IN (:...speciesScopes)', { speciesScopes: ['all', species] })
+
+    qb.orderBy('d.category', 'ASC').addOrderBy('d.code', 'ASC')
+    return paginate(qb, { page, pageSize })
+  }
+
+  async createDiagnosisCode(dto: CreateDiagnosisCodeDto) {
+    const exists = await this.diagnosisCodeRepository.findOneBy({ code: dto.code })
+    if (exists)
+      throw new BusinessException('Diagnosis code already exists')
+    return this.diagnosisCodeRepository.save(this.diagnosisCodeRepository.create({
+      code: dto.code,
+      name: dto.name,
+      category: dto.category,
+      speciesScope: dto.speciesScope || 'all',
+    }))
+  }
+
+  async updateDiagnosisCode(code: string, dto: UpdateDiagnosisCodeDto) {
+    const current = await this.diagnosisCodeRepository.findOneBy({ code })
+    if (!current)
+      throw new BusinessException('Diagnosis code not found')
+    const payload = Object.fromEntries(Object.entries({
+      name: dto.name,
+      category: dto.category,
+      speciesScope: dto.speciesScope,
+    }).filter(([, value]) => value !== undefined))
+    if (Object.keys(payload).length > 0)
+      await this.diagnosisCodeRepository.update(code, payload)
+  }
+
+  async deleteDiagnosisCode(code: string) {
+    const current = await this.diagnosisCodeRepository.findOneBy({ code })
+    if (!current)
+      throw new BusinessException('Diagnosis code not found')
+    await this.diagnosisCodeRepository.delete(code)
+  }
+
   async findOneDetailed(id: number): Promise<any> {
     const item = await this.visitRepository.findOne({
       where: { id },
-      relations: ['pet', 'customer', 'doctor', 'emr', 'diagnoses', 'queueEvents', 'progressBatches', 'planBatches'],
+      relations: ['pet', 'customer', 'doctor', 'emr', 'diagnoses', 'queueEvents', 'progressBatches', 'planBatches', 'careFollowups'],
     })
     if (!item) {
       await this.findOne(id)
@@ -588,6 +659,79 @@ export class VisitService extends BaseService<VisitEntity> {
     }
 
     return this.mapVisitDetail(item)
+  }
+
+  async listVisitCareFollowups(visitId: number) {
+    const visit = await this.visitRepository.findOneBy({ id: visitId })
+    if (!visit) {
+      await this.findOne(visitId)
+      return []
+    }
+
+    const rows = await this.careFollowupRepository.find({
+      where: { visitId },
+      relations: [
+        'labLinks',
+        'labLinks.labOrder',
+        'labLinks.labOrder.resultItems',
+        'prescriptionLinks',
+        'prescriptionLinks.prescription',
+        'prescriptionLinks.prescription.details',
+      ],
+      order: { occurredAt: 'DESC', id: 'DESC' },
+    })
+
+    return rows.map(item => this.mapCareFollowup(item))
+  }
+
+  async createVisitCareFollowup(visitId: number, dto: CreateVisitCareFollowupDto) {
+    const visit = await this.visitRepository.findOneBy({ id: visitId })
+    if (!visit) {
+      await this.findOne(visitId)
+      return []
+    }
+
+    const labOrderIds = this.normalizeIdList(dto.labOrderIds)
+    const prescriptionIds = this.normalizeIdList(dto.prescriptionIds)
+
+    await this.assertLabOrdersBelongToVisit(visitId, labOrderIds)
+    await this.assertPrescriptionsBelongToVisit(visitId, prescriptionIds)
+
+    const followup = await this.careFollowupRepository.save(this.careFollowupRepository.create({
+      visitId,
+      batchNo: await this.generateCareFollowupBatchNo(visitId),
+      occurredAt: dto.occurredAt ?? new Date().toISOString(),
+      careStage: dto.careStage ?? visit.careStage ?? null,
+      symptomSummary: dto.symptomSummary ?? null,
+      statusSummary: dto.statusSummary ?? null,
+      vitalSigns: dto.vitalSigns ? JSON.parse(dto.vitalSigns) : null,
+      objectiveNote: dto.objectiveNote ?? null,
+      assessmentText: dto.assessmentText ?? null,
+      planAdjustment: dto.planAdjustment ?? null,
+      medicationAdjustment: dto.medicationAdjustment ?? null,
+      remark: dto.remark ?? null,
+      recordedBy: dto.recordedBy ?? null,
+    }))
+
+    if (labOrderIds.length > 0) {
+      await this.careFollowupLabRepository.save(
+        labOrderIds.map(labOrderId => this.careFollowupLabRepository.create({
+          followupId: followup.id,
+          labOrderId,
+        })),
+      )
+    }
+
+    if (prescriptionIds.length > 0) {
+      await this.careFollowupPrescriptionRepository.save(
+        prescriptionIds.map(prescriptionId => this.careFollowupPrescriptionRepository.create({
+          followupId: followup.id,
+          prescriptionId,
+        })),
+      )
+    }
+
+    return this.listVisitCareFollowups(visitId)
   }
 
   async findByAppointmentId(appointmentId: number): Promise<any> {
@@ -815,6 +959,26 @@ export class VisitService extends BaseService<VisitEntity> {
         createdAt: batch.createdAt,
       }))
 
+    const careFollowups = (item.careFollowups ?? [])
+      .slice()
+      .sort((a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime())
+      .map(batch => ({
+        id: batch.id,
+        batchNo: batch.batchNo,
+        occurredAt: batch.occurredAt,
+        careStage: batch.careStage,
+        symptomSummary: batch.symptomSummary,
+        statusSummary: batch.statusSummary,
+        vitalSigns: batch.vitalSigns,
+        objectiveNote: batch.objectiveNote,
+        assessmentText: batch.assessmentText,
+        planAdjustment: batch.planAdjustment,
+        medicationAdjustment: batch.medicationAdjustment,
+        remark: batch.remark,
+        recordedBy: batch.recordedBy,
+        createdAt: batch.createdAt,
+      }))
+
     return {
       ...item,
       chiefComplaint: item.emr?.chiefComplaint ?? item.chiefComplaint,
@@ -827,8 +991,78 @@ export class VisitService extends BaseService<VisitEntity> {
       diagnoses,
       progressBatches,
       planBatches,
+      careFollowups,
       queueEvents,
       currentQueueEvent: queueEvents.length > 0 ? queueEvents[queueEvents.length - 1] : null,
+    }
+  }
+
+  private mapCareFollowup(item: VisitCareFollowupEntity) {
+    const linkedLabs = (item.labLinks ?? [])
+      .map(link => link.labOrder)
+      .filter(Boolean)
+      .map(lab => ({
+        id: lab.id,
+        orderNo: lab.orderNo,
+        testName: lab.testName,
+        sampleType: lab.sampleType,
+        status: lab.status,
+        reportedAt: lab.reportedAt,
+        abnormalCount: lab.abnormalCount,
+        reportSummary: lab.reportSummary,
+        resultItems: (lab.resultItems ?? []).map(result => ({
+          id: result.id,
+          itemCode: result.itemCode,
+          itemName: result.itemName,
+          resultValue: result.resultValue,
+          unit: result.unit,
+          flag: result.flag,
+          refMin: result.refMin,
+          refMax: result.refMax,
+        })),
+      }))
+
+    const linkedPrescriptions = (item.prescriptionLinks ?? [])
+      .map(link => link.prescription)
+      .filter(Boolean)
+      .map(rx => ({
+        id: rx.id,
+        rxNo: rx.rxNo,
+        batchNo: rx.batchNo,
+        batchLabel: rx.batchLabel,
+        status: rx.status,
+        totalAmount: rx.totalAmount,
+        details: (rx.details ?? []).map(detail => ({
+          id: detail.id,
+          itemKind: detail.itemKind,
+          itemName: detail.itemName || detail.drugName,
+          drugName: detail.drugName,
+          specification: detail.specification,
+          dosage: detail.dosage,
+          dosageUnit: detail.dosageUnit,
+          frequency: detail.frequency,
+          quantity: detail.quantity,
+        })),
+      }))
+
+    return {
+      id: item.id,
+      batchNo: item.batchNo,
+      visitId: item.visitId,
+      occurredAt: item.occurredAt,
+      careStage: item.careStage,
+      symptomSummary: item.symptomSummary,
+      statusSummary: item.statusSummary,
+      vitalSigns: item.vitalSigns,
+      objectiveNote: item.objectiveNote,
+      assessmentText: item.assessmentText,
+      planAdjustment: item.planAdjustment,
+      medicationAdjustment: item.medicationAdjustment,
+      remark: item.remark,
+      recordedBy: item.recordedBy,
+      linkedLabs,
+      linkedPrescriptions,
+      createdAt: item.createdAt,
     }
   }
 
@@ -1043,6 +1277,46 @@ export class VisitService extends BaseService<VisitEntity> {
       followUpActions: payload.followUpActions ?? null,
     })
     await this.planBatchRepository.save(planBatch)
+  }
+
+  private normalizeIdList(value?: number[] | string | null) {
+    if (!value)
+      return []
+    const raw = Array.isArray(value)
+      ? value
+      : JSON.parse(value)
+    if (!Array.isArray(raw))
+      return []
+    return [...new Set(raw.map(item => Number(item)).filter(item => Number.isInteger(item) && item > 0))]
+  }
+
+  private async assertLabOrdersBelongToVisit(visitId: number, labOrderIds: number[]) {
+    if (labOrderIds.length === 0)
+      return
+    const count = await this.labOrderRepository
+      .createQueryBuilder('lab')
+      .where('lab.id IN (:...labOrderIds)', { labOrderIds })
+      .andWhere('lab.visitId = :visitId', { visitId })
+      .getCount()
+    if (count !== labOrderIds.length)
+      throw new BusinessException('Linked lab orders must belong to the current visit')
+  }
+
+  private async assertPrescriptionsBelongToVisit(visitId: number, prescriptionIds: number[]) {
+    if (prescriptionIds.length === 0)
+      return
+    const count = await this.prescriptionRepository
+      .createQueryBuilder('rx')
+      .where('rx.id IN (:...prescriptionIds)', { prescriptionIds })
+      .andWhere('rx.visitId = :visitId', { visitId })
+      .getCount()
+    if (count !== prescriptionIds.length)
+      throw new BusinessException('Linked prescriptions must belong to the current visit')
+  }
+
+  private async generateCareFollowupBatchNo(visitId: number) {
+    const count = await this.careFollowupRepository.count({ where: { visitId } })
+    return `C${String(count + 1).padStart(2, '0')}`
   }
 
   private async generateProgressBatchNo(visitId: number) {

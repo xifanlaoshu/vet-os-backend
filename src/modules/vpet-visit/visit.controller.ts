@@ -1,16 +1,20 @@
-import { Body, Controller, Get, Post, Put, Query } from '@nestjs/common'
+import { Body, Controller, Delete, Get, Param, Post, Put, Query } from '@nestjs/common'
 import { ApiOperation, ApiTags } from '@nestjs/swagger'
 import { ApiResult } from '~/common/decorators/api-result.decorator'
 import { IdParam } from '~/common/decorators/id-param.decorator'
 import {
   CreateChronicCaseDto,
   CreateChronicFollowupDto,
+  CreateDiagnosisCodeDto,
+  CreateVisitCareFollowupDto,
   CreateVisitDto,
   LockEmrDto,
+  QueryDiagnosisCodeDto,
   QueryVisitDto,
   RequestUnlockEmrDto,
   ReviewUnlockEmrDto,
   SignEmrDto,
+  UpdateDiagnosisCodeDto,
   UpdateVisitDto,
 } from './dto/visit.dto'
 import { VisitEntity } from './entities/visit.entity'
@@ -50,6 +54,30 @@ export class VisitController {
     return this.visitService.searchDiagnosisCodes({ keyword, species })
   }
 
+  @Get('diagnosis-codes/page')
+  @ApiOperation({ summary: 'Diagnosis code master data page' })
+  async listDiagnosisCodes(@Query() dto: QueryDiagnosisCodeDto) {
+    return this.visitService.listDiagnosisCodes(dto)
+  }
+
+  @Post('diagnosis-codes')
+  @ApiOperation({ summary: 'Create diagnosis master data' })
+  async createDiagnosisCode(@Body() dto: CreateDiagnosisCodeDto) {
+    return this.visitService.createDiagnosisCode(dto)
+  }
+
+  @Put('diagnosis-codes/:code')
+  @ApiOperation({ summary: 'Update diagnosis master data' })
+  async updateDiagnosisCode(@Param('code') code: string, @Body() dto: UpdateDiagnosisCodeDto) {
+    return this.visitService.updateDiagnosisCode(String(code), dto)
+  }
+
+  @Delete('diagnosis-codes/:code')
+  @ApiOperation({ summary: 'Delete diagnosis master data' })
+  async deleteDiagnosisCode(@Param('code') code: string) {
+    return this.visitService.deleteDiagnosisCode(String(code))
+  }
+
   @Get('unlock-requests')
   @ApiOperation({ summary: 'EMR unlock request list' })
   async listUnlockRequests(
@@ -73,6 +101,18 @@ export class VisitController {
   @ApiResult({ type: VisitEntity })
   async get(@IdParam() id: number) {
     return this.visitService.findOneDetailed(id)
+  }
+
+  @Get(':id/care-followups')
+  @ApiOperation({ summary: '就诊持续诊疗跟进记录' })
+  async listCareFollowups(@IdParam() id: number) {
+    return this.visitService.listVisitCareFollowups(id)
+  }
+
+  @Post(':id/care-followups')
+  @ApiOperation({ summary: '新增就诊持续诊疗跟进记录' })
+  async createCareFollowup(@IdParam() id: number, @Body() dto: CreateVisitCareFollowupDto) {
+    return this.visitService.createVisitCareFollowup(id, dto)
   }
 
   @Put(':id')

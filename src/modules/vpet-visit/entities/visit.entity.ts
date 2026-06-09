@@ -4,6 +4,7 @@ import { DoctorEntity } from '~/modules/vpet-appointment/entities/doctor.entity'
 import { CustomerEntity } from '~/modules/vpet-customer/entities/customer.entity'
 import { PetEntity } from '~/modules/vpet-pet/entities/pet.entity'
 import { ChronicCaseEntity } from './chronic-case.entity'
+import { VisitCareFollowupEntity } from './visit-care-followup.entity'
 import { VisitDiagnosisEntity } from './visit-diagnosis.entity'
 import { VisitEmrEntity } from './visit-emr.entity'
 import { VisitPlanBatchEntity } from './visit-plan-batch.entity'
@@ -113,4 +114,7 @@ export class VisitEntity extends CommonEntity {
 
   @OneToMany(() => VisitQueueEventEntity, queueEvent => queueEvent.visit)
   queueEvents: VisitQueueEventEntity[]
+
+  @OneToMany(() => VisitCareFollowupEntity, followup => followup.visit)
+  careFollowups: VisitCareFollowupEntity[]
 }

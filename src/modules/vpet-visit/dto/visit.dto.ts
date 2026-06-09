@@ -1,4 +1,4 @@
-import { IsDateString, IsInt, IsJSON, IsOptional, IsString } from 'class-validator'
+import { IsArray, IsDateString, IsInt, IsJSON, IsOptional, IsString, MaxLength } from 'class-validator'
 
 export class CreateVisitDto {
   @IsOptional()
@@ -109,6 +109,64 @@ export class UpdateVisitDto {
   followUpActions?: string
 }
 
+export class CreateDiagnosisCodeDto {
+  @IsString()
+  @MaxLength(10)
+  code: string
+
+  @IsString()
+  @MaxLength(100)
+  name: string
+
+  @IsString()
+  @MaxLength(30)
+  category: string
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  speciesScope?: string
+}
+
+export class UpdateDiagnosisCodeDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  name?: string
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  category?: string
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  speciesScope?: string
+}
+
+export class QueryDiagnosisCodeDto {
+  @IsOptional()
+  @IsInt()
+  page?: number
+
+  @IsOptional()
+  @IsInt()
+  pageSize?: number
+
+  @IsOptional()
+  @IsString()
+  keyword?: string
+
+  @IsOptional()
+  @IsString()
+  category?: string
+
+  @IsOptional()
+  @IsString()
+  species?: string
+}
+
 export class QueryVisitDto {
   @IsOptional()
   @IsInt()
@@ -149,6 +207,60 @@ export class QueryVisitDto {
   @IsOptional()
   @IsDateString()
   dateTo?: string
+}
+
+export class CreateVisitCareFollowupDto {
+  @IsOptional()
+  @IsDateString()
+  occurredAt?: string
+
+  @IsOptional()
+  @IsInt()
+  careStage?: number
+
+  @IsOptional()
+  @IsString()
+  symptomSummary?: string
+
+  @IsOptional()
+  @IsString()
+  statusSummary?: string
+
+  @IsOptional()
+  @IsJSON()
+  vitalSigns?: string
+
+  @IsOptional()
+  @IsString()
+  objectiveNote?: string
+
+  @IsOptional()
+  @IsString()
+  assessmentText?: string
+
+  @IsOptional()
+  @IsString()
+  planAdjustment?: string
+
+  @IsOptional()
+  @IsString()
+  medicationAdjustment?: string
+
+  @IsOptional()
+  @IsString()
+  remark?: string
+
+  @IsOptional()
+  @IsInt()
+  recordedBy?: number
+
+  @IsOptional()
+  @IsArray()
+  labOrderIds?: number[]
+
+  @IsOptional()
+  @IsArray()
+  prescriptionIds?: number[]
 }
 
 export class CreateChronicCaseDto {
