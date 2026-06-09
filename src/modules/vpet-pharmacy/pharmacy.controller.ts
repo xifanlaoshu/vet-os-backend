@@ -2,7 +2,7 @@ import { Body, Controller, Delete, Get, Param, Post, Put, Query } from '@nestjs/
 import { ApiOperation, ApiTags } from '@nestjs/swagger'
 import { ApiResult } from '~/common/decorators/api-result.decorator'
 import { IdParam } from '~/common/decorators/id-param.decorator'
-import { CreateChargeItemDto, CreateDrugDto, QueryChargeItemDto, QueryDrugDto, QueryStockTxnDto, StockInDto, UpdateChargeItemDto } from './dto/pharmacy.dto'
+import { CreateChargeItemDto, CreateDrugDto, QueryChargeItemDto, QueryDrugDto, QueryStockTxnDto, StockInDto, UpdateChargeItemDto, UpdateDrugDto } from './dto/pharmacy.dto'
 import { DrugEntity } from './entities/drug.entity'
 import { PharmacyService } from './pharmacy.service'
 
@@ -93,7 +93,7 @@ export class PharmacyController {
 
   @Put(':id')
   @ApiOperation({ summary: 'Update drug' })
-  async update(@IdParam() id: number, @Body() dto: any) {
+  async update(@IdParam() id: number, @Body() dto: UpdateDrugDto) {
     await this.pharmacyService.update(id, dto)
   }
 

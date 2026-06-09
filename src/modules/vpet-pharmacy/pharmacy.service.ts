@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm'
 import { DataSource, LessThan, Repository } from 'typeorm'
 import { BusinessException } from '~/common/exceptions/biz.exception'
 import { paginate } from '~/helper/paginate'
-import { CreateChargeItemDto, CreateDrugDto, QueryChargeItemDto, QueryDrugDto, QueryStockTxnDto, StockInDto, UpdateChargeItemDto } from './dto/pharmacy.dto'
+import { CreateChargeItemDto, CreateDrugDto, QueryChargeItemDto, QueryDrugDto, QueryStockTxnDto, StockInDto, UpdateChargeItemDto, UpdateDrugDto } from './dto/pharmacy.dto'
 import { ChargeItemEntity } from './entities/charge-item.entity'
 import { DrugBatchEntity } from './entities/drug-batch.entity'
 import { DrugStockTxnEntity } from './entities/drug-stock-txn.entity'
@@ -75,7 +75,7 @@ export class PharmacyService {
     return this.drugRepository.save(this.normalizeDrugPayload(dto))
   }
 
-  async update(id: number, dto: any) {
+  async update(id: number, dto: UpdateDrugDto) {
     const current = await this.drugRepository.findOneBy({ id })
     if (!current)
       throw new BusinessException('Drug not found')
@@ -372,14 +372,24 @@ export class PharmacyService {
       : Number(dto.retailPrice || 0)
     const shouldRecalculateDosageUnitPrice = dto.dosageUnitPrice === undefined
       && (dto.retailPrice !== undefined || dto.packageContentQuantity !== undefined || !current)
-    return {
-      ...dto,
+    const payload = {
+      drugCode: dto.drugCode,
+      drugName: dto.drugName,
+      tradeName: dto.tradeName,
+      category: dto.category,
+      drugType: dto.drugType,
+      specification: dto.specification,
+      unit: dto.unit,
       dosageUnit: dto.dosageUnit ?? dto.unit ?? current?.dosageUnit ?? current?.unit,
       packageContentQuantity: normalizedPackageContentQuantity,
+      retailPrice,
       dosageUnitPrice: dto.dosageUnitPrice ?? (shouldRecalculateDosageUnitPrice && retailPrice !== undefined
         ? Number((retailPrice / normalizedPackageContentQuantity).toFixed(2))
         : current?.dosageUnitPrice),
+      minStock: dto.minStock,
+      supplier: dto.supplier,
     }
+    return Object.fromEntries(Object.entries(payload).filter(([, value]) => value !== undefined))
   }
 
   private buildDrugStockSnapshot(drug: DrugEntity | any, stock: number) {
