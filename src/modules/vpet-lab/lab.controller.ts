@@ -1,7 +1,7 @@
-import { Body, Controller, Get, Param, Post, Put, Query } from '@nestjs/common'
+import { Body, Controller, Delete, Get, Param, Post, Put, Query } from '@nestjs/common'
 import { ApiOperation, ApiTags } from '@nestjs/swagger'
 import { IdParam } from '~/common/decorators/id-param.decorator'
-import { CreateLabOrderDto, CreateLabTemplateDto, QueryLabOrderDto, SubmitLisOrderDto, UpdateLabReportDto } from './dto/lab.dto'
+import { CreateLabOrderDto, CreateLabTemplateDto, QueryLabOrderDto, SubmitLisOrderDto, UpdateLabReportDto, UpdateLabTemplateDto } from './dto/lab.dto'
 import { LabService } from './lab.service'
 
 @ApiTags('VPet - Lab')
@@ -31,6 +31,18 @@ export class LabController {
   @ApiOperation({ summary: 'Create lab template' })
   async createTemplate(@Body() dto: CreateLabTemplateDto) {
     return this.labService.createTemplate(dto)
+  }
+
+  @Put('templates/:id')
+  @ApiOperation({ summary: 'Update lab template' })
+  async updateTemplate(@IdParam() id: number, @Body() dto: UpdateLabTemplateDto) {
+    return this.labService.updateTemplate(id, dto)
+  }
+
+  @Delete('templates/:id')
+  @ApiOperation({ summary: 'Disable lab template' })
+  async disableTemplate(@IdParam() id: number) {
+    return this.labService.disableTemplate(id)
   }
 
   @Get(':id')

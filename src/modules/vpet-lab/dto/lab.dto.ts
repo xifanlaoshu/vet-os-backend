@@ -1,3 +1,4 @@
+import { PartialType } from '@nestjs/swagger'
 import { Type } from 'class-transformer'
 import { ArrayMinSize, IsArray, IsDateString, IsInt, IsNumber, IsOptional, IsString, MaxLength, Min, ValidateNested } from 'class-validator'
 import { PagerDto } from '~/common/dto/pager.dto'
@@ -183,9 +184,19 @@ export class CreateLabTemplateDto {
 
   @IsOptional()
   @IsString()
+  templateHeader?: string
+
+  @IsOptional()
+  @IsString()
+  templateFooter?: string
+
+  @IsOptional()
+  @IsString()
   description?: string
 
   @IsOptional()
   @IsInt()
   isActive?: number
 }
+
+export class UpdateLabTemplateDto extends PartialType(CreateLabTemplateDto) {}

@@ -26,6 +26,12 @@ export class LabTemplateEntity extends CommonEntity {
   @Column({ type: 'json', nullable: true, name: 'result_schema' })
   resultSchema: Record<string, any> | null
 
+  @Column({ type: 'text', nullable: true, name: 'template_header' })
+  templateHeader: string | null
+
+  @Column({ type: 'text', nullable: true, name: 'template_footer' })
+  templateFooter: string | null
+
   @Column({ type: 'text', nullable: true })
   description: string | null
 

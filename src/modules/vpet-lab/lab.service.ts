@@ -7,7 +7,7 @@ import { DoctorEntity } from '../vpet-appointment/entities/doctor.entity'
 import { CustomerEntity } from '../vpet-customer/entities/customer.entity'
 import { PetEntity } from '../vpet-pet/entities/pet.entity'
 import { VisitEntity } from '../vpet-visit/entities/visit.entity'
-import { CreateLabOrderDto, CreateLabTemplateDto, QueryLabOrderDto, SubmitLisOrderDto, UpdateLabReportDto } from './dto/lab.dto'
+import { CreateLabOrderDto, CreateLabTemplateDto, QueryLabOrderDto, SubmitLisOrderDto, UpdateLabReportDto, UpdateLabTemplateDto } from './dto/lab.dto'
 import { LabOrderEntity } from './entities/lab-order.entity'
 import { LabResultItemEntity } from './entities/lab-result-item.entity'
 import { LabTemplateEntity } from './entities/lab-template.entity'
@@ -127,6 +127,8 @@ export class LabService {
             category: template.category,
             sampleType: template.sampleType,
             resultSchema: template.resultSchema,
+            templateHeader: template.templateHeader,
+            templateFooter: template.templateFooter,
           }
         : null,
       resultItems: this.resolveInitialItems(dto.items, template).flatMap((item, index) => this.labResultItemRepository.create({
@@ -210,10 +212,58 @@ export class LabService {
       sampleType: dto.sampleType ?? null,
       defaultChargeAmount: dto.defaultChargeAmount ?? 0,
       resultSchema: dto.resultSchema ?? null,
+      templateHeader: dto.templateHeader ?? null,
+      templateFooter: dto.templateFooter ?? null,
       description: dto.description ?? null,
       isActive: dto.isActive ?? 1,
     })
     return this.labTemplateRepository.save(template)
+  }
+
+  async updateTemplate(id: number, dto: UpdateLabTemplateDto) {
+    const current = await this.labTemplateRepository.findOneBy({ id })
+    if (!current)
+      throw new BusinessException('Lab template not found')
+    if (dto.code && dto.code !== current.code) {
+      const existing = await this.labTemplateRepository.findOneBy({ code: dto.code })
+      if (existing)
+        throw new BusinessException('Lab template code already exists')
+    }
+
+    const payload: Partial<LabTemplateEntity> = {}
+    if (dto.code !== undefined)
+      payload.code = dto.code
+    if (dto.name !== undefined)
+      payload.name = dto.name
+    if (dto.category !== undefined)
+      payload.category = dto.category
+    if (dto.speciesScope !== undefined)
+      payload.speciesScope = dto.speciesScope || null
+    if (dto.sampleType !== undefined)
+      payload.sampleType = dto.sampleType || null
+    if (dto.defaultChargeAmount !== undefined)
+      payload.defaultChargeAmount = dto.defaultChargeAmount
+    if (dto.resultSchema !== undefined)
+      payload.resultSchema = dto.resultSchema
+    if (dto.templateHeader !== undefined)
+      payload.templateHeader = dto.templateHeader || null
+    if (dto.templateFooter !== undefined)
+      payload.templateFooter = dto.templateFooter || null
+    if (dto.description !== undefined)
+      payload.description = dto.description || null
+    if (dto.isActive !== undefined)
+      payload.isActive = dto.isActive
+
+    if (Object.keys(payload).length > 0)
+      await this.labTemplateRepository.update(id, payload)
+    return this.labTemplateRepository.findOneBy({ id })
+  }
+
+  async disableTemplate(id: number) {
+    const current = await this.labTemplateRepository.findOneBy({ id })
+    if (!current)
+      throw new BusinessException('Lab template not found')
+    await this.labTemplateRepository.update(id, { isActive: 0 })
   }
 
   async submitLisOrder(id: number, dto: SubmitLisOrderDto) {
