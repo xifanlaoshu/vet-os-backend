@@ -56,13 +56,18 @@ async function paginateQueryBuilder<T>(
   options: IPaginationOptions,
 ): Promise<Pagination<T>> {
   const [page, limit, paginationType] = resolveOptions(options)
+  const itemQueryBuilder = queryBuilder.clone()
+  const countQueryBuilder = queryBuilder.clone()
 
   if (paginationType === PaginationTypeEnum.TAKE_AND_SKIP)
-    queryBuilder.take(limit).skip((page - 1) * limit)
+    itemQueryBuilder.take(limit).skip((page - 1) * limit)
   else
-    queryBuilder.limit(limit).offset((page - 1) * limit)
+    itemQueryBuilder.limit(limit).offset((page - 1) * limit)
 
-  const [items, total] = await queryBuilder.getManyAndCount()
+  const [items, total] = await Promise.all([
+    itemQueryBuilder.getMany(),
+    countQueryBuilder.getCount(),
+  ])
 
   return createPaginationObject<T>({
     items,

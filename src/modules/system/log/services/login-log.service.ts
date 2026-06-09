@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm'
 
 import { Between, LessThan, Like, Repository } from 'typeorm'
 
-import {UAParser} from 'ua-parser-js'
+import { UAParser } from 'ua-parser-js'
 
 import { paginateRaw } from '~/helper/paginate'
 
@@ -72,7 +72,7 @@ export class LoginLogService {
           },
         }),
       })
-      .orderBy('login_log.created_at', 'DESC')
+      .orderBy('login_log.createdAt', 'DESC')
 
     const { items, ...rest } = await paginateRaw<LoginLogEntity>(queryBuilder, {
       page,

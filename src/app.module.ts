@@ -25,8 +25,25 @@ import { SystemModule } from './modules/system/system.module'
 import { TasksModule } from './modules/tasks/tasks.module'
 import { TodoModule } from './modules/todo/todo.module'
 import { ToolsModule } from './modules/tools/tools.module'
-import { DatabaseModule } from './shared/database/database.module'
+import { VpetAiModule } from './modules/vpet-ai/ai.module'
 
+import { VpetAppointmentModule } from './modules/vpet-appointment/appointment.module'
+
+import { VpetBillingModule } from './modules/vpet-billing/billing.module'
+import { VpetCustomerModule } from './modules/vpet-customer/customer.module'
+import { VpetHospitalizationModule } from './modules/vpet-hospitalization/hospitalization.module'
+import { VpetInsuranceModule } from './modules/vpet-insurance/insurance.module'
+import { VpetLabModule } from './modules/vpet-lab/lab.module'
+import { VpetMemberModule } from './modules/vpet-member/member.module'
+import { VpetPetModule } from './modules/vpet-pet/pet.module'
+import { VpetPharmacyModule } from './modules/vpet-pharmacy/pharmacy.module'
+import { VpetPrescriptionModule } from './modules/vpet-prescription/prescription.module'
+import { VpetQueueModule } from './modules/vpet-queue/queue.module'
+import { VpetReminderModule } from './modules/vpet-reminder/reminder.module'
+import { VpetReportModule } from './modules/vpet-report/report.module'
+import { VpetStoreModule } from './modules/vpet-store/store.module'
+import { VpetVisitModule } from './modules/vpet-visit/visit.module'
+import { DatabaseModule } from './shared/database/database.module'
 import { SocketModule } from './socket/socket.module'
 
 @Module({
@@ -68,6 +85,23 @@ import { SocketModule } from './socket/socket.module'
     // biz
 
     // end biz
+
+    VpetCustomerModule,
+    VpetPetModule,
+    VpetVisitModule,
+    VpetPrescriptionModule,
+    VpetBillingModule,
+    VpetMemberModule,
+    VpetQueueModule,
+    VpetPharmacyModule,
+    VpetAppointmentModule,
+    VpetLabModule,
+    VpetHospitalizationModule,
+    VpetReminderModule,
+    VpetReportModule,
+    VpetAiModule,
+    VpetInsuranceModule,
+    VpetStoreModule,
 
     TodoModule,
   ],

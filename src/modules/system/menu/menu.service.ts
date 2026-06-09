@@ -87,7 +87,7 @@ export class MenuService {
         .createQueryBuilder('menu')
         .innerJoinAndSelect('menu.roles', 'role')
         .andWhere('role.id IN (:...roleIds)', { roleIds })
-        .orderBy('menu.order_no', 'ASC')
+        .orderBy('menu.orderNo', 'ASC')
         .getMany()
     }
 

@@ -4,7 +4,7 @@ import { EventEmitterModule } from '@nestjs/event-emitter'
 import { ScheduleModule } from '@nestjs/schedule'
 import { ThrottlerModule } from '@nestjs/throttler'
 
-import { isDev } from '~/global/env'
+import { envNumber, isDev } from '~/global/env'
 
 import { HelperModule } from './helper/helper.module'
 import { LoggerModule } from './logger/logger.module'
@@ -24,8 +24,8 @@ import { RedisModule } from './redis/redis.module'
     // rate limit
     ThrottlerModule.forRoot([
       {
-        limit: 20,
-        ttl: 60000,
+        limit: envNumber('THROTTLER_LIMIT', isDev ? 5000 : 300),
+        ttl: envNumber('THROTTLER_TTL', 60000),
       },
     ]),
     EventEmitterModule.forRoot({
