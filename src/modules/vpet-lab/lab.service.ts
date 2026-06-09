@@ -127,6 +127,7 @@ export class LabService {
             category: template.category,
             sampleType: template.sampleType,
             resultSchema: template.resultSchema,
+            printConfig: template.printConfig,
             templateHeader: template.templateHeader,
             templateFooter: template.templateFooter,
           }
@@ -212,6 +213,7 @@ export class LabService {
       sampleType: dto.sampleType ?? null,
       defaultChargeAmount: dto.defaultChargeAmount ?? 0,
       resultSchema: dto.resultSchema ?? null,
+      printConfig: dto.printConfig ?? null,
       templateHeader: dto.templateHeader ?? null,
       templateFooter: dto.templateFooter ?? null,
       description: dto.description ?? null,
@@ -245,6 +247,8 @@ export class LabService {
       payload.defaultChargeAmount = dto.defaultChargeAmount
     if (dto.resultSchema !== undefined)
       payload.resultSchema = dto.resultSchema
+    if (dto.printConfig !== undefined)
+      payload.printConfig = dto.printConfig
     if (dto.templateHeader !== undefined)
       payload.templateHeader = dto.templateHeader || null
     if (dto.templateFooter !== undefined)
@@ -316,7 +320,7 @@ export class LabService {
       unit: item.unit,
       refMin: item.refMin,
       refMax: item.refMax,
-      resultValue: item.resultValue,
+      resultValue: item.defaultValue ?? item.resultValue,
       flag: item.flag,
     }))
   }

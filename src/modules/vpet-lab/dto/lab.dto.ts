@@ -183,6 +183,9 @@ export class CreateLabTemplateDto {
   resultSchema?: Record<string, any>
 
   @IsOptional()
+  printConfig?: Record<string, any>
+
+  @IsOptional()
   @IsString()
   templateHeader?: string
 
