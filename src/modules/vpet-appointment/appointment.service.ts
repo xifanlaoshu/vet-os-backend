@@ -51,7 +51,7 @@ export class AppointmentService {
       }))
     }
 
-    qb.orderBy('a.appointmentTime', 'DESC')
+    qb.orderBy('a.appointmentTime', 'ASC')
     return paginate(qb, { page, pageSize })
   }
 
