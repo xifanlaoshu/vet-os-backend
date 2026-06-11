@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common'
 import { TypeOrmModule } from '@nestjs/typeorm'
 import { AppointmentEntity } from '../vpet-appointment/entities/appointment.entity'
+import { DoctorEntity } from '../vpet-appointment/entities/doctor.entity'
 import { CustomerEntity } from '../vpet-customer/entities/customer.entity'
 import { LabOrderEntity } from '../vpet-lab/entities/lab-order.entity'
 import { PetEntity } from '../vpet-pet/entities/pet.entity'
@@ -16,6 +17,8 @@ import { VisitCareFollowupPrescriptionEntity } from './entities/visit-care-follo
 import { VisitCareFollowupEntity } from './entities/visit-care-followup.entity'
 import { VisitDiagnosisEntity } from './entities/visit-diagnosis.entity'
 import { VisitEmrEntity } from './entities/visit-emr.entity'
+import { VisitMediaBatchEntity } from './entities/visit-media-batch.entity'
+import { VisitMediaFileEntity } from './entities/visit-media-file.entity'
 import { VisitPlanBatchEntity } from './entities/visit-plan-batch.entity'
 import { VisitProgressBatchEntity } from './entities/visit-progress-batch.entity'
 import { VisitQueueEventEntity } from './entities/visit-queue-event.entity'
@@ -38,6 +41,8 @@ import { VisitService } from './visit.service'
       VisitCareFollowupLabEntity,
       VisitCareFollowupPrescriptionEntity,
       VisitQueueEventEntity,
+      VisitMediaBatchEntity,
+      VisitMediaFileEntity,
       EmrAuditLogEntity,
       EmrUnlockRequestEntity,
       ESignatureRecordEntity,
@@ -46,6 +51,7 @@ import { VisitService } from './visit.service'
       PetEntity,
       LabOrderEntity,
       PrescriptionEntity,
+      DoctorEntity,
     ]),
   ],
   controllers: [VisitController],

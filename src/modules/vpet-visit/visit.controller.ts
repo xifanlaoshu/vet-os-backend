@@ -2,12 +2,15 @@ import { Body, Controller, Delete, Get, Param, Post, Put, Query } from '@nestjs/
 import { ApiOperation, ApiTags } from '@nestjs/swagger'
 import { ApiResult } from '~/common/decorators/api-result.decorator'
 import { IdParam } from '~/common/decorators/id-param.decorator'
+import { AuthUser } from '~/modules/auth/decorators/auth-user.decorator'
 import {
   CreateChronicCaseDto,
   CreateChronicFollowupDto,
   CreateDiagnosisCodeDto,
   CreateVisitCareFollowupDto,
   CreateVisitDto,
+  CreateVisitMediaBatchDto,
+  CreateVisitMediaFileDto,
   LockEmrDto,
   QueryDiagnosisCodeDto,
   QueryVisitDto,
@@ -35,14 +38,18 @@ export class VisitController {
   @Get()
   @ApiOperation({ summary: '就诊列表' })
   @ApiResult({ type: [VisitEntity], isPage: true })
-  async list(@Query() dto: QueryVisitDto) {
-    return this.visitService.queryList(dto)
+  async list(@Query() dto: QueryVisitDto, @AuthUser() user: IAuthUser) {
+    return this.visitService.queryList(dto, user?.uid)
   }
 
   @Get('queue')
   @ApiOperation({ summary: '今日候诊队列' })
-  async getQueue(@Query('doctorId') doctorId?: number) {
-    return this.visitService.getTodayQueue(doctorId)
+  async getQueue(
+    @Query('doctorId') doctorId: number | undefined,
+    @Query('scope') scope: string | undefined,
+    @AuthUser() user: IAuthUser,
+  ) {
+    return this.visitService.getTodayQueue({ doctorId, scope, currentUserId: user?.uid })
   }
 
   @Get('diagnosis-codes')
@@ -99,68 +106,150 @@ export class VisitController {
   @Get(':id')
   @ApiOperation({ summary: '就诊详情' })
   @ApiResult({ type: VisitEntity })
-  async get(@IdParam() id: number) {
-    return this.visitService.findOneDetailed(id)
+  async get(
+    @IdParam() id: number,
+    @Query('scope') scope: string | undefined,
+    @AuthUser() user: IAuthUser,
+  ) {
+    return this.visitService.findOneDetailed(id, { scope, currentUserId: user?.uid })
   }
 
   @Get(':id/care-followups')
   @ApiOperation({ summary: '就诊持续诊疗跟进记录' })
-  async listCareFollowups(@IdParam() id: number) {
-    return this.visitService.listVisitCareFollowups(id)
+  async listCareFollowups(
+    @IdParam() id: number,
+    @Query('scope') scope: string | undefined,
+    @AuthUser() user: IAuthUser,
+  ) {
+    return this.visitService.listVisitCareFollowups(id, { scope, currentUserId: user?.uid })
   }
 
   @Post(':id/care-followups')
   @ApiOperation({ summary: '新增就诊持续诊疗跟进记录' })
-  async createCareFollowup(@IdParam() id: number, @Body() dto: CreateVisitCareFollowupDto) {
-    return this.visitService.createVisitCareFollowup(id, dto)
+  async createCareFollowup(
+    @IdParam() id: number,
+    @Body() dto: CreateVisitCareFollowupDto,
+    @Query('scope') scope: string | undefined,
+    @AuthUser() user: IAuthUser,
+  ) {
+    return this.visitService.createVisitCareFollowup(id, dto, { scope, currentUserId: user?.uid })
+  }
+
+  @Get(':id/media-batches')
+  @ApiOperation({ summary: 'Visit media capture batches' })
+  async listMediaBatches(
+    @IdParam() id: number,
+    @Query('scope') scope: string | undefined,
+    @AuthUser() user: IAuthUser,
+  ) {
+    return this.visitService.listVisitMediaBatches(id, { scope, currentUserId: user?.uid })
+  }
+
+  @Post(':id/media-batches')
+  @ApiOperation({ summary: 'Create visit media capture batch' })
+  async createMediaBatch(
+    @IdParam() id: number,
+    @Body() dto: CreateVisitMediaBatchDto,
+    @Query('scope') scope: string | undefined,
+    @AuthUser() user: IAuthUser,
+  ) {
+    return this.visitService.createVisitMediaBatch(id, dto, { scope, currentUserId: user?.uid })
+  }
+
+  @Post(':id/media-batches/:batchId/files')
+  @ApiOperation({ summary: 'Add media file to visit media batch' })
+  async createMediaFile(
+    @IdParam() id: number,
+    @Param('batchId') batchId: string,
+    @Body() dto: CreateVisitMediaFileDto,
+    @Query('scope') scope: string | undefined,
+    @AuthUser() user: IAuthUser,
+  ) {
+    return this.visitService.createVisitMediaFile(id, Number(batchId), dto, { scope, currentUserId: user?.uid })
   }
 
   @Put(':id')
   @ApiOperation({ summary: '更新就诊(保存SOAP等)' })
-  async update(@IdParam() id: number, @Body() dto: UpdateVisitDto) {
-    await this.visitService.saveSoap(id, dto)
+  async update(
+    @IdParam() id: number,
+    @Body() dto: UpdateVisitDto,
+    @Query('scope') scope: string | undefined,
+    @AuthUser() user: IAuthUser,
+  ) {
+    await this.visitService.saveSoap(id, dto, { scope, currentUserId: user?.uid })
   }
 
   @Post(':id/lock')
   @ApiOperation({ summary: 'Lock EMR' })
-  async lockEmr(@IdParam() id: number, @Body() dto: LockEmrDto) {
-    return this.visitService.lockEmr(id, dto)
+  async lockEmr(
+    @IdParam() id: number,
+    @Body() dto: LockEmrDto,
+    @Query('scope') scope: string | undefined,
+    @AuthUser() user: IAuthUser,
+  ) {
+    return this.visitService.lockEmr(id, dto, { scope, currentUserId: user?.uid })
   }
 
   @Post(':id/unlock-request')
   @ApiOperation({ summary: 'Request EMR unlock' })
-  async requestUnlock(@IdParam() id: number, @Body() dto: RequestUnlockEmrDto) {
-    return this.visitService.requestUnlockEmr(id, dto)
+  async requestUnlock(
+    @IdParam() id: number,
+    @Body() dto: RequestUnlockEmrDto,
+    @Query('scope') scope: string | undefined,
+    @AuthUser() user: IAuthUser,
+  ) {
+    return this.visitService.requestUnlockEmr(id, dto, { scope, currentUserId: user?.uid })
   }
 
   @Post(':id/sign')
   @ApiOperation({ summary: 'Sign EMR' })
-  async signEmr(@IdParam() id: number, @Body() dto: SignEmrDto) {
-    return this.visitService.signEmr(id, dto)
+  async signEmr(
+    @IdParam() id: number,
+    @Body() dto: SignEmrDto,
+    @Query('scope') scope: string | undefined,
+    @AuthUser() user: IAuthUser,
+  ) {
+    return this.visitService.signEmr(id, dto, { scope, currentUserId: user?.uid })
   }
 
   @Get(':id/audit-logs')
   @ApiOperation({ summary: 'EMR audit logs' })
-  async auditLogs(@IdParam() id: number) {
-    return this.visitService.listEmrAuditLogs(id)
+  async auditLogs(
+    @IdParam() id: number,
+    @Query('scope') scope: string | undefined,
+    @AuthUser() user: IAuthUser,
+  ) {
+    return this.visitService.listEmrAuditLogs(id, { scope, currentUserId: user?.uid })
   }
 
   @Get(':id/signatures')
   @ApiOperation({ summary: 'EMR signatures' })
-  async signatures(@IdParam() id: number) {
-    return this.visitService.listSignatures(id)
+  async signatures(
+    @IdParam() id: number,
+    @Query('scope') scope: string | undefined,
+    @AuthUser() user: IAuthUser,
+  ) {
+    return this.visitService.listSignatures(id, { scope, currentUserId: user?.uid })
   }
 
   @Post(':id/start')
   @ApiOperation({ summary: '开始接诊' })
-  async start(@IdParam() id: number) {
-    return this.visitService.startConsultation(id)
+  async start(
+    @IdParam() id: number,
+    @Query('scope') scope: string | undefined,
+    @AuthUser() user: IAuthUser,
+  ) {
+    return this.visitService.startConsultation(id, { scope, currentUserId: user?.uid })
   }
 
   @Post(':id/end')
   @ApiOperation({ summary: '结束就诊' })
-  async end(@IdParam() id: number) {
-    await this.visitService.endConsultation(id)
+  async end(
+    @IdParam() id: number,
+    @Query('scope') scope: string | undefined,
+    @AuthUser() user: IAuthUser,
+  ) {
+    await this.visitService.endConsultation(id, { scope, currentUserId: user?.uid })
   }
 
   @Get('chronic/cases')

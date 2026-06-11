@@ -7,6 +7,7 @@ import { ChronicCaseEntity } from './chronic-case.entity'
 import { VisitCareFollowupEntity } from './visit-care-followup.entity'
 import { VisitDiagnosisEntity } from './visit-diagnosis.entity'
 import { VisitEmrEntity } from './visit-emr.entity'
+import { VisitMediaBatchEntity } from './visit-media-batch.entity'
 import { VisitPlanBatchEntity } from './visit-plan-batch.entity'
 import { VisitProgressBatchEntity } from './visit-progress-batch.entity'
 import { VisitQueueEventEntity } from './visit-queue-event.entity'
@@ -117,4 +118,7 @@ export class VisitEntity extends CommonEntity {
 
   @OneToMany(() => VisitCareFollowupEntity, followup => followup.visit)
   careFollowups: VisitCareFollowupEntity[]
+
+  @OneToMany(() => VisitMediaBatchEntity, batch => batch.visit)
+  mediaBatches: VisitMediaBatchEntity[]
 }

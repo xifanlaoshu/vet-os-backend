@@ -6,6 +6,7 @@ import { BusinessException } from '~/common/exceptions/biz.exception'
 import { BaseService } from '~/helper/crud/base.service'
 import { paginate } from '~/helper/paginate'
 import { AppointmentEntity } from '../vpet-appointment/entities/appointment.entity'
+import { DoctorEntity } from '../vpet-appointment/entities/doctor.entity'
 import { CustomerEntity } from '../vpet-customer/entities/customer.entity'
 import { LabOrderEntity } from '../vpet-lab/entities/lab-order.entity'
 import { PetEntity } from '../vpet-pet/entities/pet.entity'
@@ -16,6 +17,8 @@ import {
   CreateDiagnosisCodeDto,
   CreateVisitCareFollowupDto,
   CreateVisitDto,
+  CreateVisitMediaBatchDto,
+  CreateVisitMediaFileDto,
   LockEmrDto,
   QueryDiagnosisCodeDto,
   QueryVisitDto,
@@ -36,10 +39,17 @@ import { VisitCareFollowupPrescriptionEntity } from './entities/visit-care-follo
 import { VisitCareFollowupEntity } from './entities/visit-care-followup.entity'
 import { VisitDiagnosisEntity } from './entities/visit-diagnosis.entity'
 import { VisitEmrEntity } from './entities/visit-emr.entity'
+import { VisitMediaBatchEntity } from './entities/visit-media-batch.entity'
+import { VisitMediaFileEntity } from './entities/visit-media-file.entity'
 import { VisitPlanBatchEntity } from './entities/visit-plan-batch.entity'
 import { VisitProgressBatchEntity } from './entities/visit-progress-batch.entity'
 import { VisitQueueEventEntity } from './entities/visit-queue-event.entity'
 import { VisitEntity } from './entities/visit.entity'
+
+interface CurrentStaffScopeOptions {
+  scope?: string
+  currentUserId?: number
+}
 
 @Injectable()
 export class VisitService extends BaseService<VisitEntity> {
@@ -56,6 +66,10 @@ export class VisitService extends BaseService<VisitEntity> {
     private chronicFollowupRepository: Repository<ChronicFollowupEntity>,
     @InjectRepository(VisitCareFollowupEntity)
     private careFollowupRepository: Repository<VisitCareFollowupEntity>,
+    @InjectRepository(VisitMediaBatchEntity)
+    private mediaBatchRepository: Repository<VisitMediaBatchEntity>,
+    @InjectRepository(VisitMediaFileEntity)
+    private mediaFileRepository: Repository<VisitMediaFileEntity>,
     @InjectRepository(VisitCareFollowupLabEntity)
     private careFollowupLabRepository: Repository<VisitCareFollowupLabEntity>,
     @InjectRepository(VisitCareFollowupPrescriptionEntity)
@@ -76,6 +90,8 @@ export class VisitService extends BaseService<VisitEntity> {
     private eSignatureRepository: Repository<ESignatureRecordEntity>,
     @InjectRepository(AppointmentEntity)
     private appointmentRepository: Repository<AppointmentEntity>,
+    @InjectRepository(DoctorEntity)
+    private doctorRepository: Repository<DoctorEntity>,
     @InjectRepository(CustomerEntity)
     private customerRepository: Repository<CustomerEntity>,
     @InjectRepository(PetEntity)
@@ -125,7 +141,7 @@ export class VisitService extends BaseService<VisitEntity> {
     throw new Error('Failed to create visit')
   }
 
-  async queryList(dto: QueryVisitDto) {
+  async queryList(dto: QueryVisitDto, currentUserId?: number) {
     const {
       page = 1,
       pageSize = 10,
@@ -138,6 +154,9 @@ export class VisitService extends BaseService<VisitEntity> {
       dateFrom,
       dateTo,
     } = dto
+    const scopedDoctorId = await this.resolveScopedDoctorId(dto.scope, currentUserId)
+    if (dto.scope === 'currentStaff' && !scopedDoctorId)
+      return { items: [], meta: { totalItems: 0, itemCount: 0, itemsPerPage: pageSize, totalPages: 0, currentPage: page } }
     const qb = this.visitRepository.createQueryBuilder('v')
       .leftJoinAndSelect('v.pet', 'pet')
       .leftJoinAndSelect('v.customer', 'customer')
@@ -150,8 +169,9 @@ export class VisitService extends BaseService<VisitEntity> {
       qb.andWhere('v.petId = :petId', { petId })
     if (customerId)
       qb.andWhere('v.customerId = :customerId', { customerId })
-    if (doctorId)
-      qb.andWhere('v.doctorId = :doctorId', { doctorId })
+    const effectiveDoctorId = scopedDoctorId ?? doctorId
+    if (effectiveDoctorId)
+      qb.andWhere('v.doctorId = :doctorId', { doctorId: effectiveDoctorId })
     if (status !== undefined)
       qb.andWhere('v.status = :status', { status })
     if (keyword) {
@@ -176,12 +196,13 @@ export class VisitService extends BaseService<VisitEntity> {
     }
   }
 
-  async startConsultation(id: number): Promise<any> {
+  async startConsultation(id: number, options: CurrentStaffScopeOptions = {}): Promise<any> {
     const visit = await this.visitRepository.findOneBy({ id })
     if (!visit) {
       await this.findOne(id)
       return null
     }
+    await this.assertVisitBelongsToScopedDoctor(visit, options)
 
     const now = new Date().toISOString()
     const latestStartEvent = await this.queueEventRepository.findOne({
@@ -190,11 +211,11 @@ export class VisitService extends BaseService<VisitEntity> {
     })
 
     if (Number(visit.status) === 3 && visit.startTime && latestStartEvent) {
-      return this.findOneDetailed(id)
+      return this.findOneDetailed(id, options)
     }
 
     if (Number(visit.status) === 4 && visit.startTime) {
-      return this.findOneDetailed(id)
+      return this.findOneDetailed(id, options)
     }
 
     if (!visit.callTime) {
@@ -213,15 +234,16 @@ export class VisitService extends BaseService<VisitEntity> {
       queueNo: visit.queueNumber,
       remark: 'consultation_started',
     }, true)
-    return this.findOneDetailed(id)
+    return this.findOneDetailed(id, options)
   }
 
-  async saveSoap(id: number, dto: UpdateVisitDto): Promise<void> {
+  async saveSoap(id: number, dto: UpdateVisitDto, options: CurrentStaffScopeOptions = {}): Promise<void> {
     const visit = await this.visitRepository.findOneBy({ id })
     if (!visit) {
       await this.findOne(id)
       return
     }
+    await this.assertVisitBelongsToScopedDoctor(visit, options)
 
     const currentEmr = await this.emrRepository.findOneBy({ visitId: id })
     if (Number(currentEmr?.locked ?? visit.locked ?? 0) === 1) {
@@ -233,6 +255,7 @@ export class VisitService extends BaseService<VisitEntity> {
     const ongoingFlags = dto.ongoingFlags ? JSON.parse(dto.ongoingFlags as string) : undefined
     const structuredActions = dto.structuredActions ? JSON.parse(dto.structuredActions as string) : undefined
     const followUpActions = dto.followUpActions ? JSON.parse(dto.followUpActions as string) : undefined
+    const recordedBy = await this.resolveActorDoctorId(visit, options)
 
     let emr = currentEmr
     if (!emr) {
@@ -270,6 +293,7 @@ export class VisitService extends BaseService<VisitEntity> {
               diagnosisType: this.resolveDiagnosisType(item.type),
               sortNo: index,
               isPrimary: index === 0 ? 1 : 0,
+              recordedBy,
             }),
           ),
         )
@@ -322,6 +346,7 @@ export class VisitService extends BaseService<VisitEntity> {
         physicalExam,
         assessmentText: dto.progressAssessmentText ?? dto.assessmentText,
         diagnosisSnapshot: diagnosisList,
+        recordedBy,
       })
     }
 
@@ -340,11 +365,12 @@ export class VisitService extends BaseService<VisitEntity> {
         doctorAdvice: dto.doctorAdvice,
         structuredActions,
         followUpActions,
+        recordedBy,
       })
     }
   }
 
-  async lockEmr(id: number, dto: LockEmrDto) {
+  async lockEmr(id: number, dto: LockEmrDto, options: CurrentStaffScopeOptions = {}) {
     const visit = await this.visitRepository.findOne({
       where: { id },
       relations: ['emr'],
@@ -353,10 +379,11 @@ export class VisitService extends BaseService<VisitEntity> {
       await this.findOne(id)
       return null
     }
+    await this.assertVisitBelongsToScopedDoctor(visit, options)
 
     const emr = await this.ensureEmrForVisit(visit)
     if (Number(emr.locked) === 1 && Number(visit.locked) === 1) {
-      return this.findOneDetailed(id)
+      return this.findOneDetailed(id, options)
     }
 
     const before = this.createEmrSnapshot(emr, visit)
@@ -366,12 +393,13 @@ export class VisitService extends BaseService<VisitEntity> {
     await this.emrRepository.save(emr)
     await this.visitRepository.update(id, { locked: 1 })
 
+    const operatorId = await this.resolveActorDoctorId(visit, options) ?? dto.operatorId ?? null
     const after = this.createEmrSnapshot(emr, { ...visit, locked: 1 } as VisitEntity)
-    await this.writeEmrAudit(id, emr.id, 'lock', before, after, dto.reason, dto.operatorId)
-    return this.findOneDetailed(id)
+    await this.writeEmrAudit(id, emr.id, 'lock', before, after, dto.reason, operatorId)
+    return this.findOneDetailed(id, options)
   }
 
-  async requestUnlockEmr(id: number, dto: RequestUnlockEmrDto) {
+  async requestUnlockEmr(id: number, dto: RequestUnlockEmrDto, options: CurrentStaffScopeOptions = {}) {
     const visit = await this.visitRepository.findOne({
       where: { id },
       relations: ['emr'],
@@ -380,6 +408,7 @@ export class VisitService extends BaseService<VisitEntity> {
       await this.findOne(id)
       return null
     }
+    await this.assertVisitBelongsToScopedDoctor(visit, options)
 
     const emr = await this.ensureEmrForVisit(visit)
     if (Number(emr.locked ?? visit.locked ?? 0) !== 1) {
@@ -393,11 +422,12 @@ export class VisitService extends BaseService<VisitEntity> {
     if (pending)
       return pending
 
+    const operatorId = await this.resolveActorDoctorId(visit, options) ?? dto.operatorId ?? null
     const request = await this.emrUnlockRequestRepository.save(this.emrUnlockRequestRepository.create({
       visitId: id,
       emrId: emr.id,
       requestReason: dto.reason,
-      requestedBy: dto.operatorId ?? null,
+      requestedBy: operatorId,
       requestStatus: 1,
     }))
 
@@ -408,7 +438,7 @@ export class VisitService extends BaseService<VisitEntity> {
       this.createEmrSnapshot(emr, visit),
       this.createEmrSnapshot(emr, visit),
       dto.reason,
-      dto.operatorId,
+      operatorId,
     )
     return request
   }
@@ -462,7 +492,7 @@ export class VisitService extends BaseService<VisitEntity> {
     return request
   }
 
-  async signEmr(id: number, dto: SignEmrDto) {
+  async signEmr(id: number, dto: SignEmrDto, options: CurrentStaffScopeOptions = {}) {
     const visit = await this.visitRepository.findOne({
       where: { id },
       relations: ['emr', 'diagnoses', 'progressBatches', 'planBatches'],
@@ -471,13 +501,15 @@ export class VisitService extends BaseService<VisitEntity> {
       await this.findOne(id)
       return null
     }
+    await this.assertVisitBelongsToScopedDoctor(visit, options)
 
     const emr = await this.ensureEmrForVisit(visit)
     const before = this.createEmrSnapshot(emr, visit)
     const signedAt = new Date().toISOString()
+    const operatorId = await this.resolveActorDoctorId(visit, options) ?? dto.operatorId ?? null
     const signedSnapshot = this.createEmrSnapshot(emr, visit)
     const signatureHash = createHash('sha256')
-      .update(JSON.stringify({ signedAt, signedBy: dto.operatorId ?? null, signedSnapshot }))
+      .update(JSON.stringify({ signedAt, signedBy: operatorId, signedSnapshot }))
       .digest('hex')
 
     const signature = await this.eSignatureRepository.save(this.eSignatureRepository.create({
@@ -485,7 +517,7 @@ export class VisitService extends BaseService<VisitEntity> {
       emrId: emr.id,
       signType: dto.signType ?? 'doctor',
       signatureHash,
-      signedBy: dto.operatorId ?? null,
+      signedBy: operatorId,
       signedAt,
       signedSnapshot,
       status: 1,
@@ -503,14 +535,21 @@ export class VisitService extends BaseService<VisitEntity> {
       before,
       this.createEmrSnapshot(emr, { ...visit, locked: 1 } as VisitEntity),
       dto.reason,
-      dto.operatorId,
+      operatorId,
     )
     return signature
   }
 
-  async listEmrAuditLogs(visitId: number) {
+  async listEmrAuditLogs(visitId: number, options: CurrentStaffScopeOptions = {}) {
+    const visit = await this.visitRepository.findOneBy({ id: visitId })
+    if (!visit) {
+      await this.findOne(visitId)
+      return []
+    }
+    await this.assertVisitBelongsToScopedDoctor(visit, options)
     return this.emrAuditRepository.find({
       where: { visitId },
+      relations: ['operator'],
       order: { createdAt: 'DESC', id: 'DESC' },
     })
   }
@@ -524,19 +563,26 @@ export class VisitService extends BaseService<VisitEntity> {
     return qb.orderBy('r.createdAt', 'DESC').addOrderBy('r.id', 'DESC').getMany()
   }
 
-  async listSignatures(visitId: number) {
+  async listSignatures(visitId: number, options: CurrentStaffScopeOptions = {}) {
+    const visit = await this.visitRepository.findOneBy({ id: visitId })
+    if (!visit) {
+      await this.findOne(visitId)
+      return []
+    }
+    await this.assertVisitBelongsToScopedDoctor(visit, options)
     return this.eSignatureRepository.find({
       where: { visitId },
       order: { signedAt: 'DESC', id: 'DESC' },
     })
   }
 
-  async endConsultation(id: number): Promise<void> {
+  async endConsultation(id: number, options: CurrentStaffScopeOptions = {}): Promise<void> {
     const visit = await this.visitRepository.findOneBy({ id })
     if (!visit) {
       await this.findOne(id)
       return
     }
+    await this.assertVisitBelongsToScopedDoctor(visit, options)
     if (Number(visit.status) === 4 && visit.endTime) {
       return
     }
@@ -556,7 +602,10 @@ export class VisitService extends BaseService<VisitEntity> {
     }
   }
 
-  async getTodayQueue(doctorId?: number) {
+  async getTodayQueue(params: { doctorId?: number, scope?: string, currentUserId?: number } = {}) {
+    const scopedDoctorId = await this.resolveScopedDoctorId(params.scope, params.currentUserId)
+    if (params.scope === 'currentStaff' && !scopedDoctorId)
+      return []
     const today = new Date()
     today.setHours(0, 0, 0, 0)
     const qb = this.visitRepository.createQueryBuilder('v')
@@ -568,8 +617,9 @@ export class VisitService extends BaseService<VisitEntity> {
       .orderBy('v.status', 'ASC')
       .addOrderBy('v.createdAt', 'ASC')
 
-    if (doctorId)
-      qb.andWhere('v.doctorId = :doctorId', { doctorId })
+    const effectiveDoctorId = scopedDoctorId ?? params.doctorId
+    if (effectiveDoctorId)
+      qb.andWhere('v.doctorId = :doctorId', { doctorId: effectiveDoctorId })
     const visits = await qb.getMany()
     return visits.map(item => this.mapVisitDetail(item))
   }
@@ -648,25 +698,45 @@ export class VisitService extends BaseService<VisitEntity> {
     await this.diagnosisCodeRepository.delete(code)
   }
 
-  async findOneDetailed(id: number): Promise<any> {
+  async findOneDetailed(id: number, options: CurrentStaffScopeOptions = {}): Promise<any> {
     const item = await this.visitRepository.findOne({
       where: { id },
-      relations: ['pet', 'customer', 'doctor', 'emr', 'diagnoses', 'queueEvents', 'progressBatches', 'planBatches', 'careFollowups'],
+      relations: [
+        'pet',
+        'customer',
+        'doctor',
+        'emr',
+        'diagnoses',
+        'diagnoses.recorder',
+        'queueEvents',
+        'progressBatches',
+        'progressBatches.recorder',
+        'planBatches',
+        'planBatches.recorder',
+        'careFollowups',
+        'careFollowups.recorder',
+        'mediaBatches',
+        'mediaBatches.operator',
+        'mediaBatches.careFollowup',
+        'mediaBatches.files',
+      ],
     })
     if (!item) {
       await this.findOne(id)
       return null
     }
+    await this.assertVisitBelongsToScopedDoctor(item, options)
 
     return this.mapVisitDetail(item)
   }
 
-  async listVisitCareFollowups(visitId: number) {
+  async listVisitCareFollowups(visitId: number, options: CurrentStaffScopeOptions = {}) {
     const visit = await this.visitRepository.findOneBy({ id: visitId })
     if (!visit) {
       await this.findOne(visitId)
       return []
     }
+    await this.assertVisitBelongsToScopedDoctor(visit, options)
 
     const rows = await this.careFollowupRepository.find({
       where: { visitId },
@@ -677,6 +747,7 @@ export class VisitService extends BaseService<VisitEntity> {
         'prescriptionLinks',
         'prescriptionLinks.prescription',
         'prescriptionLinks.prescription.details',
+        'recorder',
       ],
       order: { occurredAt: 'DESC', id: 'DESC' },
     })
@@ -684,18 +755,20 @@ export class VisitService extends BaseService<VisitEntity> {
     return rows.map(item => this.mapCareFollowup(item))
   }
 
-  async createVisitCareFollowup(visitId: number, dto: CreateVisitCareFollowupDto) {
+  async createVisitCareFollowup(visitId: number, dto: CreateVisitCareFollowupDto, options: CurrentStaffScopeOptions = {}) {
     const visit = await this.visitRepository.findOneBy({ id: visitId })
     if (!visit) {
       await this.findOne(visitId)
       return []
     }
+    await this.assertVisitBelongsToScopedDoctor(visit, options)
 
     const labOrderIds = this.normalizeIdList(dto.labOrderIds)
     const prescriptionIds = this.normalizeIdList(dto.prescriptionIds)
 
     await this.assertLabOrdersBelongToVisit(visitId, labOrderIds)
     await this.assertPrescriptionsBelongToVisit(visitId, prescriptionIds)
+    const recordedBy = dto.recordedBy ?? await this.resolveActorDoctorId(visit, options)
 
     const followup = await this.careFollowupRepository.save(this.careFollowupRepository.create({
       visitId,
@@ -710,7 +783,7 @@ export class VisitService extends BaseService<VisitEntity> {
       planAdjustment: dto.planAdjustment ?? null,
       medicationAdjustment: dto.medicationAdjustment ?? null,
       remark: dto.remark ?? null,
-      recordedBy: dto.recordedBy ?? null,
+      recordedBy,
     }))
 
     if (labOrderIds.length > 0) {
@@ -731,7 +804,90 @@ export class VisitService extends BaseService<VisitEntity> {
       )
     }
 
-    return this.listVisitCareFollowups(visitId)
+    return this.listVisitCareFollowups(visitId, options)
+  }
+
+  async listVisitMediaBatches(visitId: number, options: CurrentStaffScopeOptions = {}) {
+    const visit = await this.visitRepository.findOneBy({ id: visitId })
+    if (!visit) {
+      await this.findOne(visitId)
+      return []
+    }
+    await this.assertVisitBelongsToScopedDoctor(visit, options)
+
+    const rows = await this.mediaBatchRepository.find({
+      where: { visitId },
+      relations: ['operator', 'careFollowup', 'files'],
+      order: {
+        capturedAt: 'DESC',
+        id: 'DESC',
+        files: {
+          sortNo: 'ASC',
+          id: 'ASC',
+        },
+      },
+    })
+    return rows.map(item => this.mapMediaBatch(item))
+  }
+
+  async createVisitMediaBatch(visitId: number, dto: CreateVisitMediaBatchDto, options: CurrentStaffScopeOptions = {}) {
+    const visit = await this.visitRepository.findOneBy({ id: visitId })
+    if (!visit) {
+      await this.findOne(visitId)
+      return []
+    }
+    await this.assertVisitBelongsToScopedDoctor(visit, options)
+
+    if (dto.relationType === 'care_followup') {
+      if (!dto.careFollowupId)
+        throw new BusinessException('Care followup is required when media is linked to continuous care')
+      await this.assertCareFollowupBelongsToVisit(visitId, dto.careFollowupId)
+    }
+
+    const operatorId = dto.operatorId ?? await this.resolveActorDoctorId(visit, options)
+    const batch = await this.mediaBatchRepository.save(this.mediaBatchRepository.create({
+      visitId,
+      batchNo: await this.generateMediaBatchNo(visitId),
+      capturedAt: dto.capturedAt ?? new Date().toISOString(),
+      operatorId: operatorId ?? null,
+      relationType: dto.relationType || 'soap',
+      careFollowupId: dto.relationType === 'care_followup' ? dto.careFollowupId! : null,
+      remark: dto.remark ?? null,
+    }))
+
+    return this.mediaBatchRepository.findOne({
+      where: { id: batch.id },
+      relations: ['operator', 'careFollowup', 'files'],
+    }).then(item => item ? this.mapMediaBatch(item) : batch)
+  }
+
+  async createVisitMediaFile(visitId: number, batchId: number, dto: CreateVisitMediaFileDto, options: CurrentStaffScopeOptions = {}) {
+    const visit = await this.visitRepository.findOneBy({ id: visitId })
+    if (!visit) {
+      await this.findOne(visitId)
+      return []
+    }
+    await this.assertVisitBelongsToScopedDoctor(visit, options)
+
+    const batch = await this.mediaBatchRepository.findOneBy({ id: batchId, visitId })
+    if (!batch)
+      throw new BusinessException('Media batch not found')
+
+    await this.mediaFileRepository.save(this.mediaFileRepository.create({
+      batchId,
+      visitId,
+      fileType: dto.fileType,
+      storageType: dto.storageType,
+      fileName: dto.fileName ?? null,
+      originalName: dto.originalName ?? null,
+      url: dto.url,
+      mimeType: dto.mimeType ?? null,
+      fileSize: dto.fileSize ?? null,
+      sortNo: dto.sortNo ?? await this.nextMediaFileSortNo(batchId),
+      remark: dto.remark ?? null,
+    }))
+
+    return this.listVisitMediaBatches(visitId, options)
   }
 
   async findByAppointmentId(appointmentId: number): Promise<any> {
@@ -913,6 +1069,8 @@ export class VisitService extends BaseService<VisitEntity> {
             name: d.diagnosisName,
             type: this.mapDiagnosisTypeLabel(d.diagnosisType),
             isPrimary: d.isPrimary === 1,
+            recordedBy: d.recordedBy,
+            recorder: d.recorder,
           }))
       : (Array.isArray(item.diagnosis) ? item.diagnosis : [])
 
@@ -941,6 +1099,8 @@ export class VisitService extends BaseService<VisitEntity> {
         assessmentText: batch.assessmentText,
         diagnosisSnapshot: batch.diagnosisSnapshot,
         remark: batch.remark,
+        recordedBy: batch.recordedBy,
+        recorder: batch.recorder,
         createdAt: batch.createdAt,
       }))
 
@@ -956,6 +1116,8 @@ export class VisitService extends BaseService<VisitEntity> {
         structuredActions: batch.structuredActions,
         followUpActions: batch.followUpActions,
         remark: batch.remark,
+        recordedBy: batch.recordedBy,
+        recorder: batch.recorder,
         createdAt: batch.createdAt,
       }))
 
@@ -976,8 +1138,14 @@ export class VisitService extends BaseService<VisitEntity> {
         medicationAdjustment: batch.medicationAdjustment,
         remark: batch.remark,
         recordedBy: batch.recordedBy,
+        recorder: batch.recorder,
         createdAt: batch.createdAt,
       }))
+
+    const mediaBatches = (item.mediaBatches ?? [])
+      .slice()
+      .sort((a, b) => new Date(b.capturedAt).getTime() - new Date(a.capturedAt).getTime())
+      .map(batch => this.mapMediaBatch(batch))
 
     return {
       ...item,
@@ -992,8 +1160,49 @@ export class VisitService extends BaseService<VisitEntity> {
       progressBatches,
       planBatches,
       careFollowups,
+      mediaBatches,
       queueEvents,
       currentQueueEvent: queueEvents.length > 0 ? queueEvents[queueEvents.length - 1] : null,
+    }
+  }
+
+  private mapMediaBatch(item: VisitMediaBatchEntity) {
+    return {
+      id: item.id,
+      visitId: item.visitId,
+      batchNo: item.batchNo,
+      capturedAt: item.capturedAt,
+      operatorId: item.operatorId,
+      operator: item.operator,
+      relationType: item.relationType,
+      careFollowupId: item.careFollowupId,
+      careFollowup: item.careFollowup
+        ? {
+            id: item.careFollowup.id,
+            batchNo: item.careFollowup.batchNo,
+            occurredAt: item.careFollowup.occurredAt,
+          }
+        : null,
+      remark: item.remark,
+      files: (item.files ?? [])
+        .slice()
+        .sort((a, b) => (a.sortNo - b.sortNo) || (a.id - b.id))
+        .map(file => ({
+          id: file.id,
+          batchId: file.batchId,
+          visitId: file.visitId,
+          fileType: file.fileType,
+          storageType: file.storageType,
+          fileName: file.fileName,
+          originalName: file.originalName,
+          url: file.url,
+          mimeType: file.mimeType,
+          fileSize: file.fileSize,
+          sortNo: file.sortNo,
+          remark: file.remark,
+          createdAt: file.createdAt,
+        })),
+      createdAt: item.createdAt,
     }
   }
 
@@ -1060,6 +1269,7 @@ export class VisitService extends BaseService<VisitEntity> {
       medicationAdjustment: item.medicationAdjustment,
       remark: item.remark,
       recordedBy: item.recordedBy,
+      recorder: item.recorder,
       linkedLabs,
       linkedPrescriptions,
       createdAt: item.createdAt,
@@ -1241,6 +1451,7 @@ export class VisitService extends BaseService<VisitEntity> {
       physicalExam?: Record<string, any>
       assessmentText?: string
       diagnosisSnapshot?: Array<Record<string, any>>
+      recordedBy?: number | null
     },
   ) {
     const progressBatch = this.progressBatchRepository.create({
@@ -1252,6 +1463,7 @@ export class VisitService extends BaseService<VisitEntity> {
       physicalExam: payload.physicalExam ?? null,
       assessmentText: payload.assessmentText ?? null,
       diagnosisSnapshot: payload.diagnosisSnapshot ?? null,
+      recordedBy: payload.recordedBy ?? null,
     })
     await this.progressBatchRepository.save(progressBatch)
   }
@@ -1265,6 +1477,7 @@ export class VisitService extends BaseService<VisitEntity> {
       doctorAdvice?: string
       structuredActions?: Array<Record<string, any>>
       followUpActions?: Array<Record<string, any>>
+      recordedBy?: number | null
     },
   ) {
     const planBatch = this.planBatchRepository.create({
@@ -1275,6 +1488,7 @@ export class VisitService extends BaseService<VisitEntity> {
       doctorAdvice: payload.doctorAdvice ?? null,
       structuredActions: payload.structuredActions ?? null,
       followUpActions: payload.followUpActions ?? null,
+      recordedBy: payload.recordedBy ?? null,
     })
     await this.planBatchRepository.save(planBatch)
   }
@@ -1314,9 +1528,45 @@ export class VisitService extends BaseService<VisitEntity> {
       throw new BusinessException('Linked prescriptions must belong to the current visit')
   }
 
+  private async assertCareFollowupBelongsToVisit(visitId: number, careFollowupId: number) {
+    const count = await this.careFollowupRepository.count({
+      where: {
+        id: careFollowupId,
+        visitId,
+      },
+    })
+    if (count !== 1)
+      throw new BusinessException('Care followup must belong to the current visit')
+  }
+
   private async generateCareFollowupBatchNo(visitId: number) {
     const count = await this.careFollowupRepository.count({ where: { visitId } })
     return `C${String(count + 1).padStart(2, '0')}`
+  }
+
+  private async generateMediaBatchNo(visitId: number) {
+    const visit = await this.visitRepository.findOneBy({ id: visitId })
+    const prefix = `IMG${this.getTodaySequenceDate()}`
+    const latest = await this.mediaBatchRepository
+      .createQueryBuilder('batch')
+      .select(['batch.batchNo'])
+      .where('batch.batchNo LIKE :prefix', { prefix: `${prefix}%` })
+      .orderBy('batch.batchNo', 'DESC')
+      .getOne()
+    const currentSeq = latest?.batchNo
+      ? Number(latest.batchNo.slice(prefix.length)) || 0
+      : 0
+    const visitSuffix = visit?.visitNo ? `-${visit.visitNo}` : ''
+    return `${prefix}${String(currentSeq + 1).padStart(4, '0')}${visitSuffix}`.slice(0, 30)
+  }
+
+  private async nextMediaFileSortNo(batchId: number) {
+    const result = await this.mediaFileRepository
+      .createQueryBuilder('file')
+      .select('MAX(file.sortNo)', 'maxSortNo')
+      .where('file.batchId = :batchId', { batchId })
+      .getRawOne<{ maxSortNo: number | string | null }>()
+    return Number(result?.maxSortNo ?? 0) + 1
   }
 
   private async generateProgressBatchNo(visitId: number) {
@@ -1327,6 +1577,40 @@ export class VisitService extends BaseService<VisitEntity> {
   private async generatePlanBatchNo(visitId: number) {
     const count = await this.planBatchRepository.count({ where: { visitId } })
     return `T${String(count + 1).padStart(2, '0')}`
+  }
+
+  private async resolveScopedDoctorId(scope?: string, currentUserId?: number) {
+    if (scope !== 'currentStaff')
+      return undefined
+    if (!currentUserId)
+      return null
+    const doctor = await this.doctorRepository.findOne({
+      where: { userId: currentUserId, status: 1 },
+    })
+    return doctor?.id ?? null
+  }
+
+  private async resolveActorDoctorId(visit: VisitEntity, options: CurrentStaffScopeOptions = {}) {
+    if (options.currentUserId) {
+      const doctor = await this.doctorRepository.findOne({
+        where: { userId: options.currentUserId, status: 1 },
+      })
+      if (doctor)
+        return doctor.id
+    }
+    return visit.doctorId ?? null
+  }
+
+  private async assertVisitBelongsToScopedDoctor(visit: VisitEntity, options: CurrentStaffScopeOptions = {}) {
+    if (options.scope !== 'currentStaff')
+      return
+
+    const scopedDoctorId = await this.resolveScopedDoctorId(options.scope, options.currentUserId)
+    if (!scopedDoctorId)
+      throw new BusinessException('Current user is not bound to active medical staff')
+
+    if (Number(visit.doctorId) !== Number(scopedDoctorId))
+      throw new BusinessException('Current staff cannot access this visit')
   }
 
   private async generateChronicCaseNo() {

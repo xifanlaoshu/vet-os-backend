@@ -1,4 +1,4 @@
-import { IsArray, IsDateString, IsInt, IsJSON, IsOptional, IsString, MaxLength } from 'class-validator'
+import { IsArray, IsDateString, IsIn, IsInt, IsJSON, IsOptional, IsString, MaxLength } from 'class-validator'
 
 export class CreateVisitDto {
   @IsOptional()
@@ -207,6 +207,10 @@ export class QueryVisitDto {
   @IsOptional()
   @IsDateString()
   dateTo?: string
+
+  @IsOptional()
+  @IsString()
+  scope?: string
 }
 
 export class CreateVisitCareFollowupDto {
@@ -261,6 +265,62 @@ export class CreateVisitCareFollowupDto {
   @IsOptional()
   @IsArray()
   prescriptionIds?: number[]
+}
+
+export class CreateVisitMediaBatchDto {
+  @IsOptional()
+  @IsDateString()
+  capturedAt?: string
+
+  @IsIn(['soap', 'care_followup'])
+  relationType: 'soap' | 'care_followup'
+
+  @IsOptional()
+  @IsInt()
+  careFollowupId?: number
+
+  @IsOptional()
+  @IsInt()
+  operatorId?: number
+
+  @IsOptional()
+  @IsString()
+  remark?: string
+}
+
+export class CreateVisitMediaFileDto {
+  @IsIn(['image', 'video'])
+  fileType: 'image' | 'video'
+
+  @IsIn(['local', 'oss'])
+  storageType: 'local' | 'oss'
+
+  @IsOptional()
+  @IsString()
+  fileName?: string
+
+  @IsOptional()
+  @IsString()
+  originalName?: string
+
+  @IsString()
+  url: string
+
+  @IsOptional()
+  @IsString()
+  mimeType?: string
+
+  @IsOptional()
+  @IsInt()
+  fileSize?: number
+
+  @IsOptional()
+  @IsInt()
+  sortNo?: number
+
+  @IsOptional()
+  @IsString()
+  remark?: string
 }
 
 export class CreateChronicCaseDto {

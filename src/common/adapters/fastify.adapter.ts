@@ -13,8 +13,8 @@ export { app as fastifyApp }
 app.register(FastifyMultipart, {
   limits: {
     fields: 10, // Max number of non-file fields
-    fileSize: 1024 * 1024 * 6, // limit size 6M
-    files: 5, // Max number of file fields
+    fileSize: 1024 * 1024 * 100, // visit media videos need a higher local upload ceiling
+    files: 20, // Max number of file fields
   },
 })
 
