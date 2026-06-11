@@ -8,8 +8,11 @@ import { PetEntity } from '../vpet-pet/entities/pet.entity'
 import { VisitService } from '../vpet-visit/visit.service'
 import { CreateAppointmentDto, UpdateAppointmentDto } from './dto/appointment.dto'
 import { CreateDoctorDto, QueryDoctorDto, UpdateDoctorDto } from './dto/doctor.dto'
+import { CreateShiftDto, QueryShiftDto, QueryStaffScheduleDto, SaveStaffScheduleDto, UpdateShiftDto } from './dto/shift.dto'
 import { AppointmentEntity } from './entities/appointment.entity'
 import { DoctorEntity } from './entities/doctor.entity'
+import { ShiftEntity } from './entities/shift.entity'
+import { StaffScheduleEntity } from './entities/staff-schedule.entity'
 
 @Injectable()
 export class AppointmentService {
@@ -18,6 +21,10 @@ export class AppointmentService {
     private appointmentRepository: Repository<AppointmentEntity>,
     @InjectRepository(DoctorEntity)
     private doctorRepository: Repository<DoctorEntity>,
+    @InjectRepository(ShiftEntity)
+    private shiftRepository: Repository<ShiftEntity>,
+    @InjectRepository(StaffScheduleEntity)
+    private staffScheduleRepository: Repository<StaffScheduleEntity>,
     @InjectRepository(PetEntity)
     private petRepository: Repository<PetEntity>,
     @InjectRepository(UserEntity)
@@ -25,8 +32,14 @@ export class AppointmentService {
     private visitService: VisitService,
   ) {}
 
-  async list(params: { page?: number, pageSize?: number, status?: number, doctorId?: number, date?: string, keyword?: string }) {
+  async list(
+    params: { page?: number, pageSize?: number, status?: number, doctorId?: number, date?: string, keyword?: string, scope?: string },
+    currentUserId?: number,
+  ) {
     const { page = 1, pageSize = 10, status, doctorId, date, keyword } = params
+    const scopedDoctorId = await this.resolveScopedDoctorId(params.scope, currentUserId)
+    if (params.scope === 'currentStaff' && !scopedDoctorId)
+      return { items: [], meta: { totalItems: 0, itemCount: 0, itemsPerPage: pageSize, totalPages: 0, currentPage: page } }
     const qb = this.appointmentRepository.createQueryBuilder('a')
       .leftJoinAndSelect('a.customer', 'customer')
       .leftJoinAndSelect('a.pet', 'pet')
@@ -34,8 +47,9 @@ export class AppointmentService {
 
     if (status !== undefined)
       qb.andWhere('a.status = :status', { status })
-    if (doctorId)
-      qb.andWhere('a.doctorId = :doctorId', { doctorId })
+    const effectiveDoctorId = scopedDoctorId ?? doctorId
+    if (effectiveDoctorId)
+      qb.andWhere('a.doctorId = :doctorId', { doctorId: effectiveDoctorId })
     if (date) {
       const start = `${date} 00:00:00`
       const end = `${date} 23:59:59`
@@ -78,10 +92,17 @@ export class AppointmentService {
     await this.appointmentRepository.update(id, dto)
   }
 
-  async checkin(id: number) {
+  async checkin(id: number, options: { scope?: string, currentUserId?: number } = {}) {
     const appointment = await this.appointmentRepository.findOneBy({ id })
     if (!appointment)
       throw new BusinessException('Appointment not found')
+    const scopedDoctorId = await this.resolveScopedDoctorId(options.scope, options.currentUserId)
+    if (options.scope === 'currentStaff') {
+      if (!scopedDoctorId)
+        throw new BusinessException('Current user is not linked to medical staff')
+      if (Number(appointment.doctorId) !== Number(scopedDoctorId))
+        throw new BusinessException('Appointment does not belong to current medical staff')
+    }
     if (appointment.status === 4)
       throw new BusinessException('Canceled appointment cannot check in')
 
@@ -166,6 +187,101 @@ export class AppointmentService {
     })
   }
 
+  async shiftList(dto: QueryShiftDto) {
+    const { page = 1, pageSize = 10, keyword, code, name, status } = dto
+    const qb = this.shiftRepository.createQueryBuilder('s')
+    if (keyword) {
+      qb.andWhere('(s.code LIKE :kw OR s.name LIKE :kw OR s.remark LIKE :kw)', { kw: `%${keyword}%` })
+    }
+    if (code)
+      qb.andWhere('s.code LIKE :code', { code: `%${code}%` })
+    if (name)
+      qb.andWhere('s.name LIKE :name', { name: `%${name}%` })
+    if (status !== undefined)
+      qb.andWhere('s.status = :status', { status })
+    qb.orderBy('s.status', 'DESC').addOrderBy('s.startTime', 'ASC').addOrderBy('s.code', 'ASC')
+    return paginate(qb, { page, pageSize })
+  }
+
+  async getActiveShifts() {
+    return this.shiftRepository.find({
+      where: { status: 1 },
+      order: { startTime: 'ASC', code: 'ASC' },
+    })
+  }
+
+  async createShift(dto: CreateShiftDto) {
+    await this.ensureShiftCodeAvailable(dto.code)
+    return this.shiftRepository.save(this.shiftRepository.create({
+      ...dto,
+      color: dto.color || '#1677ff',
+      status: dto.status ?? 1,
+    }))
+  }
+
+  async updateShift(id: number, dto: UpdateShiftDto) {
+    const current = await this.shiftRepository.findOneBy({ id })
+    if (!current)
+      throw new BusinessException('Shift not found')
+    if (dto.code && dto.code !== current.code)
+      await this.ensureShiftCodeAvailable(dto.code, id)
+    await this.shiftRepository.update(id, dto)
+  }
+
+  async deleteShift(id: number) {
+    const used = await this.staffScheduleRepository.count({ where: { shiftId: id } })
+    if (used > 0)
+      throw new BusinessException('Shift is used by schedules and cannot be deleted')
+    await this.shiftRepository.delete(id)
+  }
+
+  async monthSchedules(dto: QueryStaffScheduleDto) {
+    const { start, end } = this.resolveMonthRange(dto.month)
+    const [doctors, shifts, schedules] = await Promise.all([
+      this.getDoctors(false),
+      this.getActiveShifts(),
+      this.staffScheduleRepository.createQueryBuilder('s')
+        .leftJoinAndSelect('s.shift', 'shift')
+        .where('s.scheduleDate BETWEEN :start AND :end', { start, end })
+        .getMany(),
+    ])
+    return {
+      month: dto.month,
+      doctors,
+      shifts,
+      schedules,
+    }
+  }
+
+  async saveStaffSchedule(dto: SaveStaffScheduleDto) {
+    const doctor = await this.doctorRepository.findOneBy({ id: dto.doctorId, status: 1 })
+    if (!doctor)
+      throw new BusinessException('Medical staff not found')
+
+    const existing = await this.staffScheduleRepository.findOne({
+      where: { doctorId: dto.doctorId, scheduleDate: dto.scheduleDate },
+    })
+
+    if (!dto.shiftId) {
+      if (existing)
+        await this.staffScheduleRepository.delete(existing.id)
+      return null
+    }
+
+    const shift = await this.shiftRepository.findOneBy({ id: dto.shiftId, status: 1 })
+    if (!shift)
+      throw new BusinessException('Shift not found')
+
+    const entity = this.staffScheduleRepository.create({
+      ...(existing || {}),
+      doctorId: dto.doctorId,
+      scheduleDate: dto.scheduleDate,
+      shiftId: dto.shiftId,
+      remark: dto.remark,
+    })
+    return this.staffScheduleRepository.save(entity)
+  }
+
   private mapVisitType(value?: string) {
     if (!value)
       return 1
@@ -200,5 +316,33 @@ export class AppointmentService {
     const user = await this.userRepository.findOneBy({ id: userId })
     if (!user)
       throw new BusinessException('System user not found')
+  }
+
+  private async resolveScopedDoctorId(scope?: string, currentUserId?: number) {
+    if (scope !== 'currentStaff')
+      return undefined
+    if (!currentUserId)
+      return null
+    const doctor = await this.doctorRepository.findOne({
+      where: { userId: currentUserId, status: 1 },
+    })
+    return doctor?.id ?? null
+  }
+
+  private async ensureShiftCodeAvailable(code?: string, excludeId?: number) {
+    if (!code)
+      return
+    const existing = await this.shiftRepository.findOneBy({ code })
+    if (existing && existing.id !== excludeId)
+      throw new BusinessException('Shift code already exists')
+  }
+
+  private resolveMonthRange(month: string) {
+    const normalized = /^\d{4}-\d{2}$/.test(month) ? month : new Date().toISOString().slice(0, 7)
+    const [year, monthIndex] = normalized.split('-').map(Number)
+    const start = `${normalized}-01`
+    const endDate = new Date(year, monthIndex, 0).getDate()
+    const end = `${normalized}-${String(endDate).padStart(2, '0')}`
+    return { start, end }
   }
 }

@@ -7,9 +7,11 @@ import { AppointmentController } from './appointment.controller'
 import { AppointmentService } from './appointment.service'
 import { AppointmentEntity } from './entities/appointment.entity'
 import { DoctorEntity } from './entities/doctor.entity'
+import { ShiftEntity } from './entities/shift.entity'
+import { StaffScheduleEntity } from './entities/staff-schedule.entity'
 
 @Module({
-  imports: [TypeOrmModule.forFeature([AppointmentEntity, DoctorEntity, PetEntity, UserEntity]), VpetVisitModule],
+  imports: [TypeOrmModule.forFeature([AppointmentEntity, DoctorEntity, PetEntity, UserEntity, ShiftEntity, StaffScheduleEntity]), VpetVisitModule],
   controllers: [AppointmentController],
   providers: [AppointmentService],
   exports: [AppointmentService, TypeOrmModule],
