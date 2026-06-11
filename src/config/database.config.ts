@@ -4,12 +4,13 @@ import dotenv from 'dotenv'
 
 import { DataSource, DataSourceOptions } from 'typeorm'
 
-import { env, envBoolean, envNumber } from '~/global/env'
+import { env, envBoolean, envNumber, isTest } from '~/global/env'
 
 dotenv.config({ path: `.env.${process.env.NODE_ENV}` })
 
 // 当前通过 npm scripts 执行的命令
 const currentScript = process.env.npm_lifecycle_event
+const shouldSynchronize = isTest && envBoolean('DB_SYNCHRONIZE', false)
 
 const dataSourceOptions: DataSourceOptions = {
   type: 'mysql',
@@ -18,7 +19,7 @@ const dataSourceOptions: DataSourceOptions = {
   username: env('DB_USERNAME'),
   password: env('DB_PASSWORD'),
   database: env('DB_DATABASE'),
-  synchronize: envBoolean('DB_SYNCHRONIZE', false),
+  synchronize: shouldSynchronize,
   // 解决通过 pnpm migration:run 初始化数据时，遇到的 SET FOREIGN_KEY_CHECKS = 0; 等语句报错问题, 仅在执行数据迁移操作时设为 true
   multipleStatements: currentScript === 'typeorm',
   entities: ['dist/modules/**/*.entity{.ts,.js}'],
