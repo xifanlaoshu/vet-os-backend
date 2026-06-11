@@ -50,8 +50,8 @@ export class AppointmentController {
 
   @Get('doctors/all')
   @ApiOperation({ summary: '所有医护人员(不分页)' })
-  async getAllDoctors() {
-    return this.apptService.getDoctors()
+  async getAllDoctors(@Query('bookableOnly') bookableOnly?: string) {
+    return this.apptService.getDoctors(bookableOnly === '1' || bookableOnly === 'true')
   }
 
   @Post('doctors')

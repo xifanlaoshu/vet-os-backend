@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
-import { Brackets, Repository } from 'typeorm'
+import { Brackets, FindOptionsWhere, Repository } from 'typeorm'
 import { BusinessException } from '~/common/exceptions/biz.exception'
 import { paginate } from '~/helper/paginate'
 import { UserEntity } from '../user/user.entity'
@@ -120,7 +120,7 @@ export class AppointmentService {
   }
 
   async doctorList(dto: QueryDoctorDto) {
-    const { page = 1, pageSize = 10, keyword, department, position, status, name, phone } = dto
+    const { page = 1, pageSize = 10, keyword, department, position, status, bookable, name, phone } = dto
     const qb = this.doctorRepository.createQueryBuilder('d')
     if (keyword) {
       qb.andWhere('(d.name LIKE :kw OR d.phone LIKE :kw)', { kw: `%${keyword}%` })
@@ -135,6 +135,8 @@ export class AppointmentService {
       qb.andWhere('d.position = :position', { position })
     if (status !== undefined)
       qb.andWhere('d.status = :status', { status })
+    if (bookable !== undefined)
+      qb.andWhere('d.bookable = :bookable', { bookable })
     qb.orderBy('d.createdAt', 'DESC')
     return paginate(qb, { page, pageSize })
   }
@@ -154,10 +156,13 @@ export class AppointmentService {
     await this.doctorRepository.delete(id)
   }
 
-  async getDoctors(): Promise<DoctorEntity[]> {
+  async getDoctors(bookableOnly = false): Promise<DoctorEntity[]> {
+    const where: FindOptionsWhere<DoctorEntity> = { status: 1 }
+    if (bookableOnly)
+      where.bookable = 1
     return this.doctorRepository.find({
-      where: { status: 1, position: 'doctor' },
-      order: { name: 'ASC' },
+      where,
+      order: { position: 'ASC', name: 'ASC' },
     })
   }
 
@@ -182,9 +187,11 @@ export class AppointmentService {
   private async validateDoctor(doctorId?: number) {
     if (!doctorId)
       return
-    const doctor = await this.doctorRepository.findOneBy({ id: doctorId })
+    const doctor = await this.doctorRepository.findOneBy({ id: doctorId, status: 1 })
     if (!doctor)
-      throw new BusinessException('Doctor not found')
+      throw new BusinessException('Medical staff not found')
+    if (Number(doctor.bookable) !== 1)
+      throw new BusinessException('Medical staff is not bookable')
   }
 
   private async validateDoctorUser(userId?: number) {

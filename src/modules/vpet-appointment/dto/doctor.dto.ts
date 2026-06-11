@@ -31,6 +31,10 @@ export class CreateDoctorDto {
   @IsOptional()
   @IsString()
   introduction?: string
+
+  @IsOptional()
+  @IsInt()
+  bookable?: number
 }
 
 export class UpdateDoctorDto extends PartialType(CreateDoctorDto) {}
@@ -42,6 +46,10 @@ export class QueryDoctorDto extends IntersectionType(
   @IsOptional()
   @IsInt()
   status?: number
+
+  @IsOptional()
+  @IsInt()
+  bookable?: number
 
   @IsOptional()
   @IsString()

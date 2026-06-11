@@ -26,5 +26,8 @@ export class DoctorEntity extends CommonEntity {
   introduction: string
 
   @Column({ type: 'tinyint', default: 1 })
+  bookable: number
+
+  @Column({ type: 'tinyint', default: 1 })
   status: number
 }
