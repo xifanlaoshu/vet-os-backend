@@ -72,12 +72,18 @@ export class AppointmentService {
   async create(dto: CreateAppointmentDto): Promise<AppointmentEntity> {
     await this.validateCustomerPetRelation(dto.customerId, dto.petId)
     await this.validateDoctor(dto.doctorId)
+    await this.validateDoctorSchedule(dto.doctorId, dto.appointmentTime)
     const appt = this.appointmentRepository.create(dto)
     return this.appointmentRepository.save(appt)
   }
 
   async update(id: number, dto: UpdateAppointmentDto): Promise<void> {
-    if (dto.customerId !== undefined || dto.petId !== undefined || dto.doctorId !== undefined) {
+    if (
+      dto.customerId !== undefined
+      || dto.petId !== undefined
+      || dto.doctorId !== undefined
+      || dto.appointmentTime !== undefined
+    ) {
       const current = await this.appointmentRepository.findOneBy({ id })
       if (!current)
         throw new BusinessException('Appointment not found')
@@ -88,6 +94,10 @@ export class AppointmentService {
         )
       }
       await this.validateDoctor(dto.doctorId)
+      await this.validateDoctorSchedule(
+        dto.doctorId ?? current.doctorId,
+        dto.appointmentTime ?? current.appointmentTime,
+      )
     }
     await this.appointmentRepository.update(id, dto)
   }
@@ -308,6 +318,53 @@ export class AppointmentService {
       throw new BusinessException('Medical staff not found')
     if (Number(doctor.bookable) !== 1)
       throw new BusinessException('Medical staff is not bookable')
+  }
+
+  private async validateDoctorSchedule(doctorId?: number, appointmentTime?: string) {
+    if (!doctorId || !appointmentTime)
+      return
+    const { date, time } = this.parseAppointmentDateTime(appointmentTime)
+    const schedule = await this.staffScheduleRepository.findOne({
+      where: { doctorId, scheduleDate: date },
+      relations: ['shift'],
+    })
+    if (!schedule?.shift || Number(schedule.shift.status) !== 1)
+      throw new BusinessException('Medical staff is not scheduled at the appointment time')
+    if (!this.isTimeInShift(time, schedule.shift.startTime, schedule.shift.endTime))
+      throw new BusinessException('Appointment time is outside the medical staff shift')
+  }
+
+  private parseAppointmentDateTime(value: string) {
+    const text = String(value)
+    if (/^\d{4}-\d{2}-\d{2}/.test(text)) {
+      return {
+        date: text.slice(0, 10),
+        time: this.normalizeTime(text.slice(11, 19) || '00:00:00'),
+      }
+    }
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime()))
+      throw new BusinessException('Invalid appointment time')
+    return {
+      date: date.toISOString().slice(0, 10),
+      time: this.normalizeTime(date.toISOString().slice(11, 19)),
+    }
+  }
+
+  private normalizeTime(value?: string) {
+    const [hour = '00', minute = '00', second = '00'] = String(value || '00:00:00').split(':')
+    return `${hour.padStart(2, '0')}:${minute.padStart(2, '0')}:${second.padStart(2, '0')}`
+  }
+
+  private isTimeInShift(time: string, startTime: string, endTime: string) {
+    const current = this.normalizeTime(time)
+    const start = this.normalizeTime(startTime)
+    const end = this.normalizeTime(endTime)
+    if (start === end)
+      return true
+    if (start < end)
+      return current >= start && current < end
+    return current >= start || current < end
   }
 
   private async validateDoctorUser(userId?: number) {
