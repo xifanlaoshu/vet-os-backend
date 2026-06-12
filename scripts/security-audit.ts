@@ -104,6 +104,7 @@ for (const file of sourceFiles) {
   const lines = content.split(/\r?\n/)
   auditControllerAccessMetadata(absPath, lines)
   auditVpetScopedRepositoryAccess(absPath, lines)
+  auditVpetScopedQueryBuilderWhereOverride(absPath, lines)
   auditThrottleBypass(absPath, lines)
   auditRawSqlUsage(absPath, lines)
   auditDataEgressRoutes(absPath, lines)
@@ -1030,6 +1031,36 @@ function auditVpetScopedRepositoryAccess(absPath: string, lines: string[]) {
         message,
       })
     }
+  })
+}
+
+function auditVpetScopedQueryBuilderWhereOverride(absPath: string, lines: string[]) {
+  if (!absPath.includes(`${join('src', 'modules', 'vpet-')}`) || !absPath.endsWith('.service.ts'))
+    return
+
+  const scopedQueryBuilders = new Set<string>()
+  let activeQueryBuilder: string | null = null
+
+  lines.forEach((lineText, index) => {
+    const declaration = lineText.match(/\bconst\s+(\w+)\s*=\s*.*\.createQueryBuilder\(/)
+    if (declaration)
+      activeQueryBuilder = declaration[1]
+
+    if (activeQueryBuilder && /\.andWhere\([^)]*\b(?:tenantId|areaId)\b/.test(lineText))
+      scopedQueryBuilders.add(activeQueryBuilder)
+
+    const whereCall = lineText.match(/^\s*(\w+)\.where\(/)
+    if (whereCall && scopedQueryBuilders.has(whereCall[1])) {
+      findings.push({
+        file: relative(root, absPath),
+        line: index + 1,
+        rule: 'vpet-no-scoped-querybuilder-where-override',
+        message: 'Do not call where() after tenantId/areaId scope has been added with andWhere(); where() overwrites previous QueryBuilder predicates.',
+      })
+    }
+
+    if (activeQueryBuilder && /;\s*$/.test(lineText))
+      activeQueryBuilder = null
   })
 }
 

@@ -38,7 +38,7 @@ export class PharmacyService {
       .andWhere('d.tenantId = :tenantId', { tenantId })
 
     if (keyword) {
-      qb.where('d.drugName LIKE :kw OR d.tradeName LIKE :kw OR d.drugCode LIKE :kw', {
+      qb.andWhere('(d.drugName LIKE :kw OR d.tradeName LIKE :kw OR d.drugCode LIKE :kw)', {
         kw: `%${keyword}%`,
       })
     }
@@ -115,7 +115,7 @@ export class PharmacyService {
 
     qb.orderBy('item.updatedAt', 'DESC')
     const result = await paginate(qb, { page, pageSize })
-    const items = await this.attachConsentTemplates(result.items)
+    const items = await this.attachConsentTemplates(result.items, tenantId)
     return { ...result, items }
   }
 
@@ -127,7 +127,7 @@ export class PharmacyService {
       status: dto.status ?? 1,
       retailPrice: dto.retailPrice ?? 0,
     }))
-    await this.saveChargeItemConsentTemplates(item.id, dto.consentTemplateIds)
+    await this.saveChargeItemConsentTemplates(item.id, dto.consentTemplateIds, tenantId)
     return this.findChargeItem(item.id, context)
   }
 
@@ -136,7 +136,7 @@ export class PharmacyService {
     const { consentTemplateIds, ...payload } = dto
     await this.chargeItemRepository.update({ id, tenantId }, payload)
     if (consentTemplateIds !== undefined)
-      await this.saveChargeItemConsentTemplates(id, consentTemplateIds)
+      await this.saveChargeItemConsentTemplates(id, consentTemplateIds, tenantId)
     return this.findChargeItem(id, context)
   }
 
@@ -374,17 +374,17 @@ export class PharmacyService {
     const item = await this.chargeItemRepository.findOneBy({ id, tenantId })
     if (!item)
       throw new BusinessException('Charge item not found')
-    const [withTemplates] = await this.attachConsentTemplates([item])
+    const [withTemplates] = await this.attachConsentTemplates([item], tenantId)
     return withTemplates
   }
 
-  private async attachConsentTemplates(items: ChargeItemEntity[]) {
+  private async attachConsentTemplates(items: ChargeItemEntity[], tenantId: number) {
     if (!items.length)
       return []
     const itemIds = items.map(item => item.id)
     const links = await this.consentTemplateChargeItemRepository
       .createQueryBuilder('link')
-      .leftJoinAndSelect('link.template', 'template')
+      .leftJoinAndSelect('link.template', 'template', 'template.tenantId = :tenantId', { tenantId })
       .where('link.chargeItemId IN (:...itemIds)', { itemIds })
       .orderBy('template.category', 'ASC')
       .addOrderBy('template.name', 'ASC')
@@ -403,7 +403,7 @@ export class PharmacyService {
     }))
   }
 
-  private async saveChargeItemConsentTemplates(chargeItemId: number, templateIds?: number[]) {
+  private async saveChargeItemConsentTemplates(chargeItemId: number, templateIds: number[] | undefined, tenantId: number) {
     if (templateIds === undefined)
       return
     const uniqueTemplateIds = [...new Set((templateIds || []).map(Number).filter(Boolean))]
@@ -411,6 +411,7 @@ export class PharmacyService {
       const count = await this.consentTemplateRepository
         .createQueryBuilder('template')
         .where('template.id IN (:...ids)', { ids: uniqueTemplateIds })
+        .andWhere('template.tenantId = :tenantId', { tenantId })
         .andWhere('template.isActive = :isActive', { isActive: 1 })
         .getCount()
       if (count !== uniqueTemplateIds.length)
