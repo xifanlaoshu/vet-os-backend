@@ -12,7 +12,7 @@ import { UserService } from '../user/user.service'
 
 import { AuthService } from './auth.service'
 import { Public } from './decorators/public.decorator'
-import { LoginDto, RegisterDto } from './dto/auth.dto'
+import { LoginDto, RefreshTokenDto, RegisterDto } from './dto/auth.dto'
 import { LocalGuard } from './guards/local.guard'
 import { LoginToken } from './models/auth.model'
 import { CaptchaService } from './services/captcha.service'
@@ -45,7 +45,7 @@ export class AuthController {
         ua,
       )
       await this.clearLoginFailures(dto.username, ip)
-      return { token }
+      return token
     }
     catch (error) {
       await this.recordLoginFailure(dto.username, ip)
@@ -60,6 +60,17 @@ export class AuthController {
       throw new BadRequestException('当前环境未开放公开注册，请由平台或租户管理员创建账号')
 
     await this.userService.register(dto)
+  }
+
+  @Post('refresh')
+  @ApiOperation({ summary: '刷新访问令牌' })
+  @ApiResult({ type: LoginToken })
+  async refresh(@Body() dto: RefreshTokenDto): Promise<LoginToken> {
+    const token = await this.authService.refreshLoginToken(dto.refreshToken)
+    return {
+      token: token.accessToken,
+      refreshToken: token.refreshToken,
+    }
   }
 
   private getLoginIdentifiers(username: string, ip: string) {

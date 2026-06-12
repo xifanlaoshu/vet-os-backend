@@ -76,6 +76,12 @@
     },
     {
       "method": "POST",
+      "path": "/auth/refresh",
+      "access": "Public",
+      "reason": "Refresh endpoint must be accessible when the short-lived access token has expired; the refresh token is hashed at rest and rotated on every successful use."
+    },
+    {
+      "method": "POST",
       "path": "/auth/register",
       "access": "Public",
       "reason": "Runtime protected by ALLOW_PUBLIC_REGISTER; production configuration disables public registration."

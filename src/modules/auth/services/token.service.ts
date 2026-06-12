@@ -5,11 +5,13 @@ import Redis from 'ioredis'
 
 import { InjectRedis } from '~/common/decorators/inject-redis.decorator'
 
+import { BusinessException } from '~/common/exceptions/biz.exception'
 import { ISecurityConfig, SecurityConfig } from '~/config'
+import { ErrorEnum } from '~/constants/error-code.constant'
 import { genOnlineUserKey } from '~/helper/genRedisKey'
 import { RoleService } from '~/modules/system/role/role.service'
 import { UserEntity } from '~/modules/user/user.entity'
-import { generateUUID } from '~/utils'
+import { generateUUID, sha256 } from '~/utils'
 
 import { AccessTokenEntity } from '../entities/access-token.entity'
 import { RefreshTokenEntity } from '../entities/refresh-token.entity'
@@ -51,6 +53,34 @@ export class TokenService {
       return token
     }
     return null
+  }
+
+  async rotateRefreshToken(refreshTokenValue: string) {
+    const tokenHash = this.hashRefreshToken(refreshTokenValue)
+    const refreshToken = await RefreshTokenEntity.findOne({
+      where: { value: tokenHash },
+      relations: ['accessToken', 'accessToken.user'],
+    })
+
+    if (!refreshToken?.accessToken?.user)
+      throw new BusinessException(ErrorEnum.INVALID_LOGIN)
+
+    const now = dayjs()
+    if (now.isAfter(refreshToken.expired_at)) {
+      await refreshToken.accessToken.remove()
+      throw new BusinessException(ErrorEnum.INVALID_LOGIN)
+    }
+
+    const accessToken = refreshToken.accessToken
+    const context = await this.verifyAccessToken(accessToken.value).catch(() => ({} as IAuthUser))
+    const roleIds = await this.roleService.getRoleIdsByUser(accessToken.user.id)
+    const roleValues = await this.roleService.getRoleValues(roleIds)
+    const token = await this.generateAccessToken(accessToken.user.id, roleValues, context)
+
+    this.redis.del(genOnlineUserKey(accessToken.id))
+    await accessToken.remove()
+
+    return token
   }
 
   generateJwtSign(payload: any) {
@@ -113,7 +143,7 @@ export class TokenService {
     })
 
     const refreshToken = new RefreshTokenEntity()
-    refreshToken.value = refreshTokenSign
+    refreshToken.value = this.hashRefreshToken(refreshTokenSign)
     refreshToken.expired_at = now
       .add(this.securityConfig.refreshExpire, 'second')
       .toDate()
@@ -135,9 +165,8 @@ export class TokenService {
       const res = await AccessTokenEntity.findOne({
         where: { value },
         relations: ['user', 'refreshToken'],
-        cache: true,
       })
-      isValid = Boolean(res)
+      isValid = Boolean(res && dayjs().isBefore(res.expired_at))
     }
     catch (error) {}
 
@@ -164,7 +193,7 @@ export class TokenService {
    */
   async removeRefreshToken(value: string) {
     const refreshToken = await RefreshTokenEntity.findOne({
-      where: { value },
+      where: { value: this.hashRefreshToken(value) },
       relations: ['accessToken'],
     })
     if (refreshToken) {
@@ -181,5 +210,9 @@ export class TokenService {
    */
   async verifyAccessToken(token: string): Promise<IAuthUser> {
     return this.jwtService.verifyAsync(token)
+  }
+
+  private hashRefreshToken(value: string) {
+    return sha256(value)
   }
 }

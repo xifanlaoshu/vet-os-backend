@@ -15,7 +15,7 @@ export class RefreshTokenEntity extends BaseEntity {
   @PrimaryGeneratedColumn('uuid')
   id!: string
 
-  @Column({ length: 500 })
+  @Column({ length: 128, unique: true, comment: '刷新令牌哈希值' })
   value!: string
 
   @Column({ comment: '令牌过期时间' })

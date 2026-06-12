@@ -41,3 +41,10 @@ export class RegisterDto {
   @IsString()
   lang: string
 }
+
+export class RefreshTokenDto {
+  @ApiProperty({ description: '刷新令牌' })
+  @IsString()
+  @MinLength(20)
+  refreshToken: string
+}

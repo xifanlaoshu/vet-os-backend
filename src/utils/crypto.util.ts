@@ -1,4 +1,4 @@
-import { randomBytes, scrypt, timingSafeEqual } from 'node:crypto'
+import { createHash, randomBytes, scrypt, timingSafeEqual } from 'node:crypto'
 import { promisify } from 'node:util'
 import CryptoJS from 'crypto-js'
 
@@ -29,6 +29,10 @@ export function aesDecrypt(data) {
 
 export function md5(str: string) {
   return CryptoJS.MD5(str).toString()
+}
+
+export function sha256(str: string) {
+  return createHash('sha256').update(str).digest('hex')
 }
 
 const scryptAsync = promisify(scrypt)

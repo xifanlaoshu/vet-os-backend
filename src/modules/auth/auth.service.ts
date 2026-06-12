@@ -19,6 +19,7 @@ import { MenuService } from '../system/menu/menu.service'
 import { RoleService } from '../system/role/role.service'
 import { TenantService } from '../system/tenant/tenant.service'
 
+import { LoginToken } from './models/auth.model'
 import { TokenService } from './services/token.service'
 
 @Injectable()
@@ -62,7 +63,7 @@ export class AuthService {
     password: string,
     ip: string,
     ua: string,
-  ): Promise<string> {
+  ): Promise<LoginToken> {
     const user = await this.userService.findUserByUserName(username)
     if (isEmpty(user))
       throw new BusinessException(ErrorEnum.INVALID_USERNAME_PASSWORD)
@@ -92,7 +93,14 @@ export class AuthService {
 
     await this.loginLogService.create(user.id, ip, ua)
 
-    return token.accessToken
+    return {
+      token: token.accessToken,
+      refreshToken: token.refreshToken,
+    }
+  }
+
+  async refreshLoginToken(refreshToken: string) {
+    return this.tokenService.rotateRefreshToken(refreshToken)
   }
 
   /**
@@ -208,6 +216,7 @@ export class AuthService {
     await this.redis.set(genAuthTokenKey(user.uid), token.accessToken, 'EX', this.securityConfig.jwtExprire)
     return {
       token: token.accessToken,
+      refreshToken: token.refreshToken,
       tenantId,
       tenantName: selected?.tenantName,
       areaId,

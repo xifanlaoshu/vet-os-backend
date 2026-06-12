@@ -88,6 +88,12 @@ export class JwtAuthGuard extends AuthGuard(AuthStrategy.JWT) {
         throw new BusinessException(ErrorEnum.INVALID_LOGIN)
     }
 
+    if (token) {
+      const isValid = await this.tokenService.checkAccessToken(token)
+      if (!isValid)
+        throw new BusinessException(ErrorEnum.INVALID_LOGIN)
+    }
+
     if (isSse) {
       const { uid } = request.params
       if (Number(uid) !== request.user.uid)
