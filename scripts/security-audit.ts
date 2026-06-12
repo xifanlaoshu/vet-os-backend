@@ -100,6 +100,12 @@ for (const file of sourceFiles) {
     for (const { rule, pattern, message } of rules) {
       if (!pattern.test(lineText))
         continue
+      if (
+        rule === 'no-plain-refresh-token-write'
+        && /refreshToken\.value\s*=\s*this\.hashRefreshToken\(/.test(lineText)
+      ) {
+        continue
+      }
       findings.push({
         file: relative(root, absPath),
         line: index + 1,
