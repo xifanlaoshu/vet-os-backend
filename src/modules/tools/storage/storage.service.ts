@@ -53,19 +53,13 @@ export class StorageService {
 
   async getAuthorizedFileByToken(accessToken: string): Promise<{ storage: Storage, filePath: string, mimeType: string }> {
     const storage = await this.storageRepository.findOneBy({ accessToken, scanStatus: 2 })
-    if (!storage?.diskPath)
-      throw new BadRequestException('File not found')
+    return this.resolveAuthorizedStorageFile(storage)
+  }
 
-    const filePath = resolveProtectedUploadPath(storage.diskPath)
-    const fileStat = await stat(filePath).catch(() => null)
-    if (!fileStat?.isFile())
-      throw new BadRequestException('File not found')
-
-    return {
-      storage,
-      filePath,
-      mimeType: this.resolveMimeType(storage.extName),
-    }
+  async getAuthorizedFileById(id: number, context: Pick<IAuthUser, 'tenantId' | 'areaId'>): Promise<{ storage: Storage, filePath: string, mimeType: string }> {
+    const { tenantId, areaId } = requireTenantAreaContext(context)
+    const storage = await this.storageRepository.findOneBy({ id, tenantId, areaId, scanStatus: 2 })
+    return this.resolveAuthorizedStorageFile(storage)
   }
 
   async list({
@@ -148,5 +142,21 @@ export class StorageService {
       pdf: 'application/pdf',
     }
     return mapping[normalized] || 'application/octet-stream'
+  }
+
+  private async resolveAuthorizedStorageFile(storage?: Storage | null) {
+    if (!storage?.diskPath)
+      throw new BadRequestException('File not found')
+
+    const filePath = resolveProtectedUploadPath(storage.diskPath)
+    const fileStat = await stat(filePath).catch(() => null)
+    if (!fileStat?.isFile())
+      throw new BadRequestException('File not found')
+
+    return {
+      storage,
+      filePath,
+      mimeType: this.resolveMimeType(storage.extName),
+    }
   }
 }

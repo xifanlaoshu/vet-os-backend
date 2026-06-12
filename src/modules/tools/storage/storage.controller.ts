@@ -19,17 +19,18 @@ import { StorageService } from './storage.service'
 
 export const permissions = definePermission('tool:storage', {
   LIST: 'list',
+  READ: 'read',
   DELETE: 'delete',
 } as const)
 
-@ApiTags('Tools - 存储模块')
+@ApiTags('Tools - Storage')
 @ApiSecurityAuth()
 @Controller('storage')
 export class StorageController {
   constructor(private storageService: StorageService) {}
 
   @Get('list')
-  @ApiOperation({ summary: '获取本地存储列表' })
+  @ApiOperation({ summary: 'List stored files' })
   @ApiResult({ type: [StorageInfo], isPage: true })
   @Perm(permissions.LIST)
   async list(@Query() dto: StoragePageDto, @AuthUser() user: IAuthUser): Promise<Pagination<StorageInfo>> {
@@ -48,9 +49,21 @@ export class StorageController {
     return reply.send(createReadStream(filePath))
   }
 
-  @ApiOperation({ summary: '删除文件' })
+  @Get('file/id/:id')
+  @Perm(permissions.READ)
+  @ApiOperation({ summary: 'Get protected uploaded file by id with tenant and area authorization' })
+  async authorizedFile(@Param('id') id: string, @AuthUser() user: IAuthUser, @Res() reply: FastifyReply) {
+    const { storage, filePath, mimeType } = await this.storageService.getAuthorizedFileById(Number(id), user)
+    reply.header('Content-Type', mimeType)
+    reply.header('Cache-Control', 'private, max-age=300')
+    reply.header('X-Content-Type-Options', 'nosniff')
+    reply.header('Content-Disposition', `inline; filename="${encodeURIComponent(storage.fileName || storage.name)}"`)
+    return reply.send(createReadStream(filePath))
+  }
+
   @Post('delete')
   @Perm(permissions.DELETE)
+  @ApiOperation({ summary: 'Delete stored files' })
   async delete(@Body() dto: StorageDeleteDto, @AuthUser() user: IAuthUser): Promise<void> {
     await this.storageService.delete(dto.ids, user)
   }
