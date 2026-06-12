@@ -49,6 +49,7 @@ const sourceFiles = listSourceFiles(join(root, 'src'))
 const findings: Finding[] = []
 
 auditProductionEnvFile()
+auditHttpRuntimeSecurityBootstrap()
 auditPermissionMatrix()
 auditTenantContextGuard()
 auditTenantAreaLifecycleFilters()
@@ -214,6 +215,60 @@ function auditProductionEnvFile() {
       line: trustProxy?.line ?? 1,
       rule: 'production-trust-proxy-required',
       message: 'TRUST_PROXY must be true in production and deployment must place the app behind a trusted reverse proxy/WAF.',
+    })
+  }
+}
+
+function auditHttpRuntimeSecurityBootstrap() {
+  const mainPath = join(root, 'src', 'main.ts')
+  const productionSecurityPath = join(root, 'src', 'common', 'utils', 'production-security.util.ts')
+  if (!existsSync(mainPath))
+    return
+
+  const content = readFileSync(mainPath, 'utf8')
+  const productionSecurityContent = existsSync(productionSecurityPath)
+    ? readFileSync(productionSecurityPath, 'utf8')
+    : ''
+  const requiredPatterns = [
+    {
+      pattern: /assertProductionSecurityConfig\(configService\)/,
+      rule: 'production-security-config-check-required',
+      message: 'Production startup must validate secrets, CORS, Swagger, RBAC, and tenant context settings before listening.',
+    },
+    {
+      pattern: /app\.use\(helmet\(/,
+      rule: 'helmet-required',
+      message: 'Helmet must be enabled for HTTP security headers.',
+    },
+    {
+      pattern: /app\.enableCors\(\{[\s\S]*corsOrigins\.includes\(origin\)/,
+      rule: 'cors-allowlist-required',
+      message: 'CORS must use an explicit origin allowlist outside development.',
+    },
+    {
+      pattern: /allowedHeaders:\s*\[[\s\S]*['"`]Authorization['"`][\s\S]*['"`]X-Area-Id['"`]/,
+      rule: 'cors-auth-area-headers-required',
+      message: 'CORS allowed headers must include Authorization and X-Area-Id for tenant-area scoped requests.',
+    },
+  ]
+
+  requiredPatterns.forEach(({ pattern, rule, message }) => {
+    if (pattern.test(content))
+      return
+    findings.push({
+      file: 'src/main.ts',
+      line: 1,
+      rule,
+      message,
+    })
+  })
+
+  if (!/placeholderSecretPattern/.test(productionSecurityContent)) {
+    findings.push({
+      file: 'src/common/utils/production-security.util.ts',
+      line: 1,
+      rule: 'production-placeholder-secret-rejected',
+      message: 'Production startup must reject placeholder secrets from environment templates.',
     })
   }
 }
