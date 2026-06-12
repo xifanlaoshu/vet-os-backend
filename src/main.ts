@@ -14,6 +14,7 @@ import { NestFactory } from '@nestjs/core'
 import { NestFastifyApplication } from '@nestjs/platform-fastify'
 
 import { useContainer } from 'class-validator'
+import helmet from 'helmet'
 
 import { AppModule } from './app.module'
 import { fastifyApp } from './common/adapters/fastify.adapter'
@@ -38,34 +39,42 @@ async function bootstrap() {
 
   const configService = app.get(ConfigService<ConfigKeyPaths>)
 
-  const { port, globalPrefix } = configService.get('app', { infer: true })
+  const { port, globalPrefix, corsOrigins } = configService.get('app', { infer: true })
 
-  // class-validator 的 DTO 类中注入 nest 容器的依赖 (用于自定义验证器)
   useContainer(app.select(AppModule), { fallbackOnErrors: true })
 
-  // 允许跨域
+  app.use(helmet({
+    contentSecurityPolicy: isDev ? false : undefined,
+    crossOriginEmbedderPolicy: false,
+  }))
+
   app.enableCors({
-    origin: '*',
+    origin: (origin, callback) => {
+      if (isDev || !origin || corsOrigins.includes(origin))
+        return callback(null, true)
+
+      return callback(new Error('Not allowed by CORS'), false)
+    },
     credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'], // 明确允许方法
-    allowedHeaders: ['Content-Type', 'Authorization', 'Accept'], // 按需配置允许的请求头
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Accept-Language', 'X-Area-Id'],
   })
 
   app.setGlobalPrefix(globalPrefix)
   app.useStaticAssets({ root: path.join(__dirname, '..', 'public') })
-  // Starts listening for shutdown hooks
-  !isDev && app.enableShutdownHooks()
 
-  if (isDev) {
+  if (!isDev)
+    app.enableShutdownHooks()
+
+  if (isDev)
     app.useGlobalInterceptors(new LoggingInterceptor())
-  }
 
   app.useGlobalPipes(
     new ValidationPipe({
       transform: true,
       whitelist: true,
+      forbidNonWhitelisted: !isDev,
       transformOptions: { enableImplicitConversion: true },
-      // forbidNonWhitelisted: true, // 禁止 无装饰器验证的数据通过
       errorHttpStatusCode: HttpStatus.UNPROCESSABLE_ENTITY,
       stopAtFirstError: true,
       exceptionFactory: errors =>

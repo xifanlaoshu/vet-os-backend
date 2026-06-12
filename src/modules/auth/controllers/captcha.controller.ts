@@ -1,5 +1,6 @@
-import { Controller, Get, Query } from '@nestjs/common'
+import { Controller, Get, Query, UseGuards } from '@nestjs/common'
 import { ApiOperation, ApiTags } from '@nestjs/swagger'
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler'
 import Redis from 'ioredis'
 
 import { isEmpty } from 'lodash'
@@ -16,7 +17,7 @@ import { ImageCaptchaDto } from '../dto/captcha.dto'
 import { ImageCaptcha } from '../models/auth.model'
 
 @ApiTags('Captcha - 验证码模块')
-// @UseGuards(ThrottlerGuard)
+@UseGuards(ThrottlerGuard)
 @Controller('auth/captcha')
 export class CaptchaController {
   constructor(@InjectRedis() private redis: Redis) {}
@@ -25,7 +26,7 @@ export class CaptchaController {
   @ApiOperation({ summary: '获取登录图片验证码' })
   @ApiResult({ type: ImageCaptcha })
   @Public()
-  // @Throttle({ default: { limit: 2, ttl: 600000 } })
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   async captchaByImg(@Query() dto: ImageCaptchaDto): Promise<ImageCaptcha> {
     const { width, height } = dto
 
@@ -43,7 +44,6 @@ export class CaptchaController {
       )}`,
       id: generateUUID(),
     }
-    // 5分钟过期时间
     await this.redis.set(genCaptchaImgKey(result.id), svg.text, 'EX', 60 * 5)
     return result
   }

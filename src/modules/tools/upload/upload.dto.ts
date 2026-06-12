@@ -15,9 +15,11 @@ export class FileUploadDto {
         'image/gif',
         'image/jpeg',
         'image/webp',
-        'image/svg+xml',
+        'video/mp4',
+        'video/quicktime',
+        'application/pdf',
       ],
-      fileSize: 1024 * 1024 * 10,
+      fileSize: 1024 * 1024 * 100,
     },
     {
       message: '文件类型不正确',

@@ -1,8 +1,9 @@
-import { Body, Controller, Headers, Post, UseGuards } from '@nestjs/common'
+import { BadRequestException, Body, Controller, Headers, Inject, Post, UseGuards } from '@nestjs/common'
 import { ApiOperation, ApiTags } from '@nestjs/swagger'
 
 import { ApiResult } from '~/common/decorators/api-result.decorator'
 import { Ip } from '~/common/decorators/http.decorator'
+import { AppConfig, IAppConfig } from '~/config'
 
 import { UserService } from '../user/user.service'
 
@@ -22,6 +23,7 @@ export class AuthController {
     private authService: AuthService,
     private userService: UserService,
     private captchaService: CaptchaService,
+    @Inject(AppConfig.KEY) private readonly appConfig: IAppConfig,
   ) {}
 
   @Post('login')
@@ -41,6 +43,9 @@ export class AuthController {
   @Post('register')
   @ApiOperation({ summary: '注册' })
   async register(@Body() dto: RegisterDto): Promise<void> {
+    if (!this.appConfig.allowPublicRegister)
+      throw new BadRequestException('当前环境未开放公开注册，请由平台或租户管理员创建账号')
+
     await this.userService.register(dto)
   }
 }

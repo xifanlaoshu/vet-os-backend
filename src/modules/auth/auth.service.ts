@@ -12,7 +12,7 @@ import { genAuthPermKey, genAuthPVKey, genAuthTokenKey, genTokenBlacklistKey } f
 
 import { UserService } from '~/modules/user/user.service'
 
-import { md5 } from '~/utils'
+import { hashPassword, isLegacyPasswordHash, verifyPassword } from '~/utils'
 
 import { LoginLogService } from '../system/log/services/login-log.service'
 import { MenuService } from '../system/menu/menu.service'
@@ -41,8 +41,8 @@ export class AuthService {
     if (isEmpty(user))
       throw new BusinessException(ErrorEnum.USER_NOT_FOUND)
 
-    const comparePassword = md5(`${password}${user.psalt}`)
-    if (user.password !== comparePassword)
+    const passwordValid = await verifyPassword(password, user.psalt, user.password)
+    if (!passwordValid)
       throw new BusinessException(ErrorEnum.INVALID_USERNAME_PASSWORD)
 
     if (user) {
@@ -67,9 +67,12 @@ export class AuthService {
     if (isEmpty(user))
       throw new BusinessException(ErrorEnum.INVALID_USERNAME_PASSWORD)
 
-    const comparePassword = md5(`${password}${user.psalt}`)
-    if (user.password !== comparePassword)
+    const passwordValid = await verifyPassword(password, user.psalt, user.password)
+    if (!passwordValid)
       throw new BusinessException(ErrorEnum.INVALID_USERNAME_PASSWORD)
+
+    if (isLegacyPasswordHash(user.password))
+      await this.userService.setPasswordHash(user.id, await hashPassword(password, user.psalt))
 
     const roleIds = await this.roleService.getRoleIdsByUser(user.id)
 
@@ -98,8 +101,8 @@ export class AuthService {
   async checkPassword(username: string, password: string) {
     const user = await this.userService.findUserByUserName(username)
 
-    const comparePassword = md5(`${password}${user.psalt}`)
-    if (user.password !== comparePassword)
+    const passwordValid = await verifyPassword(password, user.psalt, user.password)
+    if (!passwordValid)
       throw new BusinessException(ErrorEnum.INVALID_USERNAME_PASSWORD)
   }
 

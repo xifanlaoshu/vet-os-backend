@@ -1,3 +1,5 @@
+import { scrypt, timingSafeEqual } from 'node:crypto'
+import { promisify } from 'node:util'
 import CryptoJS from 'crypto-js'
 
 const key = CryptoJS.enc.Utf8.parse('buqiyuanabcdefe9bc')
@@ -27,4 +29,37 @@ export function aesDecrypt(data) {
 
 export function md5(str: string) {
   return CryptoJS.MD5(str).toString()
+}
+
+const scryptAsync = promisify(scrypt)
+const PASSWORD_HASH_PREFIX = 'scrypt'
+const PASSWORD_HASH_KEY_LENGTH = 64
+
+export function legacyMd5Password(password: string, salt: string) {
+  return md5(`${password}${salt}`)
+}
+
+export function isLegacyPasswordHash(stored: string) {
+  return Boolean(stored && !stored.startsWith(`${PASSWORD_HASH_PREFIX}$`))
+}
+
+export async function hashPassword(password: string, salt: string) {
+  const derivedKey = await scryptAsync(password, salt, PASSWORD_HASH_KEY_LENGTH) as Buffer
+  return `${PASSWORD_HASH_PREFIX}$${derivedKey.toString('hex')}`
+}
+
+export async function verifyPassword(password: string, salt: string, stored: string) {
+  if (!stored)
+    return false
+
+  if (isLegacyPasswordHash(stored))
+    return legacyMd5Password(password, salt) === stored
+
+  const [algo, encoded] = stored.split('$')
+  if (algo !== PASSWORD_HASH_PREFIX || !encoded)
+    return false
+
+  const derivedKey = await scryptAsync(password, salt, PASSWORD_HASH_KEY_LENGTH) as Buffer
+  const storedKey = Buffer.from(encoded, 'hex')
+  return storedKey.length === derivedKey.length && timingSafeEqual(storedKey, derivedKey)
 }

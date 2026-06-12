@@ -1,6 +1,7 @@
-import { BadRequestException, Injectable } from '@nestjs/common'
+import { BadRequestException, Inject, Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Brackets, Repository } from 'typeorm'
+import { AppConfig, IAppConfig } from '~/config'
 import { paginate } from '~/helper/paginate'
 
 import { TenantAreaEntity } from './tenant-area.entity'
@@ -26,6 +27,7 @@ export class TenantService {
     private readonly areaRepository: Repository<TenantAreaEntity>,
     @InjectRepository(UserAreaEntity)
     private readonly userAreaRepository: Repository<UserAreaEntity>,
+    @Inject(AppConfig.KEY) private readonly appConfig: IAppConfig,
   ) {}
 
   async getTenant(id = DEFAULT_TENANT_ID) {
@@ -250,6 +252,9 @@ export class TenantService {
         defaultArea: Boolean(Number(row.default_area)),
       }))
     }
+
+    if (this.appConfig.strictTenantContext)
+      return []
 
     const [tenant, area] = await Promise.all([
       this.getTenant(DEFAULT_TENANT_ID),

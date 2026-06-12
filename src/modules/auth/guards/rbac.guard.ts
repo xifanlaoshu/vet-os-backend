@@ -1,12 +1,15 @@
 import {
   CanActivate,
   ExecutionContext,
+  Inject,
   Injectable,
+  Logger,
 } from '@nestjs/common'
 import { Reflector } from '@nestjs/core'
 import { FastifyRequest } from 'fastify'
 
 import { BusinessException } from '~/common/exceptions/biz.exception'
+import { AppConfig, IAppConfig } from '~/config'
 import { ErrorEnum } from '~/constants/error-code.constant'
 import { AuthService } from '~/modules/auth/auth.service'
 
@@ -34,9 +37,12 @@ function isAuthenticatedPublicReadRoute(request: FastifyRequest) {
 
 @Injectable()
 export class RbacGuard implements CanActivate {
+  private readonly logger = new Logger(RbacGuard.name)
+
   constructor(
     private reflector: Reflector,
     private authService: AuthService,
+    @Inject(AppConfig.KEY) private readonly appConfig: IAppConfig,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<any> {
@@ -67,8 +73,13 @@ export class RbacGuard implements CanActivate {
     >(PERMISSION_KEY, [context.getHandler(), context.getClass()])
 
     // 控制器没有设置接口权限，则默认通过
-    if (!payloadPermission)
+    if (!payloadPermission) {
+      if (this.appConfig.strictRbac)
+        throw new BusinessException(ErrorEnum.NO_PERMISSION)
+
+      this.logger.warn(`Route ${request.method} ${normalizeRequestPath(request)} has no @Perm/@AllowAnon metadata; allowed only because STRICT_RBAC=false`)
       return true
+    }
 
     // 管理员放开所有权限
     if (user.roles.includes(Roles.ADMIN))

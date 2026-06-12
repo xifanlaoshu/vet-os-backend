@@ -17,7 +17,7 @@ import { AccountUpdateDto } from '~/modules/auth/dto/account.dto'
 import { RegisterDto } from '~/modules/auth/dto/auth.dto'
 import { QQService } from '~/shared/helper/qq.service'
 
-import { md5, randomValue } from '~/utils'
+import { hashPassword, randomValue, verifyPassword } from '~/utils'
 
 import { AccessTokenEntity } from '../auth/entities/access-token.entity'
 import { DeptEntity } from '../system/dept/dept.entity'
@@ -117,12 +117,11 @@ export class UserService {
     if (isEmpty(user))
       throw new BusinessException(ErrorEnum.USER_NOT_FOUND)
 
-    const comparePassword = md5(`${dto.oldPassword}${user.psalt}`)
-    // 原密码不一致，不允许更改
-    if (user.password !== comparePassword)
+    const passwordMatched = await verifyPassword(dto.oldPassword, user.psalt, user.password)
+    if (!passwordMatched)
       throw new BusinessException(ErrorEnum.PASSWORD_MISMATCH)
 
-    const password = md5(`${dto.newPassword}${user.psalt}`)
+    const password = await hashPassword(dto.newPassword, user.psalt)
     await this.userRepository.update({ id: uid }, { password })
     await this.upgradePasswordV(user.id)
   }
@@ -132,10 +131,17 @@ export class UserService {
    */
   async forceUpdatePassword(uid: number, password: string): Promise<void> {
     const user = await this.userRepository.findOneBy({ id: uid })
+    if (isEmpty(user))
+      throw new BusinessException(ErrorEnum.USER_NOT_FOUND)
 
-    const newPassword = md5(`${password}${user.psalt}`)
+    const newPassword = await hashPassword(password, user.psalt)
     await this.userRepository.update({ id: uid }, { password: newPassword })
     await this.upgradePasswordV(user.id)
+  }
+
+  async setPasswordHash(uid: number, password: string): Promise<void> {
+    await this.userRepository.update({ id: uid }, { password })
+    await this.upgradePasswordV(uid)
   }
 
   /**
@@ -161,10 +167,10 @@ export class UserService {
         const initPassword = await this.paramConfigService.findValueByKey(
           SYS_USER_INITPASSWORD,
         )
-        password = md5(`${initPassword ?? '123456'}${salt}`)
+        password = await hashPassword(initPassword ?? '123456', salt)
       }
       else {
-        password = md5(`${password ?? '123456'}${salt}`)
+        password = await hashPassword(password ?? '123456', salt)
       }
       const u = manager.create(UserEntity, {
         username,
@@ -364,7 +370,7 @@ export class UserService {
     await this.entityManager.transaction(async (manager) => {
       const salt = randomValue(32)
 
-      const password = md5(`${data.password ?? 'a123456'}${salt}`)
+      const password = await hashPassword(data.password ?? 'a123456', salt)
 
       const u = manager.create(UserEntity, {
         username,

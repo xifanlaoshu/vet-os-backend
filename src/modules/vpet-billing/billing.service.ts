@@ -29,9 +29,11 @@ export class BillingService {
     private dataSource: DataSource,
   ) {}
 
-  async createBill(dto: CreateBillingDto): Promise<any> {
+  async createBill(dto: CreateBillingDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>): Promise<any> {
+    const tenantId = context?.tenantId ?? 1
+    const areaId = context?.areaId ?? 1
     const visit = await this.visitRepository.findOne({
-      where: { id: dto.visitId },
+      where: { id: dto.visitId, tenantId, areaId },
       relations: ['customer', 'pet'],
     })
     if (!visit)
@@ -52,6 +54,8 @@ export class BillingService {
       totalAmount += amount
       return this.detailRepository.create({
         ...detail,
+        tenantId,
+        areaId,
         amount,
         itemSnapshot: detail.itemSnapshot ?? {
           itemType: detail.itemType,
@@ -65,6 +69,8 @@ export class BillingService {
 
     const bill = this.billingRepository.create({
       billNo,
+      tenantId,
+      areaId,
       visitId: dto.visitId,
       customerId: resolvedCustomerId,
       petId: dto.petId ?? visit.petId ?? null,
@@ -83,10 +89,12 @@ export class BillingService {
     })
 
     const saved = await this.billingRepository.save(bill)
-    return this.getById(saved.id)
+    return this.getById(saved.id, { tenantId, areaId })
   }
 
-  async syncVisitPrescriptionBilling(visitId: number): Promise<BillingEntity[]> {
+  async syncVisitPrescriptionBilling(visitId: number, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>): Promise<BillingEntity[]> {
+    const tenantId = context?.tenantId ?? 1
+    const areaId = context?.areaId ?? 1
     return this.dataSource.transaction(async (manager) => {
       const visitRepository = manager.getRepository(VisitEntity)
       const billingRepository = manager.getRepository(BillingEntity)
@@ -94,14 +102,14 @@ export class BillingService {
       const prescriptionRepository = manager.getRepository(PrescriptionEntity)
 
       const visit = await visitRepository.findOne({
-        where: { id: visitId },
+        where: { id: visitId, tenantId, areaId },
         relations: ['customer', 'pet'],
       })
       if (!visit)
         throw new BusinessException('Visit not found')
 
       const bills = await billingRepository.find({
-        where: { visitId },
+        where: { visitId, tenantId, areaId },
         relations: ['details', 'payments'],
         order: { createdAt: 'ASC' },
       })
@@ -115,7 +123,7 @@ export class BillingService {
       })
 
       const prescriptions = await prescriptionRepository.find({
-        where: { visitId },
+        where: { visitId, tenantId, areaId },
         relations: ['details'],
         order: { createdAt: 'ASC' },
       })
@@ -128,7 +136,7 @@ export class BillingService {
 
       if (!pendingDetails.length) {
         return billingRepository.find({
-          where: { visitId },
+          where: { visitId, tenantId, areaId },
           relations: ['details', 'payments'],
           order: { createdAt: 'DESC' },
         })
@@ -138,6 +146,8 @@ export class BillingService {
       if (!targetBill) {
         targetBill = await billingRepository.save(billingRepository.create({
           billNo: await this.generateBillNo(),
+          tenantId,
+          areaId,
           visitId,
           customerId: visit.customerId,
           petId: visit.petId ?? null,
@@ -155,6 +165,8 @@ export class BillingService {
       }
 
       await detailRepository.save(pendingDetails.map(({ prescription, detail }) => detailRepository.create({
+        tenantId,
+        areaId,
         billingId: targetBill!.id,
         itemType: Number(detail.itemKind ?? 1) === 2 ? 4 : 3,
         itemName: detail.itemName || detail.drugName,
@@ -183,14 +195,16 @@ export class BillingService {
 
       await this.recalculateBill(billingRepository, detailRepository, targetBill.id)
       return billingRepository.find({
-        where: { visitId },
+        where: { visitId, tenantId, areaId },
         relations: ['details', 'payments'],
         order: { createdAt: 'DESC' },
       })
     })
   }
 
-  async processPayment(id: number, dto: PaymentDto): Promise<any> {
+  async processPayment(id: number, dto: PaymentDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>): Promise<any> {
+    const tenantId = context?.tenantId ?? 1
+    const areaId = context?.areaId ?? 1
     return this.dataSource.transaction(async (manager) => {
       const billingRepository = manager.getRepository(BillingEntity)
       const paymentRepository = manager.getRepository(BillingPaymentEntity)
@@ -198,7 +212,7 @@ export class BillingService {
       const cardRepository = manager.getRepository(MemberCardEntity)
 
       const bill = await billingRepository.findOne({
-        where: { id },
+        where: { id, tenantId, areaId },
         relations: ['details', 'payments'],
       })
       if (!bill)
@@ -213,12 +227,14 @@ export class BillingService {
       }
 
       if (dto.paymentMethod === 4) {
-        const card = await this.resolveMemberCard(cardRepository, dto, bill)
+        const card = await this.resolveMemberCard(cardRepository, dto, bill, tenantId)
         const balanceBefore = Number(card.balance)
         card.balance = balanceBefore - dto.paidAmount
         card.totalSpend = Number(card.totalSpend) + dto.paidAmount
         await cardRepository.save(card)
         await logRepository.save(logRepository.create({
+          tenantId,
+          areaId,
           cardId: card.id,
           type: 3,
           amount: dto.paidAmount,
@@ -232,6 +248,8 @@ export class BillingService {
       }
 
       const payment = paymentRepository.create({
+        tenantId,
+        areaId,
         billingId: id,
         paymentMethod: dto.paymentMethod,
         amount: dto.paidAmount,
@@ -245,7 +263,7 @@ export class BillingService {
       await paymentRepository.save(payment)
 
       const payments = await paymentRepository.find({
-        where: { billingId: id },
+        where: { billingId: id, tenantId, areaId },
         order: { createdAt: 'ASC' },
       })
       const totalPaid = this.calculatePaidAmount(payments)
@@ -253,7 +271,7 @@ export class BillingService {
       const distinctMethods = Array.from(new Set<number>(payments.map(item => Number(item.paymentMethod))))
       const paymentStatus = this.resolvePaymentStatus(payments, dueAmount)
 
-      await billingRepository.update(id, {
+      await billingRepository.update({ id, tenantId, areaId }, {
         paymentMethod: distinctMethods.length > 1 ? 5 : (distinctMethods[0] ?? dto.paymentMethod),
         paidAmount: totalPaid,
         paymentStatus,
@@ -262,13 +280,15 @@ export class BillingService {
       })
 
       return billingRepository.findOne({
-        where: { id },
+        where: { id, tenantId, areaId },
         relations: ['details', 'payments'],
       })
     })
   }
 
-  async processRefund(id: number, dto: RefundDto): Promise<any> {
+  async processRefund(id: number, dto: RefundDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>): Promise<any> {
+    const tenantId = context?.tenantId ?? 1
+    const areaId = context?.areaId ?? 1
     return this.dataSource.transaction(async (manager) => {
       const billingRepository = manager.getRepository(BillingEntity)
       const paymentRepository = manager.getRepository(BillingPaymentEntity)
@@ -277,7 +297,7 @@ export class BillingService {
       const auditRepository = manager.getRepository(OperationAuditLogEntity)
 
       const bill = await billingRepository.findOne({
-        where: { id },
+        where: { id, tenantId, areaId },
         relations: ['details', 'payments'],
       })
       if (!bill)
@@ -304,12 +324,14 @@ export class BillingService {
       const beforeSnapshot = this.buildBillingSnapshot(bill)
 
       if (Number(sourcePayment.paymentMethod) === 4) {
-        const card = await this.resolveRefundMemberCard(cardRepository, bill.customerId)
+        const card = await this.resolveRefundMemberCard(cardRepository, tenantId, bill.customerId)
         const balanceBefore = Number(card.balance)
         card.balance = balanceBefore + refundAmount
         card.totalSpend = Math.max(Number(card.totalSpend || 0) - refundAmount, 0)
         await cardRepository.save(card)
         await logRepository.save(logRepository.create({
+          tenantId,
+          areaId,
           cardId: card.id,
           type: 2,
           amount: refundAmount,
@@ -323,6 +345,8 @@ export class BillingService {
       }
 
       await paymentRepository.save(paymentRepository.create({
+        tenantId,
+        areaId,
         billingId: id,
         paymentMethod: sourcePayment.paymentMethod,
         amount: refundAmount,
@@ -335,7 +359,7 @@ export class BillingService {
       }))
 
       const payments = await paymentRepository.find({
-        where: { billingId: id },
+        where: { billingId: id, tenantId, areaId },
         order: { createdAt: 'ASC' },
       })
       const totalPaid = this.calculatePaidAmount(payments)
@@ -343,7 +367,7 @@ export class BillingService {
       const distinctMethods = Array.from(new Set<number>(payments.map(item => Number(item.paymentMethod))))
       const paymentStatus = this.resolvePaymentStatus(payments, dueAmount)
 
-      await billingRepository.update(id, {
+      await billingRepository.update({ id, tenantId, areaId }, {
         paymentMethod: distinctMethods.length > 1 ? 5 : (distinctMethods[0] ?? sourcePayment.paymentMethod),
         paidAmount: totalPaid,
         paymentStatus,
@@ -351,11 +375,13 @@ export class BillingService {
       })
 
       const updatedBill = await billingRepository.findOne({
-        where: { id },
+        where: { id, tenantId, areaId },
         relations: ['details', 'payments'],
       })
 
       await auditRepository.save(auditRepository.create({
+        tenantId,
+        areaId,
         bizType: 'billing',
         bizId: id,
         action: 'refund',
@@ -369,9 +395,11 @@ export class BillingService {
     })
   }
 
-  async list(dto: QueryBillingDto) {
+  async list(dto: QueryBillingDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
     const { page = 1, pageSize = 10, customerId, visitId, paymentStatus } = dto
     const qb = this.billingRepository.createQueryBuilder('b')
+      .andWhere('b.tenantId = :tenantId', { tenantId: context?.tenantId ?? 1 })
+      .andWhere('b.areaId = :areaId', { areaId: context?.areaId ?? 1 })
 
     if (customerId)
       qb.andWhere('b.customerId = :customerId', { customerId })
@@ -384,22 +412,22 @@ export class BillingService {
     return paginate(qb, { page, pageSize })
   }
 
-  async getById(id: number): Promise<any> {
+  async getById(id: number, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>): Promise<any> {
     return this.billingRepository.findOne({
-      where: { id },
+      where: { id, tenantId: context?.tenantId ?? 1, areaId: context?.areaId ?? 1 },
       relations: ['details', 'payments'],
     })
   }
 
-  async getByVisit(visitId: number): Promise<BillingEntity[]> {
+  async getByVisit(visitId: number, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>): Promise<BillingEntity[]> {
     return this.billingRepository.find({
-      where: { visitId },
+      where: { visitId, tenantId: context?.tenantId ?? 1, areaId: context?.areaId ?? 1 },
       relations: ['details', 'payments'],
       order: { createdAt: 'DESC' },
     })
   }
 
-  async getTodayStats(): Promise<any> {
+  async getTodayStats(context?: Pick<IAuthUser, 'tenantId' | 'areaId'>): Promise<any> {
     const today = new Date()
     today.setHours(0, 0, 0, 0)
 
@@ -408,6 +436,8 @@ export class BillingService {
       .select('COUNT(DISTINCT p.billing_id)', 'billCount')
       .addSelect('COALESCE(SUM(CASE WHEN p.direction = 1 THEN p.amount ELSE -p.amount END), 0)', 'totalRevenue')
       .where('p.paidAt >= :today', { today })
+      .andWhere('p.tenantId = :tenantId', { tenantId: context?.tenantId ?? 1 })
+      .andWhere('p.areaId = :areaId', { areaId: context?.areaId ?? 1 })
       .andWhere('p.status = 1')
       .getRawOne()
 
@@ -415,6 +445,8 @@ export class BillingService {
       .createQueryBuilder('b')
       .select('COALESCE(SUM(b.discount), 0)', 'totalDiscount')
       .where('b.paidAt >= :today', { today })
+      .andWhere('b.tenantId = :tenantId', { tenantId: context?.tenantId ?? 1 })
+      .andWhere('b.areaId = :areaId', { areaId: context?.areaId ?? 1 })
       .andWhere('b.paymentStatus IN (:...statuses)', { statuses: [2, 3] })
       .getRawOne()
 
@@ -464,11 +496,12 @@ export class BillingService {
 
   private async resolveRefundMemberCard(
     cardRepository: Repository<MemberCardEntity>,
+    tenantId: number,
     customerId?: number,
   ) {
     if (!customerId)
       throw new BusinessException('Customer id is required for member refund')
-    const card = await cardRepository.findOneBy({ customerId })
+    const card = await cardRepository.findOneBy({ customerId, tenantId })
     if (!card)
       throw new BusinessException('Customer has no member card')
     return card
@@ -503,11 +536,12 @@ export class BillingService {
     cardRepository: Repository<MemberCardEntity>,
     dto: PaymentDto,
     bill: BillingEntity,
+    tenantId: number,
   ) {
     let card: MemberCardEntity | null = null
 
     if (dto.memberCardId) {
-      card = await cardRepository.findOneBy({ id: dto.memberCardId })
+      card = await cardRepository.findOneBy({ id: dto.memberCardId, tenantId })
       if (!card)
         throw new BusinessException('Member card not found')
     }
@@ -515,7 +549,7 @@ export class BillingService {
       const customerId = dto.customerId ?? bill.customerId
       if (!customerId)
         throw new BusinessException('Customer id is required for member payment')
-      card = await cardRepository.findOneBy({ customerId })
+      card = await cardRepository.findOneBy({ customerId, tenantId })
       if (!card)
         throw new BusinessException('Customer has no member card')
     }

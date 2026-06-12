@@ -14,9 +14,11 @@ export class QueueService {
     private queueEventRepository: Repository<VisitQueueEventEntity>,
   ) {}
 
-  async getQueue(doctorId?: number) {
+  async getQueue(context: IAuthUser, doctorId?: number) {
     const qb = this.visitRepository.createQueryBuilder('v')
       .where('v.status IN (:...statuses)', { statuses: [1, 2] })
+      .andWhere('v.tenantId = :tenantId', { tenantId: context.tenantId })
+      .andWhere('v.areaId = :areaId', { areaId: context.areaId })
       .orderBy('v.status', 'ASC')
       .addOrderBy('v.createdAt', 'ASC')
 
@@ -26,9 +28,13 @@ export class QueueService {
     return qb.getMany()
   }
 
-  async callNext(doctorId: number, visitId?: number) {
+  async callNext(context: IAuthUser, doctorId: number, visitId?: number) {
     if (visitId) {
-      const visit = await this.visitRepository.findOneBy({ id: visitId })
+      const visit = await this.visitRepository.findOneBy({
+        id: visitId,
+        tenantId: context.tenantId,
+        areaId: context.areaId,
+      })
       if (!visit)
         throw new BusinessException('Visit not found')
       if (!visit.doctorId)
@@ -37,16 +43,20 @@ export class QueueService {
         throw new BusinessException('Visit does not belong to the selected doctor')
       }
       if (Number(visit.status) === 2) {
-        await this.requeueOtherCalledVisits(visit.doctorId, visit.id)
+        await this.requeueOtherCalledVisits(context, visit.doctorId, visit.id)
         return { visitId, status: 'called' }
       }
       if (Number(visit.status) !== 1) {
         throw new BusinessException('Only waiting visits can be called')
       }
 
-      await this.requeueOtherCalledVisits(visit.doctorId, visit.id)
+      await this.requeueOtherCalledVisits(context, visit.doctorId, visit.id)
 
-      await this.visitRepository.update(visitId, {
+      await this.visitRepository.update({
+        id: visitId,
+        tenantId: context.tenantId,
+        areaId: context.areaId,
+      }, {
         status: 2,
         callTime: new Date().toISOString(),
       })
@@ -55,16 +65,20 @@ export class QueueService {
     }
 
     const nextVisit = await this.visitRepository.findOne({
-      where: { doctorId, status: 1 },
+      where: { doctorId, status: 1, tenantId: context.tenantId, areaId: context.areaId },
       order: { createdAt: 'ASC' },
     })
 
     if (!nextVisit)
       return { message: 'Queue is empty' }
 
-    await this.requeueOtherCalledVisits(doctorId, nextVisit.id)
+    await this.requeueOtherCalledVisits(context, doctorId, nextVisit.id)
 
-    await this.visitRepository.update(nextVisit.id, {
+    await this.visitRepository.update({
+      id: nextVisit.id,
+      tenantId: context.tenantId,
+      areaId: context.areaId,
+    }, {
       status: 2,
       callTime: new Date().toISOString(),
     })
@@ -73,8 +87,12 @@ export class QueueService {
     return { visitId: nextVisit.id, status: 'called' }
   }
 
-  async skip(visitId: number) {
-    const visit = await this.visitRepository.findOneBy({ id: visitId })
+  async skip(context: IAuthUser, visitId: number) {
+    const visit = await this.visitRepository.findOneBy({
+      id: visitId,
+      tenantId: context.tenantId,
+      areaId: context.areaId,
+    })
     if (!visit)
       throw new BusinessException('Visit not found')
     if (Number(visit.status) === 6)
@@ -82,7 +100,11 @@ export class QueueService {
     if (![1, 2].includes(Number(visit.status))) {
       throw new BusinessException('Only waiting or called visits can be skipped')
     }
-    await this.visitRepository.update(visitId, { status: 6 })
+    await this.visitRepository.update({
+      id: visitId,
+      tenantId: context.tenantId,
+      areaId: context.areaId,
+    }, { status: 6 })
     await this.createQueueEvent(visitId, 5, visit.queueNumber, 'skipped', true)
     return { visitId, status: 'skipped' }
   }
@@ -107,9 +129,9 @@ export class QueueService {
     }))
   }
 
-  private async requeueOtherCalledVisits(doctorId: number, currentVisitId: number) {
+  private async requeueOtherCalledVisits(context: IAuthUser, doctorId: number, currentVisitId: number) {
     const calledVisits = await this.visitRepository.find({
-      where: { doctorId, status: 2 },
+      where: { doctorId, status: 2, tenantId: context.tenantId, areaId: context.areaId },
       order: { createdAt: 'ASC' },
     })
 
@@ -122,6 +144,8 @@ export class QueueService {
       .update(VisitEntity)
       .set({ status: 1, callTime: null })
       .where('doctorId = :doctorId', { doctorId })
+      .andWhere('tenantId = :tenantId', { tenantId: context.tenantId })
+      .andWhere('areaId = :areaId', { areaId: context.areaId })
       .andWhere('status = :status', { status: 2 })
       .andWhere('id != :currentVisitId', { currentVisitId })
       .execute()
