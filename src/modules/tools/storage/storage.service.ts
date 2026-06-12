@@ -1,6 +1,8 @@
+import { randomBytes } from 'node:crypto'
 import { stat } from 'node:fs/promises'
 import { BadRequestException, Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
+import dayjs from 'dayjs'
 import { Between, In, Like, Repository } from 'typeorm'
 
 import { requireTenantAreaContext } from '~/common/utils/tenant-context.util'
@@ -16,6 +18,8 @@ import { StorageInfo } from './storage.modal'
 
 @Injectable()
 export class StorageService {
+  private readonly anonymousTokenTtlHours = 24
+
   constructor(
     @InjectRepository(Storage)
     private storageRepository: Repository<Storage>,
@@ -62,6 +66,26 @@ export class StorageService {
     const { tenantId, areaId } = requireTenantAreaContext(context)
     const storage = await this.storageRepository.findOneBy({ id, tenantId, areaId, scanStatus: 2 })
     return this.resolveAuthorizedStorageFile(storage)
+  }
+
+  async refreshAnonymousToken(accessToken: string, context: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
+    const { tenantId, areaId } = requireTenantAreaContext(context)
+    const storage = await this.storageRepository.findOneBy({ accessToken, tenantId, areaId, scanStatus: 2 })
+    if (!storage)
+      throw new BadRequestException('File not found or no permission')
+
+    const nextToken = randomBytes(32).toString('base64url')
+    const tokenExpiresAt = dayjs().add(this.anonymousTokenTtlHours, 'hour').toDate()
+    storage.accessToken = nextToken
+    storage.tokenExpiresAt = tokenExpiresAt
+    storage.path = `/api/storage/file/${nextToken}`
+    await this.storageRepository.save(storage)
+
+    return {
+      id: storage.id,
+      path: storage.path,
+      tokenExpiresAt,
+    }
   }
 
   async list({

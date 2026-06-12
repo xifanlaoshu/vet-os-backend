@@ -20,6 +20,7 @@ import { StorageService } from './storage.service'
 export const permissions = definePermission('tool:storage', {
   LIST: 'list',
   READ: 'read',
+  SIGN: 'sign',
   DELETE: 'delete',
 } as const)
 
@@ -59,6 +60,13 @@ export class StorageController {
     reply.header('X-Content-Type-Options', 'nosniff')
     reply.header('Content-Disposition', `inline; filename="${encodeURIComponent(storage.fileName || storage.name)}"`)
     return reply.send(createReadStream(filePath))
+  }
+
+  @Post('file/:token/refresh')
+  @Perm(permissions.SIGN)
+  @ApiOperation({ summary: 'Refresh protected uploaded file preview token' })
+  async refreshFileToken(@Param('token') token: string, @AuthUser() user: IAuthUser) {
+    return this.storageService.refreshAnonymousToken(token, user)
   }
 
   @Post('delete')

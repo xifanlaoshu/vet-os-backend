@@ -19,6 +19,12 @@
       "path": "/storage/file/id/:id",
       "target": "StorageController.authorizedFile",
       "reason": "Returns a protected uploaded file by id and requires tool:storage:read plus tenantId and areaId authorization."
+    },
+    {
+      "method": "POST",
+      "path": "/storage/file/:token/refresh",
+      "target": "StorageController.refreshFileToken",
+      "reason": "Refreshes a short-lived protected upload preview link and requires tool:storage:sign plus tenantId and areaId authorization."
     }
   ]
 }

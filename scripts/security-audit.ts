@@ -551,6 +551,8 @@ function auditRawSqlAllowlistStale() {
 function isDataEgressRoute(routePath: string, handler: string, bodyPreview: string) {
   if (/download|export|print/i.test(`${routePath} ${handler}`))
     return true
+  if (/file.*refresh|refresh.*token/i.test(`${routePath} ${handler}`))
+    return true
   return /\b(?:createReadStream|getDownloadLink|Content-Disposition)\b/.test(bodyPreview)
 }
 

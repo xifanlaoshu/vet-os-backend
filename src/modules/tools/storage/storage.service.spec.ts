@@ -95,4 +95,43 @@ describe('storageService security boundaries', () => {
       mimeType: 'image/png',
     })
   })
+
+  it('refreshes anonymous file tokens only within the current tenant and area', async () => {
+    const save = jest.fn(async item => item)
+    const repository = {
+      findOneBy: jest.fn().mockResolvedValue({
+        id: 10,
+        tenantId: 2,
+        areaId: 3,
+        scanStatus: 2,
+        accessToken: 'old-token',
+        path: '/api/storage/file/old-token',
+        diskPath: 'tenant/2/area/3/file.png',
+        extName: 'png',
+        fileName: 'file.png',
+        name: 'file.png',
+      }),
+      save,
+    }
+    const service = createService(repository)
+
+    const result = await service.refreshAnonymousToken('old-token', { tenantId: 2, areaId: 3 })
+
+    expect(repository.findOneBy).toHaveBeenCalledWith({
+      accessToken: 'old-token',
+      tenantId: 2,
+      areaId: 3,
+      scanStatus: 2,
+    })
+    expect(save).toHaveBeenCalledWith(expect.objectContaining({
+      id: 10,
+      accessToken: expect.not.stringMatching(/^old-token$/),
+      path: expect.stringMatching(/^\/api\/storage\/file\//),
+      tokenExpiresAt: expect.any(Date),
+    }))
+    expect(result).toMatchObject({
+      id: 10,
+      path: expect.stringMatching(/^\/api\/storage\/file\//),
+    })
+  })
 })
