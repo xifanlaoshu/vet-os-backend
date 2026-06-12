@@ -918,6 +918,9 @@ export class VisitService extends BaseService<VisitEntity> {
     if (!batch)
       throw new BusinessException('Media batch not found')
 
+    const safeUrl = this.validateVisitMediaUrl(dto.storageType, dto.url)
+    this.validateVisitMediaMimeType(dto.fileType, dto.mimeType)
+
     await this.mediaFileRepository.save(this.mediaFileRepository.create({
       tenantId: visit.tenantId,
       areaId: visit.areaId,
@@ -927,7 +930,7 @@ export class VisitService extends BaseService<VisitEntity> {
       storageType: dto.storageType,
       fileName: dto.fileName ?? null,
       originalName: dto.originalName ?? null,
-      url: dto.url,
+      url: safeUrl,
       mimeType: dto.mimeType ?? null,
       fileSize: dto.fileSize ?? null,
       sortNo: dto.sortNo ?? await this.nextMediaFileSortNo(batchId),
@@ -935,6 +938,70 @@ export class VisitService extends BaseService<VisitEntity> {
     }))
 
     return this.listVisitMediaBatches(visitId, options)
+  }
+
+  private validateVisitMediaUrl(storageType: string, rawUrl: string) {
+    const url = (rawUrl || '').trim()
+    if (!url)
+      throw new BusinessException('Media URL is required')
+    const scheme = url.includes(':') ? url.split(':')[0].toLowerCase() : ''
+    if (['javascript', 'data', 'file', 'vbscript'].includes(scheme))
+      throw new BusinessException('Unsupported media URL protocol')
+
+    if (storageType === 'local') {
+      if (!url.startsWith('/upload/'))
+        throw new BusinessException('Local media URL must reference an uploaded file')
+      if (url.includes('..') || url.includes('\\'))
+        throw new BusinessException('Invalid local media URL')
+      return url
+    }
+
+    if (storageType !== 'oss')
+      throw new BusinessException('Unsupported media storage type')
+
+    const allowedHosts = this.getAllowedMediaHosts()
+    try {
+      const parsed = new URL(url)
+      if (!['http:', 'https:'].includes(parsed.protocol))
+        throw new BusinessException('Unsupported media URL protocol')
+      if (!allowedHosts.has(parsed.host))
+        throw new BusinessException('Media URL host is not allowed')
+      return parsed.toString()
+    }
+    catch (error) {
+      if (error instanceof BusinessException)
+        throw error
+      throw new BusinessException('Invalid media URL')
+    }
+  }
+
+  private getAllowedMediaHosts() {
+    const hosts = new Set<string>()
+    const collectHost = (value?: string) => {
+      const trimmed = (value || '').trim()
+      if (!trimmed)
+        return
+      try {
+        hosts.add(new URL(trimmed).host)
+      }
+      catch {
+        hosts.add(trimmed.replace(/^https?:\/\//i, '').split('/')[0])
+      }
+    }
+
+    ;(process.env.OSS_PUBLIC_HOSTS || '').split(',').forEach(collectHost)
+    collectHost(process.env.OSS_DOMAIN)
+    collectHost(process.env.APP_BASE_URL)
+    return hosts
+  }
+
+  private validateVisitMediaMimeType(fileType: string, mimeType?: string) {
+    if (!mimeType)
+      return
+    if (fileType === 'image' && !mimeType.startsWith('image/'))
+      throw new BusinessException('Image media must use an image MIME type')
+    if (fileType === 'video' && !mimeType.startsWith('video/'))
+      throw new BusinessException('Video media must use a video MIME type')
   }
 
   async findByAppointmentId(appointmentId: number): Promise<any> {

@@ -39,6 +39,8 @@ async function bootstrap() {
 
   const configService = app.get(ConfigService<ConfigKeyPaths>)
 
+  assertProductionSecurityConfig(configService)
+
   const { port, globalPrefix, corsOrigins } = configService.get('app', { infer: true })
 
   useContainer(app.select(AppModule), { fallbackOnErrors: true })
@@ -112,6 +114,39 @@ async function bootstrap() {
     module.hot.accept()
     module.hot.dispose(() => app.close())
   }
+}
+
+function assertProductionSecurityConfig(configService: ConfigService<ConfigKeyPaths>) {
+  if (process.env.NODE_ENV !== 'production')
+    return
+
+  const appConfig = configService.get('app', { infer: true })
+  const securityConfig = configService.get('security', { infer: true })
+  const weakSecrets = new Set(['', 'changeme', 'change-me', 'secret', 'jwt-secret', 'default'])
+  const errors: string[] = []
+
+  const assertStrongSecret = (name: string, value?: string) => {
+    const normalized = (value || '').trim()
+    if (normalized.length < 32 || weakSecrets.has(normalized.toLowerCase()))
+      errors.push(`${name} must be at least 32 characters and must not use a default value`)
+  }
+
+  assertStrongSecret('JWT_SECRET', securityConfig.jwtSecret)
+  assertStrongSecret('REFRESH_TOKEN_SECRET', securityConfig.refreshSecret)
+
+  if (securityConfig.jwtSecret && securityConfig.jwtSecret === securityConfig.refreshSecret)
+    errors.push('JWT_SECRET and REFRESH_TOKEN_SECRET must be different')
+  if (!appConfig.corsOrigins.length || appConfig.corsOrigins.includes('*'))
+    errors.push('CORS_ORIGINS must explicitly list trusted origins in production')
+  if (appConfig.allowPublicRegister)
+    errors.push('ALLOW_PUBLIC_REGISTER must be false in production')
+  if (!appConfig.strictRbac)
+    errors.push('STRICT_RBAC must be true in production')
+  if (!appConfig.strictTenantContext)
+    errors.push('STRICT_TENANT_CONTEXT must be true in production')
+
+  if (errors.length)
+    throw new Error(`Unsafe production security configuration:\n${errors.map(item => `- ${item}`).join('\n')}`)
 }
 
 bootstrap()
