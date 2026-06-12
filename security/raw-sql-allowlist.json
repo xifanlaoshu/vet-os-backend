@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "description": "Explicit allowlist for runtime DataSource/Repository .query() usage. Raw SQL must remain parameterized and document tenant/area isolation.",
+  "entries": [
+    {
+      "file": "src/modules/vpet-audit/audit.service.ts",
+      "target": "VpetAuditService.listEvents",
+      "reason": "Builds a read-only UNION audit timeline across scoped audit tables; every branch filters by tenant_id and area_id with parameter binding."
+    }
+  ]
+}

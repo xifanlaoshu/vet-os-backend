@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "description": "Explicit allowlist for @SkipThrottle usage. Every bypass must document the exact file, target, and business reason.",
+  "entries": [
+    {
+      "file": "src/modules/sse/sse.controller.ts",
+      "target": "SseController",
+      "reason": "SSE connections are long-lived notification streams; authentication still requires the uid to match the JWT subject and a valid access token."
+    }
+  ]
+}

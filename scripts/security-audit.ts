@@ -18,6 +18,22 @@ interface PublicRouteAllowlist {
   }>
 }
 
+interface ThrottleBypassAllowlist {
+  entries: Array<{
+    file: string
+    target: string
+    reason: string
+  }>
+}
+
+interface RawSqlAllowlist {
+  entries: Array<{
+    file: string
+    target: string
+    reason: string
+  }>
+}
+
 const root = cwd()
 const sourceFiles = listSourceFiles(join(root, 'src'))
 
@@ -44,12 +60,18 @@ const rules = [
   },
 ]
 
+const throttleBypassAllowlist = readThrottleBypassAllowlist()
+const rawSqlAllowlist = readRawSqlAllowlist()
+const rawSqlSeen = new Set<string>()
+
 for (const file of sourceFiles) {
   const absPath = file
   const content = readFileSync(absPath, 'utf8')
   const lines = content.split(/\r?\n/)
   auditControllerAccessMetadata(absPath, lines)
   auditVpetScopedRepositoryAccess(absPath, lines)
+  auditThrottleBypass(absPath, lines)
+  auditRawSqlUsage(absPath, lines)
   lines.forEach((lineText, index) => {
     if (lineText.trim().startsWith('//'))
       return auditCommentSwallowedCode(absPath, lineText, index + 1)
@@ -76,6 +98,8 @@ for (const file of sourceFiles) {
     }
   })
 }
+
+auditRawSqlAllowlistStale()
 
 function auditProductionEnvFile() {
   const envPath = join(root, '.env.production')
@@ -137,6 +161,16 @@ function auditProductionEnvFile() {
       line: values.get('JWT_EXPIRE')?.line ?? 1,
       rule: 'production-token-ttl-too-long',
       message: 'JWT_EXPIRE must not exceed 1800 seconds in production configuration.',
+    })
+  }
+
+  const trustProxy = values.get('TRUST_PROXY')
+  if (trustProxy?.value.toLowerCase() !== 'true') {
+    findings.push({
+      file: '.env.production',
+      line: trustProxy?.line ?? 1,
+      rule: 'production-trust-proxy-required',
+      message: 'TRUST_PROXY must be true in production and deployment must place the app behind a trusted reverse proxy/WAF.',
     })
   }
 }
@@ -221,6 +255,163 @@ function readPublicRouteAllowlist() {
     allowlist.add(routeKey(route))
   })
   return allowlist
+}
+
+function readThrottleBypassAllowlist() {
+  const allowlistPath = join(root, 'security', 'throttle-bypass-allowlist.json')
+  if (!existsSync(allowlistPath)) {
+    findings.push({
+      file: 'security/throttle-bypass-allowlist.json',
+      line: 1,
+      rule: 'missing-throttle-bypass-allowlist',
+      message: '@SkipThrottle usage must be explicitly documented in security/throttle-bypass-allowlist.json.',
+    })
+    return new Set<string>()
+  }
+
+  const parsed = JSON.parse(readFileSync(allowlistPath, 'utf8')) as ThrottleBypassAllowlist
+  const allowlist = new Set<string>()
+  parsed.entries.forEach((entry, index) => {
+    if (!entry.file || !entry.target || !entry.reason?.trim()) {
+      findings.push({
+        file: 'security/throttle-bypass-allowlist.json',
+        line: index + 1,
+        rule: 'throttle-bypass-allowlist-incomplete',
+        message: 'Each throttle bypass allowlist item must include file, target, and reason.',
+      })
+      return
+    }
+    allowlist.add(throttleBypassKey(entry.file, entry.target))
+  })
+  return allowlist
+}
+
+function readRawSqlAllowlist() {
+  const allowlistPath = join(root, 'security', 'raw-sql-allowlist.json')
+  if (!existsSync(allowlistPath)) {
+    findings.push({
+      file: 'security/raw-sql-allowlist.json',
+      line: 1,
+      rule: 'missing-raw-sql-allowlist',
+      message: 'Runtime raw SQL usage must be explicitly documented in security/raw-sql-allowlist.json.',
+    })
+    return new Set<string>()
+  }
+
+  const parsed = JSON.parse(readFileSync(allowlistPath, 'utf8')) as RawSqlAllowlist
+  const allowlist = new Set<string>()
+  parsed.entries.forEach((entry, index) => {
+    if (!entry.file || !entry.target || !entry.reason?.trim()) {
+      findings.push({
+        file: 'security/raw-sql-allowlist.json',
+        line: index + 1,
+        rule: 'raw-sql-allowlist-incomplete',
+        message: 'Each raw SQL allowlist item must include file, target, and reason.',
+      })
+      return
+    }
+    allowlist.add(rawSqlKey(entry.file, entry.target))
+  })
+  return allowlist
+}
+
+function auditRawSqlUsage(absPath: string, lines: string[]) {
+  const relPath = normalizePath(relative(root, absPath))
+  if (relPath.startsWith('src/migrations/'))
+    return
+
+  lines.forEach((lineText, index) => {
+    if (!/\.query\s*\(/.test(lineText))
+      return
+
+    const target = resolveEnclosingClassMethod(lines, index)
+    const key = rawSqlKey(relPath, target)
+    rawSqlSeen.add(key)
+    if (!rawSqlAllowlist.has(key)) {
+      findings.push({
+        file: relPath,
+        line: index + 1,
+        rule: 'raw-sql-not-allowlisted',
+        message: `Runtime raw SQL in ${target} must be documented in security/raw-sql-allowlist.json and explain tenant/area isolation.`,
+      })
+    }
+  })
+}
+
+function auditRawSqlAllowlistStale() {
+  for (const key of rawSqlAllowlist.keys()) {
+    if (rawSqlSeen.has(key))
+      continue
+    findings.push({
+      file: 'security/raw-sql-allowlist.json',
+      line: 1,
+      rule: 'raw-sql-allowlist-stale',
+      message: `Allowlisted raw SQL target is not present in runtime source: ${key}.`,
+    })
+  }
+}
+
+function auditThrottleBypass(absPath: string, lines: string[]) {
+  lines.forEach((lineText, index) => {
+    if (!lineText.includes('@SkipThrottle'))
+      return
+
+    const relPath = normalizePath(relative(root, absPath))
+    const target = resolveDecoratorTarget(lines, index)
+    const key = throttleBypassKey(relPath, target)
+    if (!throttleBypassAllowlist.has(key)) {
+      findings.push({
+        file: relPath,
+        line: index + 1,
+        rule: 'skip-throttle-not-allowlisted',
+        message: `@SkipThrottle bypass for ${target} must be documented in security/throttle-bypass-allowlist.json with a business reason.`,
+      })
+    }
+  })
+}
+
+function resolveEnclosingClassMethod(lines: string[], lineIndex: number) {
+  let className = 'module'
+  let methodName = `line:${lineIndex + 1}`
+
+  for (let i = 0; i <= lineIndex; i += 1) {
+    const lineText = lines[i].trim()
+    const classMatch = lineText.match(/^export\s+class\s+(\w+)/)
+    if (classMatch)
+      className = classMatch[1]
+
+    const methodMatch = lineText.match(/^(?:async\s+|private\s+|public\s+|protected\s+)*(\w+)\s*\([^)]*\)\s*(?::[^{]+)?\s*\{?\s*$/)
+    if (methodMatch && !['if', 'for', 'while', 'switch', 'catch', 'constructor'].includes(methodMatch[1]))
+      methodName = methodMatch[1]
+  }
+
+  return `${className}.${methodName}`
+}
+
+function rawSqlKey(file: string, target: string) {
+  return `${normalizePath(file)}#${target}`
+}
+
+function resolveDecoratorTarget(lines: string[], decoratorIndex: number) {
+  for (let i = decoratorIndex + 1; i < Math.min(lines.length, decoratorIndex + 12); i += 1) {
+    const lineText = lines[i].trim()
+    const classMatch = lineText.match(/^export\s+class\s+(\w+)/)
+    if (classMatch)
+      return classMatch[1]
+
+    const methodMatch = lineText.match(/^(?:async\s+)?(\w+)\s*\(/)
+    if (methodMatch)
+      return methodMatch[1]
+  }
+  return `line:${decoratorIndex + 1}`
+}
+
+function throttleBypassKey(file: string, target: string) {
+  return `${normalizePath(file)}#${target}`
+}
+
+function normalizePath(path: string) {
+  return path.replace(/\\/g, '/')
 }
 
 function parsePublicRouteMatrixLine(lineText: string) {

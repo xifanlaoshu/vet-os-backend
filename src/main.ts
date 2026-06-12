@@ -144,6 +144,8 @@ function assertProductionSecurityConfig(configService: ConfigService<ConfigKeyPa
     errors.push('REFRESH_TOKEN_EXPIRE must not exceed 30 days in production')
   if (!appConfig.corsOrigins.length || appConfig.corsOrigins.includes('*'))
     errors.push('CORS_ORIGINS must explicitly list trusted origins in production')
+  if (!appConfig.trustProxy)
+    errors.push('TRUST_PROXY must be true in production and the app must run behind a trusted reverse proxy/WAF')
   if (appConfig.allowPublicRegister)
     errors.push('ALLOW_PUBLIC_REGISTER must be false in production')
   if (!appConfig.strictRbac)
