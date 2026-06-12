@@ -23,6 +23,7 @@ import { NetdiskModule } from './modules/netdisk/netdisk.module'
 import { SseModule } from './modules/sse/sse.module'
 import { SystemModule } from './modules/system/system.module'
 import { TasksModule } from './modules/tasks/tasks.module'
+import { TenantAdminModule } from './modules/tenant-admin/tenant-admin.module'
 import { TodoModule } from './modules/todo/todo.module'
 import { ToolsModule } from './modules/tools/tools.module'
 import { VpetAiModule } from './modules/vpet-ai/ai.module'
@@ -75,6 +76,7 @@ import { SocketModule } from './socket/socket.module'
 
     AuthModule,
     SystemModule,
+    TenantAdminModule,
     TasksModule.forRoot(),
     ToolsModule,
     SocketModule,

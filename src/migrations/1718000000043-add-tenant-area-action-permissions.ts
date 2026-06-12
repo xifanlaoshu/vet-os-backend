@@ -55,7 +55,10 @@ export class AddTenantAreaActionPermissions1718000000043 implements MigrationInt
   }
 
   private async upsertAction(queryRunner: QueryRunner, parentId: number, action: ActionPermission) {
-    const rows = await queryRunner.query('SELECT id FROM sys_menu WHERE permission = ? LIMIT 1', [action.permission])
+    const rows = await queryRunner.query(
+      'SELECT id FROM sys_menu WHERE parent_id = ? AND permission = ? AND type = 2 LIMIT 1',
+      [parentId, action.permission],
+    )
     const values = [
       parentId,
       null,
