@@ -12,6 +12,7 @@ import { CountInfo, FlowInfo, HitInfo, SpaceInfo } from './overview.dto'
 export class NetDiskOverviewService {
   private mac: qiniu.auth.digest.Mac
   private readonly FORMAT = 'YYYYMMDDHHmmss'
+  private readonly EXTERNAL_HTTP_TIMEOUT_MS = 5000
 
   constructor(
     @Inject(OssConfig.KEY) private qiniuConfig: IOssConfig,
@@ -55,6 +56,7 @@ export class NetDiskOverviewService {
         'Content-Type': 'application/x-www-form-urlencoded',
         'Authorization': `${accessToken}`,
       },
+      timeout: this.EXTERNAL_HTTP_TIMEOUT_MS,
     })
   }
 

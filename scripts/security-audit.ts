@@ -53,6 +53,8 @@ auditPermissionMatrix()
 auditTenantContextGuard()
 auditStorageTokenExpiration()
 auditTrustedClientIpResolution()
+auditSanitizedExceptionLogging()
+auditExternalHttpTimeouts()
 
 const rules = [
   {
@@ -370,6 +372,46 @@ function auditTrustedClientIpResolution() {
       line: 1,
       rule: 'spoofable-forwarded-header-before-trusted-ip',
       message: 'Do not prefer X-Forwarded-For over req.ip; login throttling and audit logs must not trust spoofable headers directly.',
+    })
+  }
+}
+
+function auditSanitizedExceptionLogging() {
+  const exceptionFilterPath = join(root, 'src', 'common', 'filters', 'any-exception.filter.ts')
+  if (!existsSync(exceptionFilterPath))
+    return
+
+  const lines = readFileSync(exceptionFilterPath, 'utf8').split(/\r?\n/)
+  lines.forEach((lineText, index) => {
+    if (!/Logger\.error\(\s*exception\b|logger\.error\(\s*exception\b/.test(lineText))
+      return
+    findings.push({
+      file: 'src/common/filters/any-exception.filter.ts',
+      line: index + 1,
+      rule: 'raw-exception-object-logging',
+      message: 'Do not log raw exception objects; log a sanitized message and stack summary only.',
+    })
+  })
+}
+
+function auditExternalHttpTimeouts() {
+  for (const absPath of sourceFiles) {
+    const relPath = normalizePath(relative(root, absPath))
+    const lines = readFileSync(absPath, 'utf8').split(/\r?\n/)
+    lines.forEach((lineText, index) => {
+      if (!/\b(?:axios|axiosRef)\.get\s*\(/.test(lineText))
+        return
+
+      const callPreview = lines.slice(index, Math.min(lines.length, index + 12)).join('\n')
+      if (/\btimeout\s*:/.test(callPreview))
+        return
+
+      findings.push({
+        file: relPath,
+        line: index + 1,
+        rule: 'external-http-timeout-required',
+        message: 'External HTTP calls must set a short timeout so login and business requests cannot hang on third-party services.',
+      })
     })
   }
 }

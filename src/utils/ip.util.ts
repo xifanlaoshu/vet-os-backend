@@ -1,32 +1,45 @@
 import type { FastifyRequest } from 'fastify'
 import type { IncomingMessage } from 'node:http'
-/**
- * @module utils/ip
- * @description IP utility functions
- */
 import axios from 'axios'
 
-/* 判断IP是不是内网 */
-function isLAN(ip: string) {
-  ip.toLowerCase()
-  if (ip === 'localhost')
+const IP_GEO_LOOKUP_TIMEOUT_MS = 1500
+const LAN_IP_LABEL = '\u5185\u7F51IP'
+const UNKNOWN_IP_LABEL = '\u672A\u77E5IP'
+const GEO_LOOKUP_FAILED_LABEL = '\u7B2C\u4E09\u65B9\u63A5\u53E3\u8BF7\u6C42\u5931\u8D25'
+
+function normalizeIp(ip: string | undefined) {
+  return (ip ?? '').trim().replace(/^::ffff:/, '')
+}
+
+function isIPv4(ip: string) {
+  const parts = ip.split('.')
+  return parts.length === 4 && parts.every((part) => {
+    if (!/^\d{1,3}$/.test(part))
+      return false
+
+    const value = Number(part)
+    return value >= 0 && value <= 255
+  })
+}
+
+export function isLAN(ip: string) {
+  const normalizedIp = normalizeIp(ip).toLowerCase()
+  if (!normalizedIp)
+    return false
+  if (['localhost', '::1'].includes(normalizedIp))
     return true
-  let a_ip = 0
-  if (ip === '')
+  if (/^(?:fc|fd|fe80):/i.test(normalizedIp))
+    return true
+  if (!isIPv4(normalizedIp))
     return false
-  const aNum = ip.split('.')
-  if (aNum.length !== 4)
-    return false
-  a_ip += Number.parseInt(aNum[0]) << 24
-  a_ip += Number.parseInt(aNum[1]) << 16
-  a_ip += Number.parseInt(aNum[2]) << 8
-  a_ip += Number.parseInt(aNum[3]) << 0
-  a_ip = (a_ip >> 16) & 0xFFFF
+
+  const [first, second] = normalizedIp.split('.').map(Number)
   return (
-    a_ip >> 8 === 0x7F
-    || a_ip >> 8 === 0xA
-    || a_ip === 0xC0A8
-    || (a_ip >= 0xAC10 && a_ip <= 0xAC1F)
+    first === 10
+    || first === 127
+    || (first === 172 && second >= 16 && second <= 31)
+    || (first === 192 && second === 168)
+    || (first === 169 && second === 254)
   )
 }
 
@@ -45,22 +58,32 @@ export function getIp(request: FastifyRequest | IncomingMessage) {
   if (ip && ip.split(',').length > 0)
     ip = ip.split(',')[0]
 
-  return ip
+  return normalizeIp(ip)
 }
 
 export async function getIpAddress(ip: string) {
-  if (isLAN(ip))
-    return '内网IP'
+  const normalizedIp = normalizeIp(ip)
+  if (!normalizedIp)
+    return UNKNOWN_IP_LABEL
+  if (isLAN(normalizedIp))
+    return LAN_IP_LABEL
+  if (!isIPv4(normalizedIp))
+    return UNKNOWN_IP_LABEL
+
   try {
     let { data } = await axios.get(
-      `https://whois.pconline.com.cn/ipJson.jsp?ip=${ip}&json=true`,
-      { responseType: 'arraybuffer' },
+      `https://whois.pconline.com.cn/ipJson.jsp?ip=${encodeURIComponent(normalizedIp)}&json=true`,
+      {
+        maxRedirects: 0,
+        responseType: 'arraybuffer',
+        timeout: IP_GEO_LOOKUP_TIMEOUT_MS,
+      },
     )
     data = new TextDecoder('gbk').decode(data)
     data = JSON.parse(data)
     return data.addr.trim().split(' ').at(0)
   }
-  catch (error) {
-    return '第三方接口请求失败'
+  catch {
+    return GEO_LOOKUP_FAILED_LABEL
   }
 }

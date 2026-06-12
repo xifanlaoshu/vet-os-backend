@@ -3,11 +3,17 @@ import { Injectable } from '@nestjs/common'
 
 @Injectable()
 export class QQService {
+  private readonly EXTERNAL_HTTP_TIMEOUT_MS = 3000
+
   constructor(private readonly http: HttpService) {}
 
   async getNickname(qq: string | number) {
     const { data } = await this.http.axiosRef.get(
-      `https://users.qzone.qq.com/fcg-bin/cgi_get_portrait.fcg?uins=${qq}`,
+      `https://users.qzone.qq.com/fcg-bin/cgi_get_portrait.fcg?uins=${encodeURIComponent(String(qq))}`,
+      {
+        maxRedirects: 0,
+        timeout: this.EXTERNAL_HTTP_TIMEOUT_MS,
+      },
     )
     return data
   }
