@@ -9,6 +9,12 @@ import { VisitEntity } from './visit.entity'
 @Index('idx_vpet_chronic_case_status', ['status'])
 @Entity('vpet_chronic_case')
 export class ChronicCaseEntity extends CommonEntity {
+  @Column({ name: 'tenant_id', default: 1, comment: '租户 ID' })
+  tenantId: number
+
+  @Column({ name: 'area_id', default: 1, comment: '院区 ID' })
+  areaId: number
+
   @Column({ name: 'case_no', length: 30, unique: true })
   caseNo: string
 

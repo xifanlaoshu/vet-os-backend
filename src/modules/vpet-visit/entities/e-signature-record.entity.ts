@@ -7,6 +7,12 @@ import { VisitEntity } from './visit.entity'
 @Index('idx_vpet_e_signature_signer', ['signedBy'])
 @Entity('vpet_e_signature_record')
 export class ESignatureRecordEntity extends CommonEntity {
+  @Column({ name: 'tenant_id', default: 1, comment: '租户 ID' })
+  tenantId: number
+
+  @Column({ name: 'area_id', default: 1, comment: '院区 ID' })
+  areaId: number
+
   @Column({ name: 'visit_id' })
   visitId: number
 

@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common'
 import { TypeOrmModule } from '@nestjs/typeorm'
+import { CustomerEntity } from '../vpet-customer/entities/customer.entity'
 import { PetEntity } from './entities/pet.entity'
 import { BreedEntity, SpeciesEntity } from './entities/species.entity'
 import { WeightRecordEntity } from './entities/weight-record.entity'
@@ -8,7 +9,7 @@ import { PetService } from './pet.service'
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([PetEntity, WeightRecordEntity, SpeciesEntity, BreedEntity]),
+    TypeOrmModule.forFeature([PetEntity, CustomerEntity, WeightRecordEntity, SpeciesEntity, BreedEntity]),
   ],
   controllers: [PetController],
   providers: [PetService],

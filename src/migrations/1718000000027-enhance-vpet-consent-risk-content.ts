@@ -1,0 +1,59 @@
+import { MigrationInterface, QueryRunner } from 'typeorm'
+
+const riskAppendixByCategory: Record<string, string> = {
+  examination: '三、重点风险提示\n检查过程中宠物可能因疼痛、恐惧、保定、陌生环境或基础疾病出现应激、挣扎、抓咬、呼吸急促、心率变化等情况；单次体格或专项检查结果受疾病阶段、配合程度和检查条件影响，必要时需结合化验、影像、镇静检查或复查后综合判断。',
+  lab: '三、重点风险提示\n采样可能出现疼痛、出血、淤青、局部肿胀、感染、样本不足、样本污染、假阴性或假阳性等情况；外送检测还可能受采样时机、保存条件、物流时效和实验室检测周期影响，报告仅作为临床诊疗参考。',
+  imaging: '三、重点风险提示\n影像检查可能需要保定、剃毛、改变体位、短时禁食或镇静；结果可能受肠气、肥胖、疼痛、设备条件和宠物配合度影响，必要时需复查、追加造影、超声、CT/MRI 或转诊高级影像。',
+  anesthesia: '三、重点风险提示\n麻醉和镇静存在呼吸抑制、循环抑制、呕吐误吸、低体温、苏醒延迟、过敏、心律异常、抽搐甚至死亡风险；短鼻品种、幼龄、老年、肥胖、贫血、脱水、休克、心肺肝肾疾病动物风险更高，术前检查只能降低风险，不能完全消除风险。',
+  surgery: '三、重点风险提示\n手术可能发生麻醉意外、出血、感染、疼痛、组织坏死、伤口裂开、复发、术中方案调整、二次手术、功能障碍或死亡；术后未按要求限制活动、佩戴头套、复查换药或给药，会明显增加并发症和费用。',
+  dental: '三、重点风险提示\n口腔治疗通常需要麻醉，可能出现牙龈出血、牙根断裂、口鼻瘘、下颌骨损伤、术后疼痛、感染、进食下降等情况；实际拔牙数量可能多于术前判断，严重牙周病需分阶段治疗。',
+  hospitalization: '三、重点风险提示\n住院期间病情可能突变，可能需要追加检查、升级监护、调整用药、急救或转诊；宠物可能因环境变化出现应激、拒食、吠叫、舔咬管路、伤口污染、交叉感染风险或基础病突然恶化。',
+  emergency: '三、重点风险提示\n急危重症具有高度不确定性，即使及时抢救仍可能出现多器官衰竭、心肺骤停、凝血异常、休克加重或死亡；抢救项目和费用可能随病情快速变化，部分紧急处置可能先于完整书面确认。',
+  treatment: '三、重点风险提示\n治疗处置可能出现药物过敏、局部疼痛肿胀、静脉炎、漏液、输液反应、呼吸循环负担、治疗反应不佳或病情反复；心肾疾病、幼龄、老年、虚弱动物需更严密观察。',
+  medication: '三、重点风险提示\n特殊用药可能存在超说明书使用、个体差异、药物相互作用、肝肾负担、胃肠道反应、神经症状、血液学异常或过敏反应；必须严格按医嘱给药，不得自行加减、停药或转给其他动物使用。',
+  transfusion: '三、重点风险提示\n输血和血制品可能出现发热、过敏、溶血、容量负荷、凝血异常、感染传播、免疫反应或治疗无效；配血和监测只能降低风险，不能完全消除输血风险。',
+  vaccination: '三、重点风险提示\n疫苗接种可能出现低热、精神食欲下降、注射部位疼痛、呕吐腹泻、面部肿胀、过敏甚至休克；潜伏期疾病、免疫异常、应激状态、寄生虫感染或近期用药可能影响免疫效果。',
+  prevention: '三、重点风险提示\n驱虫和预防用药可能出现胃肠道反应、皮肤反应、神经反应、虫体排出或短期精神食欲变化；幼龄、妊娠、哺乳、体弱、肝肾异常动物需谨慎选择药物和剂量。',
+  isolation: '三、重点风险提示\n传染病和人畜共患病可能传播给其他动物或人员，需严格隔离、消毒、防护和复查；部分疾病进展迅速、预后不确定，延迟隔离或治疗可能增加传播和死亡风险。',
+  referral: '三、重点风险提示\n转诊途中可能发生病情变化、运输应激、呼吸循环恶化或死亡；若拒绝转诊或延迟转诊，可能错过最佳诊疗窗口，相关后果需由宠主自行承担。',
+  refusal: '三、重点风险提示\n拒绝或延迟检查治疗可能导致诊断延误、病情加重、治疗窗口错过、费用增加、预后变差甚至死亡；宠主需理解替代方案及可能后果，并承担相应风险。',
+  homecare: '三、重点风险提示\n居家护理效果依赖宠主执行，漏服药、提前停药、未佩戴头套、未限制活动、未按期复查或未观察异常，可能导致复发、感染、伤口裂开、药物不良反应未被及时发现。',
+  chronic: '三、重点风险提示\n慢性病通常无法一次性治愈，需要长期复查、指标监测、用药调整、饮食管理和家庭观察；自行停药、改药或未按计划监测可能导致急性恶化和不可逆损伤。',
+  grooming: '三、重点风险提示\n美容洗护可能出现应激、挣扎、抓咬、皮肤发红、轻微划伤、毛结剃除后皮肤暴露、耳道进水或不适；老年、心肺病、皮肤病、攻击性或极度紧张宠物风险更高，必要时应先医疗评估。',
+  boarding: '三、重点风险提示\n寄养看护可能发生环境应激、食欲下降、腹泻、吠叫、抓咬、逃逸尝试、潜伏疾病显现或交叉感染；宠主需如实告知疫苗、驱虫、病史、用药、攻击史和饮食禁忌。',
+  euthanasia: '三、重点风险提示\n安乐处理完成后不可逆；遗体处理涉及防疫、交接、第三方服务、费用和证明规则，宠主需确认决定真实自愿，并选择遗体处理方式。',
+}
+
+export class EnhanceVpetConsentRiskContent1718000000027 implements MigrationInterface {
+  name = 'EnhanceVpetConsentRiskContent1718000000027'
+
+  public async up(queryRunner: QueryRunner): Promise<void> {
+    const rows = await queryRunner.query(`SELECT code, category, content FROM vpet_consent_template`)
+    for (const row of rows) {
+      const appendix = riskAppendixByCategory[row.category]
+      const content = String(row.content || '')
+      if (!appendix || content.includes('重点风险提示'))
+        continue
+
+      const enhanced = this.insertBeforeSignature(content, appendix)
+      await queryRunner.query(
+        `UPDATE vpet_consent_template SET content = ?, updated_at = NOW() WHERE code = ?`,
+        [enhanced, row.code],
+      )
+    }
+  }
+
+  public async down(): Promise<void> {
+    // 风险提示属于告知书内容增强，不做自动删除，避免误删后续人工维护内容。
+  }
+
+  private insertBeforeSignature(content: string, appendix: string): string {
+    const markers = ['\n本人已阅读', '\n宠主/代理人签名', '\n医护人员签名']
+    for (const marker of markers) {
+      const index = content.indexOf(marker)
+      if (index >= 0)
+        return `${content.slice(0, index)}\n${appendix}\n${content.slice(index)}`
+    }
+    return `${content}\n\n${appendix}`
+  }
+}

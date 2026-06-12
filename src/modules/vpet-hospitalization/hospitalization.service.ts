@@ -37,12 +37,16 @@ export class HospitalizationService {
     private doctorRepository: Repository<DoctorEntity>,
   ) {}
 
-  async list(dto: QueryHospitalizationDto) {
+  async list(dto: QueryHospitalizationDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
     const { page = 1, pageSize = 10, status, doctorId, keyword } = dto
+    const tenantId = context?.tenantId ?? 1
+    const areaId = context?.areaId ?? 1
     const qb = this.hospitalizationRepository.createQueryBuilder('h')
       .leftJoinAndSelect('h.pet', 'pet')
       .leftJoinAndSelect('h.customer', 'customer')
       .leftJoinAndSelect('h.doctor', 'doctor')
+      .where('h.tenantId = :tenantId', { tenantId })
+      .andWhere('h.areaId = :areaId', { areaId })
 
     if (status !== undefined)
       qb.andWhere('h.status = :status', { status })
@@ -62,22 +66,24 @@ export class HospitalizationService {
     return paginate(qb, { page, pageSize })
   }
 
-  async create(dto: CreateHospitalizationDto) {
+  async create(dto: CreateHospitalizationDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
+    const tenantId = context?.tenantId ?? 1
+    const areaId = context?.areaId ?? 1
     const visit = await this.visitRepository.findOne({
-      where: { id: dto.visitId },
+      where: { id: dto.visitId, tenantId, areaId },
       relations: ['customer', 'pet'],
     })
     if (!visit)
       throw new BusinessException('Visit not found')
 
-    const existing = await this.hospitalizationRepository.findOneBy({ visitId: dto.visitId })
+    const existing = await this.hospitalizationRepository.findOneBy({ visitId: dto.visitId, tenantId, areaId })
     if (existing)
       throw new BusinessException('Visit already has hospitalization record')
 
     const [customer, pet, doctor] = await Promise.all([
-      this.customerRepository.findOneBy({ id: dto.customerId ?? visit.customerId }),
-      this.petRepository.findOneBy({ id: dto.petId ?? visit.petId }),
-      (dto.doctorId ?? visit.doctorId) ? this.doctorRepository.findOneBy({ id: dto.doctorId ?? visit.doctorId }) : Promise.resolve(null),
+      this.customerRepository.findOneBy({ id: dto.customerId ?? visit.customerId, tenantId }),
+      this.petRepository.findOneBy({ id: dto.petId ?? visit.petId, tenantId }),
+      (dto.doctorId ?? visit.doctorId) ? this.doctorRepository.findOneBy({ id: dto.doctorId ?? visit.doctorId, tenantId }) : Promise.resolve(null),
     ])
     if (!customer)
       throw new BusinessException('Customer not found')
@@ -87,6 +93,8 @@ export class HospitalizationService {
       throw new BusinessException('Pet does not belong to the selected customer')
 
     const record = this.hospitalizationRepository.create({
+      tenantId,
+      areaId,
       hospNo: await this.generateHospNo(),
       visitId: dto.visitId,
       customerId: customer.id,
@@ -119,23 +127,27 @@ export class HospitalizationService {
     })
 
     const saved = await this.hospitalizationRepository.save(record)
-    await this.petRepository.update(pet.id, { status: 2 })
-    return this.getDetail(saved.id)
+    await this.petRepository.update({ id: pet.id, tenantId }, { status: 2 })
+    return this.getDetail(saved.id, { tenantId, areaId })
   }
 
-  async getDetail(id: number) {
+  async getDetail(id: number, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
     return this.hospitalizationRepository.findOne({
-      where: { id },
+      where: { id, tenantId: context?.tenantId ?? 1, areaId: context?.areaId ?? 1 },
       relations: ['pet', 'customer', 'doctor', 'nursingPlans', 'nursingPlans.executions'],
     })
   }
 
-  async createPlan(hospId: number, dto: CreateNursingPlanDto) {
-    const hosp = await this.hospitalizationRepository.findOneBy({ id: hospId })
+  async createPlan(hospId: number, dto: CreateNursingPlanDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
+    const tenantId = context?.tenantId ?? 1
+    const areaId = context?.areaId ?? 1
+    const hosp = await this.hospitalizationRepository.findOneBy({ id: hospId, tenantId, areaId })
     if (!hosp)
       throw new BusinessException('Hospitalization record not found')
 
     const plan = this.nursingPlanRepository.create({
+      tenantId,
+      areaId,
       hospId,
       planType: dto.planType,
       planName: dto.planName,
@@ -148,23 +160,27 @@ export class HospitalizationService {
     })
 
     await this.nursingPlanRepository.save(plan)
-    return this.listPlans(hospId)
+    return this.listPlans(hospId, { tenantId, areaId })
   }
 
-  async listPlans(hospId: number) {
+  async listPlans(hospId: number, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
     return this.nursingPlanRepository.find({
-      where: { hospId },
+      where: { hospId, tenantId: context?.tenantId ?? 1, areaId: context?.areaId ?? 1 },
       relations: ['doctor', 'executions'],
       order: { scheduledTime: 'ASC', id: 'ASC' },
     })
   }
 
-  async executePlan(planId: number, dto: ExecuteNursingPlanDto) {
-    const plan = await this.nursingPlanRepository.findOneBy({ id: planId })
+  async executePlan(planId: number, dto: ExecuteNursingPlanDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
+    const tenantId = context?.tenantId ?? 1
+    const areaId = context?.areaId ?? 1
+    const plan = await this.nursingPlanRepository.findOneBy({ id: planId, tenantId, areaId })
     if (!plan)
       throw new BusinessException('Nursing plan not found')
 
     const execution = this.nursingExecutionRepository.create({
+      tenantId,
+      areaId,
       hospId: plan.hospId,
       planId,
       executorId: dto.executorId ?? null,
@@ -176,29 +192,31 @@ export class HospitalizationService {
     })
     await this.nursingExecutionRepository.save(execution)
 
-    await this.nursingPlanRepository.update(planId, {
+    await this.nursingPlanRepository.update({ id: planId, tenantId, areaId }, {
       latestExecutionStatus: execution.status,
       latestExecutionAt: execution.executedAt,
     })
 
     return this.nursingExecutionRepository.find({
-      where: { planId },
+      where: { planId, tenantId, areaId },
       order: { executedAt: 'DESC' },
     })
   }
 
-  async discharge(id: number, dto: DischargeHospitalizationDto) {
-    const hosp = await this.hospitalizationRepository.findOneBy({ id })
+  async discharge(id: number, dto: DischargeHospitalizationDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
+    const tenantId = context?.tenantId ?? 1
+    const areaId = context?.areaId ?? 1
+    const hosp = await this.hospitalizationRepository.findOneBy({ id, tenantId, areaId })
     if (!hosp)
       throw new BusinessException('Hospitalization record not found')
 
-    await this.hospitalizationRepository.update(id, {
+    await this.hospitalizationRepository.update({ id, tenantId, areaId }, {
       status: 2,
       dischargeAt: dto.dischargeAt ?? new Date().toISOString(),
       dischargeSummary: dto.dischargeSummary,
     })
-    await this.petRepository.update(hosp.petId, { status: 1 })
-    return this.getDetail(id)
+    await this.petRepository.update({ id: hosp.petId, tenantId }, { status: 1 })
+    return this.getDetail(id, { tenantId, areaId })
   }
 
   private async generateHospNo() {

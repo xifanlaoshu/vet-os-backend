@@ -5,6 +5,9 @@ import { CommonEntity } from '~/common/entity/common.entity'
 @Index('idx_vpet_shift_status', ['status'])
 @Entity('vpet_shift')
 export class ShiftEntity extends CommonEntity {
+  @Column({ name: 'tenant_id', default: 1, comment: '租户 ID' })
+  tenantId: number
+
   @Column({ length: 40 })
   code: string
 

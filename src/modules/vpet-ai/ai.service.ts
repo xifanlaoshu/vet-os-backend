@@ -33,7 +33,7 @@ export class AiService {
     private petRepository: Repository<PetEntity>,
   ) {}
 
-  async generateSoapDraft(dto: SoapDraftDto) {
+  async generateSoapDraft(dto: SoapDraftDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
     const subjective = dto.chiefComplaint
     const objective = dto.objectiveFindings || 'Pending physical examination and laboratory confirmation.'
     const assessment = dto.draftNotes
@@ -60,11 +60,11 @@ export class AiService {
       },
     }
 
-    await this.log('soap_draft', null, null, dto as any, response, [], 1)
+    await this.log('soap_draft', null, null, dto as any, response, [], 1, context)
     return response
   }
 
-  async interpretLab(dto: LabInterpretDto) {
+  async interpretLab(dto: LabInterpretDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
     const abnormalities = dto.items
       .map((item) => {
         const value = Number(item.resultValue)
@@ -89,21 +89,23 @@ export class AiService {
       abnormalities,
     }
 
-    await this.log('lab_interpret', null, null, dto as any, response, abnormalities as any[], abnormalities.length ? 2 : 1)
+    await this.log('lab_interpret', null, null, dto as any, response, abnormalities as any[], abnormalities.length ? 2 : 1, context)
     return response
   }
 
-  async reviewPrescription(id: number) {
+  async reviewPrescription(id: number, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
+    const tenantId = context?.tenantId ?? 1
+    const areaId = context?.areaId ?? 1
     const prescription = await this.prescriptionRepository.findOne({
-      where: { id },
+      where: { id, tenantId, areaId },
       relations: ['details'],
     })
     if (!prescription) {
       return null
     }
 
-    const visit = await this.visitRepository.findOneBy({ id: prescription.visitId })
-    const pet = visit?.petId ? await this.petRepository.findOneBy({ id: visit.petId }) : null
+    const visit = await this.visitRepository.findOneBy({ id: prescription.visitId, tenantId, areaId })
+    const pet = visit?.petId ? await this.petRepository.findOneBy({ id: visit.petId, tenantId }) : null
     const details = prescription.details || []
     const drugDetails = details.filter(detail => Number(detail.itemKind ?? (detail.drugId ? 1 : 2)) === 1)
     const serviceDetails = details.filter(detail => Number(detail.itemKind ?? (detail.drugId ? 1 : 2)) === 2)
@@ -151,13 +153,15 @@ export class AiService {
         : 'No high-risk issue detected by the local safety engine.',
     }
 
-    await this.log('prescription_review', 'prescription', id, { prescriptionId: id }, response, warnings, riskLevel)
+    await this.log('prescription_review', 'prescription', id, { prescriptionId: id }, response, warnings, riskLevel, { tenantId, areaId })
     return response
   }
 
-  async logList(dto: QueryAiLogDto) {
+  async logList(dto: QueryAiLogDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
     const { page = 1, pageSize = 10, taskType, bizType, bizId } = dto
     const qb = this.aiLogRepository.createQueryBuilder('log')
+      .where('log.tenantId = :tenantId', { tenantId: context?.tenantId ?? 1 })
+      .andWhere('log.areaId = :areaId', { areaId: context?.areaId ?? 1 })
     if (taskType)
       qb.andWhere('log.taskType = :taskType', { taskType })
     if (bizType)
@@ -176,8 +180,11 @@ export class AiService {
     responsePayload: Record<string, any>,
     warnings: Record<string, any>[],
     riskLevel: number,
+    context?: Pick<IAuthUser, 'tenantId' | 'areaId'>,
   ) {
     await this.aiLogRepository.save(this.aiLogRepository.create({
+      tenantId: context?.tenantId ?? 1,
+      areaId: context?.areaId ?? 1,
       taskType,
       bizType: bizType ?? null,
       bizId: bizId ?? null,

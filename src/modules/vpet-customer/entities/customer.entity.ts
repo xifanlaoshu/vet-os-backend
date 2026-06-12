@@ -5,6 +5,12 @@ import { CommonEntity } from '~/common/entity/common.entity'
 @Index('idx_customer_wechat', ['wechatOpenid'])
 @Entity('vpet_customer')
 export class CustomerEntity extends CommonEntity {
+  @Column({ name: 'tenant_id', default: 1, comment: '租户 ID' })
+  tenantId: number
+
+  @Column({ name: 'home_area_id', nullable: true, comment: '常用院区 ID' })
+  homeAreaId: number | null
+
   @Column({ length: 50 })
   name: string
 

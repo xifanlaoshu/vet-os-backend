@@ -4,6 +4,9 @@ import { PrescriptionTemplateEntity } from './prescription-template.entity'
 
 @Entity('vpet_prescription_template_item')
 export class PrescriptionTemplateItemEntity extends CommonEntity {
+  @Column({ name: 'tenant_id', default: 1, comment: '租户 ID' })
+  tenantId: number
+
   @Column({ name: 'template_id' })
   templateId: number
 

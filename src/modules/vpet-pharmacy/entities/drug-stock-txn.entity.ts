@@ -1,5 +1,6 @@
 import { Column, Entity, Index, JoinColumn, ManyToOne } from 'typeorm'
 import { CommonEntity } from '~/common/entity/common.entity'
+import { DoctorEntity } from '~/modules/vpet-appointment/entities/doctor.entity'
 import { DrugBatchEntity } from './drug-batch.entity'
 import { DrugEntity } from './drug.entity'
 
@@ -7,6 +8,12 @@ import { DrugEntity } from './drug.entity'
 @Index('idx_drug_stock_txn_time', ['txnTime'])
 @Entity('vpet_drug_stock_txn')
 export class DrugStockTxnEntity extends CommonEntity {
+  @Column({ name: 'tenant_id', default: 1, comment: '租户 ID' })
+  tenantId: number
+
+  @Column({ name: 'area_id', default: 1, comment: '院区 ID' })
+  areaId: number
+
   @Column({ name: 'drug_id' })
   drugId: number
 
@@ -41,6 +48,10 @@ export class DrugStockTxnEntity extends CommonEntity {
 
   @Column({ nullable: true, name: 'operator_id' })
   operatorId: number
+
+  @ManyToOne(() => DoctorEntity, { nullable: true })
+  @JoinColumn({ name: 'operator_id' })
+  operator: DoctorEntity | null
 
   @Column({ type: 'datetime', name: 'txn_time' })
   txnTime: string

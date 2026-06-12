@@ -5,6 +5,12 @@ import { DrugTransferEntity } from './drug-transfer.entity'
 
 @Entity('vpet_drug_transfer_item')
 export class DrugTransferItemEntity extends CommonEntity {
+  @Column({ name: 'tenant_id', default: 1, comment: '租户 ID' })
+  tenantId: number
+
+  @Column({ name: 'area_id', default: 1, comment: '院区 ID' })
+  areaId: number
+
   @Column({ name: 'transfer_id' })
   transferId: number
 

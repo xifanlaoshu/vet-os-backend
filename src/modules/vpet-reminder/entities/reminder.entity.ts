@@ -8,6 +8,12 @@ import { VisitEntity } from '~/modules/vpet-visit/entities/visit.entity'
 @Index('idx_vpet_reminder_status', ['status'])
 @Entity('vpet_reminder')
 export class ReminderEntity extends CommonEntity {
+  @Column({ name: 'tenant_id', default: 1, comment: '租户 ID' })
+  tenantId: number
+
+  @Column({ name: 'area_id', default: 1, comment: '院区 ID' })
+  areaId: number
+
   @Column({ name: 'customer_id' })
   customerId: number
 

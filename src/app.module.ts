@@ -30,7 +30,9 @@ import { VpetAiModule } from './modules/vpet-ai/ai.module'
 
 import { VpetAppointmentModule } from './modules/vpet-appointment/appointment.module'
 
+import { VpetAuditModule } from './modules/vpet-audit/audit.module'
 import { VpetBillingModule } from './modules/vpet-billing/billing.module'
+import { VpetConsentModule } from './modules/vpet-consent/consent.module'
 import { VpetCustomerModule } from './modules/vpet-customer/customer.module'
 import { VpetHospitalizationModule } from './modules/vpet-hospitalization/hospitalization.module'
 import { VpetInsuranceModule } from './modules/vpet-insurance/insurance.module'
@@ -93,6 +95,8 @@ import { SocketModule } from './socket/socket.module'
     VpetVisitModule,
     VpetPrescriptionModule,
     VpetBillingModule,
+    VpetAuditModule,
+    VpetConsentModule,
     VpetMemberModule,
     VpetQueueModule,
     VpetPharmacyModule,

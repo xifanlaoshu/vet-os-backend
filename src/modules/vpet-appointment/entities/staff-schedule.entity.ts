@@ -7,6 +7,12 @@ import { ShiftEntity } from './shift.entity'
 @Index('idx_vpet_staff_schedule_doctor_date', ['doctorId', 'scheduleDate'], { unique: true })
 @Entity('vpet_staff_schedule')
 export class StaffScheduleEntity extends CommonEntity {
+  @Column({ name: 'tenant_id', default: 1, comment: '租户 ID' })
+  tenantId: number
+
+  @Column({ name: 'area_id', default: 1, comment: '院区 ID' })
+  areaId: number
+
   @Column()
   doctorId: number
 

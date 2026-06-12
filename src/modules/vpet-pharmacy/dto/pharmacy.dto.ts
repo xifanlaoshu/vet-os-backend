@@ -1,5 +1,5 @@
 import { IntersectionType, PartialType } from '@nestjs/swagger'
-import { IsInt, IsNumber, IsOptional, IsString, MaxLength, Min } from 'class-validator'
+import { IsArray, IsInt, IsNumber, IsOptional, IsString, MaxLength, Min } from 'class-validator'
 import { PagerDto } from '~/common/dto/pager.dto'
 
 export class CreateDrugDto {
@@ -119,6 +119,10 @@ export class CreateChargeItemDto {
   @IsOptional()
   @IsString()
   description?: string
+
+  @IsOptional()
+  @IsArray()
+  consentTemplateIds?: number[]
 }
 
 export class UpdateChargeItemDto extends PartialType(CreateChargeItemDto) {}

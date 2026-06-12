@@ -1,9 +1,10 @@
 import { Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
+import { BusinessException } from '~/common/exceptions/biz.exception'
 import { BaseService } from '~/helper/crud/base.service'
 import { paginate } from '~/helper/paginate'
-import { QueryCustomerDto } from './dto/customer.dto'
+import { CreateCustomerDto, QueryCustomerDto, UpdateCustomerDto } from './dto/customer.dto'
 import { CustomerEntity } from './entities/customer.entity'
 
 @Injectable()
@@ -15,13 +16,15 @@ export class CustomerService extends BaseService<CustomerEntity> {
     super(customerRepository)
   }
 
-  async list(dto: QueryCustomerDto) {
+  async list(dto: QueryCustomerDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
     const { page = 1, pageSize = 10, keyword, name, phone } = dto
+    const tenantId = context?.tenantId ?? 1
     const queryBuilder = this.customerRepository.createQueryBuilder('c')
+      .where('c.tenantId = :tenantId', { tenantId })
 
     if (keyword) {
-      queryBuilder.where(
-        'c.name LIKE :kw OR c.phone LIKE :kw',
+      queryBuilder.andWhere(
+        '(c.name LIKE :kw OR c.phone LIKE :kw)',
         { kw: `%${keyword}%` },
       )
     }
@@ -36,14 +39,51 @@ export class CustomerService extends BaseService<CustomerEntity> {
     return paginate(queryBuilder, { page, pageSize })
   }
 
-  async findByPhone(phone: string): Promise<CustomerEntity | null> {
-    return this.customerRepository.findOneBy({ phone })
+  async getById(id: number, context?: Pick<IAuthUser, 'tenantId'>): Promise<CustomerEntity | null> {
+    return this.customerRepository.findOneBy({ id, tenantId: context?.tenantId ?? 1 })
   }
 
-  async findOrCreate(phone: string, name: string): Promise<CustomerEntity> {
-    let customer = await this.findByPhone(phone)
+  async createCustomer(dto: CreateCustomerDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>): Promise<CustomerEntity> {
+    const tenantId = context?.tenantId ?? 1
+    const existing = await this.findByPhone(dto.phone, { tenantId })
+    if (existing)
+      throw new BusinessException('Customer phone already exists in current tenant')
+    return this.customerRepository.save(this.customerRepository.create({
+      ...dto,
+      tenantId,
+      homeAreaId: context?.areaId ?? null,
+    }))
+  }
+
+  async updateCustomer(id: number, dto: UpdateCustomerDto, context?: Pick<IAuthUser, 'tenantId'>): Promise<void> {
+    const tenantId = context?.tenantId ?? 1
+    const current = await this.customerRepository.findOneBy({ id, tenantId })
+    if (!current)
+      throw new BusinessException('Customer not found')
+    if (dto.phone && dto.phone !== current.phone) {
+      const existing = await this.findByPhone(dto.phone, { tenantId })
+      if (existing)
+        throw new BusinessException('Customer phone already exists in current tenant')
+    }
+    await this.customerRepository.update({ id, tenantId }, dto)
+  }
+
+  async deleteCustomer(id: number, context?: Pick<IAuthUser, 'tenantId'>): Promise<void> {
+    const tenantId = context?.tenantId ?? 1
+    const current = await this.customerRepository.findOneBy({ id, tenantId })
+    if (!current)
+      throw new BusinessException('Customer not found')
+    await this.customerRepository.delete({ id, tenantId })
+  }
+
+  async findByPhone(phone: string, context?: Pick<IAuthUser, 'tenantId'>): Promise<CustomerEntity | null> {
+    return this.customerRepository.findOneBy({ phone, tenantId: context?.tenantId ?? 1 })
+  }
+
+  async findOrCreate(phone: string, name: string, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>): Promise<CustomerEntity> {
+    let customer = await this.findByPhone(phone, context)
     if (!customer) {
-      customer = await this.create({ name, phone })
+      customer = await this.createCustomer({ name, phone }, context)
     }
     return customer
   }

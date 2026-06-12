@@ -12,6 +12,12 @@ import { NursingPlanEntity } from './nursing-plan.entity'
 @Index('idx_vpet_hosp_status', ['status'])
 @Entity('vpet_hospitalization')
 export class HospitalizationEntity extends CommonEntity {
+  @Column({ name: 'tenant_id', default: 1, comment: '租户 ID' })
+  tenantId: number
+
+  @Column({ name: 'area_id', default: 1, comment: '院区 ID' })
+  areaId: number
+
   @Column({ name: 'hosp_no', length: 30, unique: true })
   hospNo: string
 

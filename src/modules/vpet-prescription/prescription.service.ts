@@ -47,34 +47,39 @@ export class PrescriptionService extends BaseService<PrescriptionEntity> {
     super(rxRepository)
   }
 
-  async createRx(dto: CreatePrescriptionDto): Promise<PrescriptionEntity | null> {
+  async createRx(dto: CreatePrescriptionDto, options: { currentUserId?: number, tenantId?: number, areaId?: number } = {}): Promise<PrescriptionEntity | null> {
+    const tenantId = options.tenantId ?? 1
+    const areaId = options.areaId ?? 1
     const visit = await this.visitRepository.findOne({
-      where: { id: dto.visitId },
+      where: { id: dto.visitId, tenantId, areaId },
       relations: ['customer', 'pet'],
     })
     if (!visit)
       throw new BusinessException('Visit not found')
-    const resolvedDoctorId = dto.doctorId ?? visit.doctorId
+    const currentStaffDoctorId = await this.resolveCurrentStaffDoctorId(options.currentUserId)
+    const resolvedDoctorId = currentStaffDoctorId ?? dto.doctorId ?? visit.doctorId
     if (!resolvedDoctorId)
       throw new BusinessException('Doctor is required for prescription')
     if (visit.doctorId && Number(visit.doctorId) !== Number(resolvedDoctorId)) {
       throw new BusinessException('Prescription doctor does not match visit doctor')
     }
 
-    const doctor = await this.doctorRepository.findOneBy({ id: resolvedDoctorId })
+    const doctor = await this.doctorRepository.findOneBy({ id: resolvedDoctorId, tenantId })
     if (!doctor)
       throw new BusinessException('Doctor not found')
 
-    const rxNo = await this.generateRxNo()
-    const batchNo = dto.batchNo || await this.generateBatchNo(dto.visitId)
+    const rxNo = await this.generateRxNo({ tenantId, areaId })
+    const batchNo = dto.batchNo || await this.generateBatchNo(dto.visitId, { tenantId, areaId })
     let totalAmount = 0
     const details = await Promise.all(dto.details.map(async (detail) => {
-      const resolved = await this.resolvePrescriptionItem(detail)
+      const resolved = await this.resolvePrescriptionItem(detail, { tenantId })
       const unitPrice = Number(detail.unitPrice ?? resolved.unitPrice ?? 0)
       const amount = Number(detail.quantity ?? 0) * unitPrice
       totalAmount += amount
       return this.detailRepository.create({
         ...detail,
+        tenantId,
+        areaId,
         itemKind: resolved.itemKind,
         itemId: resolved.itemId,
         itemName: resolved.itemName,
@@ -90,6 +95,8 @@ export class PrescriptionService extends BaseService<PrescriptionEntity> {
 
     const rx = this.rxRepository.create({
       rxNo,
+      tenantId,
+      areaId,
       visitId: dto.visitId,
       customerId: dto.customerId ?? visit.customerId ?? null,
       petId: dto.petId ?? visit.petId ?? null,
@@ -117,9 +124,13 @@ export class PrescriptionService extends BaseService<PrescriptionEntity> {
     return this.getDetail(saved.id)
   }
 
-  async queryList(dto: QueryPrescriptionDto) {
+  async queryList(dto: QueryPrescriptionDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
     const { page = 1, pageSize = 10, visitId, doctorId, status } = dto
     const qb = this.rxRepository.createQueryBuilder('rx')
+      .leftJoinAndSelect('rx.doctor', 'doctor')
+      .leftJoinAndSelect('rx.pharmacist', 'pharmacist')
+      .andWhere('rx.tenantId = :tenantId', { tenantId: context?.tenantId ?? 1 })
+      .andWhere('rx.areaId = :areaId', { areaId: context?.areaId ?? 1 })
 
     if (visitId)
       qb.andWhere('rx.visitId = :visitId', { visitId })
@@ -132,20 +143,31 @@ export class PrescriptionService extends BaseService<PrescriptionEntity> {
     return paginate(qb, { page, pageSize })
   }
 
-  async submitForReview(id: number): Promise<void> {
-    await this.rxRepository.update(id, { status: 2 })
+  async submitForReview(id: number, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>): Promise<void> {
+    await this.rxRepository.update({
+      id,
+      tenantId: context?.tenantId ?? 1,
+      areaId: context?.areaId ?? 1,
+    }, { status: 2 })
   }
 
-  async reviewRx(id: number, dto: ReviewPrescriptionDto): Promise<void> {
-    await this.rxRepository.update(id, {
+  async reviewRx(id: number, dto: ReviewPrescriptionDto, options: { currentUserId?: number, tenantId?: number, areaId?: number } = {}): Promise<void> {
+    const pharmacistId = await this.resolveCurrentStaffDoctorId(options.currentUserId) ?? dto.pharmacistId
+    await this.rxRepository.update({
+      id,
+      tenantId: options.tenantId ?? 1,
+      areaId: options.areaId ?? 1,
+    }, {
       status: dto.status,
-      pharmacistId: dto.pharmacistId,
+      pharmacistId,
       reviewedAt: new Date().toISOString(),
     })
   }
 
-  async dispenseRx(id: number, dto: DispensePrescriptionDto): Promise<PrescriptionEntity | null> {
-    const rx = await this.getDetail(id)
+  async dispenseRx(id: number, dto: DispensePrescriptionDto, options: { currentUserId?: number, tenantId?: number, areaId?: number } = {}): Promise<PrescriptionEntity | null> {
+    const tenantId = options.tenantId ?? 1
+    const areaId = options.areaId ?? 1
+    const rx = await this.getDetail(id, { tenantId, areaId })
     if (!rx)
       return null
     if (Number(rx.status) === 5)
@@ -163,12 +185,13 @@ export class PrescriptionService extends BaseService<PrescriptionEntity> {
     }, {})
 
     for (const [drugIdText, quantity] of Object.entries(requiredStock)) {
-      const available = await this.pharmacyService.getTotalStock(Number(drugIdText))
+      const available = await this.pharmacyService.getTotalStock(Number(drugIdText), { tenantId, areaId })
       if (available < quantity) {
         throw new BusinessException(`Insufficient stock for drug ${drugIdText}`)
       }
     }
 
+    const pharmacistId = await this.resolveCurrentStaffDoctorId(options.currentUserId) ?? dto.pharmacistId ?? rx.pharmacistId ?? null
     for (const detail of rx.details) {
       if (!this.isDrugDetail(detail))
         continue
@@ -179,48 +202,51 @@ export class PrescriptionService extends BaseService<PrescriptionEntity> {
         txnType: 2,
         refType: 'prescription',
         refId: rx.id,
-        operatorId: dto.pharmacistId ?? null,
+        operatorId: pharmacistId,
+        tenantId,
+        areaId,
       })
     }
 
-    await this.rxRepository.update(id, {
+    await this.rxRepository.update({ id, tenantId, areaId }, {
       status: 4,
-      pharmacistId: dto.pharmacistId ?? rx.pharmacistId ?? null,
+      pharmacistId,
       reviewedAt: rx.reviewedAt ?? new Date().toISOString(),
       dispensedAt: new Date().toISOString(),
     })
-    return this.getDetail(id)
+    return this.getDetail(id, { tenantId, areaId })
   }
 
-  async getByVisit(visitId: number): Promise<PrescriptionEntity[]> {
+  async getByVisit(visitId: number, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>): Promise<PrescriptionEntity[]> {
     return this.rxRepository.find({
-      where: { visitId },
-      relations: ['details'],
+      where: { visitId, tenantId: context?.tenantId ?? 1, areaId: context?.areaId ?? 1 },
+      relations: ['details', 'doctor', 'pharmacist'],
       order: { createdAt: 'DESC' },
     })
   }
 
-  async getStockTransactions(id: number) {
+  async getStockTransactions(id: number, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
     const result = await this.pharmacyService.listStockTxns({
       page: 1,
       pageSize: 100,
       refType: 'prescription',
       refId: id,
-    })
+    }, context)
     return result.items
   }
 
-  async getDetail(id: number): Promise<PrescriptionEntity | null> {
+  async getDetail(id: number, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>): Promise<PrescriptionEntity | null> {
     return this.rxRepository.findOne({
-      where: { id },
-      relations: ['details'],
+      where: { id, tenantId: context?.tenantId ?? 1, areaId: context?.areaId ?? 1 },
+      relations: ['details', 'doctor', 'pharmacist'],
     })
   }
 
-  async listTemplates(dto: QueryPrescriptionTemplateDto) {
+  async listTemplates(dto: QueryPrescriptionTemplateDto, context?: Pick<IAuthUser, 'tenantId'>) {
     const { page = 1, pageSize = 10, keyword, category, speciesScope, status } = dto
     const qb = this.templateRepository.createQueryBuilder('t')
       .leftJoinAndSelect('t.items', 'items')
+      .andWhere('t.tenantId = :tenantId', { tenantId: context?.tenantId ?? 1 })
 
     if (keyword) {
       qb.andWhere(new Brackets((subQb) => {
@@ -241,9 +267,9 @@ export class PrescriptionService extends BaseService<PrescriptionEntity> {
     return paginate(qb, { page, pageSize })
   }
 
-  async getTemplate(id: number) {
+  async getTemplate(id: number, context?: Pick<IAuthUser, 'tenantId'>) {
     const template = await this.templateRepository.findOne({
-      where: { id },
+      where: { id, tenantId: context?.tenantId ?? 1 },
       relations: ['items'],
       order: { items: { sortNo: 'ASC' } },
     })
@@ -252,9 +278,11 @@ export class PrescriptionService extends BaseService<PrescriptionEntity> {
     return template
   }
 
-  async createTemplate(dto: CreatePrescriptionTemplateDto) {
-    const items = await this.buildTemplateItems(dto.items)
+  async createTemplate(dto: CreatePrescriptionTemplateDto, context?: Pick<IAuthUser, 'tenantId'>) {
+    const tenantId = context?.tenantId ?? 1
+    const items = await this.buildTemplateItems(dto.items, { tenantId })
     const template = this.templateRepository.create({
+      tenantId,
       templateCode: dto.templateCode,
       templateName: dto.templateName,
       category: dto.category ?? null,
@@ -266,9 +294,10 @@ export class PrescriptionService extends BaseService<PrescriptionEntity> {
     return this.templateRepository.save(template)
   }
 
-  async updateTemplate(id: number, dto: UpdatePrescriptionTemplateDto) {
+  async updateTemplate(id: number, dto: UpdatePrescriptionTemplateDto, context?: Pick<IAuthUser, 'tenantId'>) {
+    const tenantId = context?.tenantId ?? 1
     const template = await this.templateRepository.findOne({
-      where: { id },
+      where: { id, tenantId },
       relations: ['items'],
     })
     if (!template)
@@ -288,25 +317,26 @@ export class PrescriptionService extends BaseService<PrescriptionEntity> {
       template.description = dto.description ?? null
 
     if (dto.items) {
-      await this.templateItemRepository.delete({ templateId: id })
-      template.items = await this.buildTemplateItems(dto.items)
+      await this.templateItemRepository.delete({ templateId: id, tenantId })
+      template.items = await this.buildTemplateItems(dto.items, { tenantId })
     }
 
     return this.templateRepository.save(template)
   }
 
-  async deleteTemplate(id: number) {
-    await this.templateRepository.delete(id)
+  async deleteTemplate(id: number, context?: Pick<IAuthUser, 'tenantId'>) {
+    await this.templateRepository.delete({ id, tenantId: context?.tenantId ?? 1 })
   }
 
-  private async buildTemplateItems(items: CreatePrescriptionTemplateDto['items']) {
+  private async buildTemplateItems(items: CreatePrescriptionTemplateDto['items'], context?: Pick<IAuthUser, 'tenantId'>) {
     if (!items?.length)
       throw new BusinessException('Prescription template must include at least one item')
 
     return Promise.all(items.map(async (item, index) => {
-      const resolved = await this.resolvePrescriptionItem(item)
+      const resolved = await this.resolvePrescriptionItem(item, context)
 
       return this.templateItemRepository.create({
+        tenantId: context?.tenantId ?? 1,
         itemKind: resolved.itemKind,
         itemId: resolved.itemId,
         itemName: resolved.itemName,
@@ -336,13 +366,13 @@ export class PrescriptionService extends BaseService<PrescriptionEntity> {
     drugId?: number
     chargeItemId?: number
     drugName?: string
-  }) {
+  }, context?: Pick<IAuthUser, 'tenantId'>) {
     const itemKind = Number(detail.itemKind ?? (detail.chargeItemId ? 2 : 1))
     if (itemKind === 2) {
       const chargeItemId = detail.chargeItemId ?? detail.itemId
       if (!chargeItemId)
         throw new BusinessException('Charge item id is required for service prescription details')
-      const item = await this.chargeItemRepository.findOneBy({ id: chargeItemId })
+      const item = await this.chargeItemRepository.findOneBy({ id: chargeItemId, tenantId: context?.tenantId ?? 1 })
       if (!item)
         throw new BusinessException(`Charge item not found: ${chargeItemId}`)
       return {
@@ -360,7 +390,7 @@ export class PrescriptionService extends BaseService<PrescriptionEntity> {
     const drugId = detail.drugId ?? detail.itemId
     if (!drugId)
       throw new BusinessException('Drug id is required for prescription details')
-    const drug = await this.drugRepository.findOneBy({ id: drugId })
+    const drug = await this.drugRepository.findOneBy({ id: drugId, tenantId: context?.tenantId ?? 1 })
     if (!drug)
       throw new BusinessException(`Drug not found: ${drugId}`)
     return {
@@ -379,13 +409,15 @@ export class PrescriptionService extends BaseService<PrescriptionEntity> {
     return Number(detail.itemKind ?? (detail.drugId ? 1 : 2)) === 1
   }
 
-  private async generateRxNo() {
+  private async generateRxNo(context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
     const date = this.getTodaySequenceDate()
     const prefix = `RX${date}`
     const latestPrescription = await this.rxRepository
       .createQueryBuilder('rx')
       .select(['rx.rxNo'])
       .where('rx.rxNo LIKE :prefix', { prefix: `${prefix}%` })
+      .andWhere('rx.tenantId = :tenantId', { tenantId: context?.tenantId ?? 1 })
+      .andWhere('rx.areaId = :areaId', { areaId: context?.areaId ?? 1 })
       .orderBy('rx.rxNo', 'DESC')
       .getOne()
 
@@ -395,8 +427,14 @@ export class PrescriptionService extends BaseService<PrescriptionEntity> {
     return `${prefix}${String(currentSeq + 1).padStart(4, '0')}`
   }
 
-  private async generateBatchNo(visitId: number) {
-    const count = await this.rxRepository.count({ where: { visitId } })
+  private async generateBatchNo(visitId: number, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
+    const count = await this.rxRepository.count({
+      where: {
+        visitId,
+        tenantId: context?.tenantId ?? 1,
+        areaId: context?.areaId ?? 1,
+      },
+    })
     return `B${String(count + 1).padStart(2, '0')}`
   }
 
@@ -412,5 +450,14 @@ export class PrescriptionService extends BaseService<PrescriptionEntity> {
   private getTodaySequenceDate() {
     const now = new Date()
     return `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`
+  }
+
+  private async resolveCurrentStaffDoctorId(currentUserId?: number) {
+    if (!currentUserId)
+      return null
+    const doctor = await this.doctorRepository.findOne({
+      where: { userId: currentUserId, status: 1 },
+    })
+    return doctor?.id ?? null
   }
 }

@@ -4,6 +4,12 @@ import { BillingEntity } from './billing.entity'
 
 @Entity('vpet_bill_detail')
 export class BillDetailEntity extends CommonEntity {
+  @Column({ name: 'tenant_id', default: 1, comment: '租户 ID' })
+  tenantId: number
+
+  @Column({ name: 'area_id', default: 1, comment: '院区 ID' })
+  areaId: number
+
   @Column({ name: 'billing_id', nullable: true })
   billingId: number
 

@@ -5,6 +5,9 @@ import { DrugBatchEntity } from './drug-batch.entity'
 @Index('idx_drug_code', ['drugCode'], { unique: true })
 @Entity('vpet_drug')
 export class DrugEntity extends CommonEntity {
+  @Column({ name: 'tenant_id', default: 1, comment: '租户 ID' })
+  tenantId: number
+
   @Column({ length: 30, unique: true, name: 'drug_code' })
   drugCode: string
 

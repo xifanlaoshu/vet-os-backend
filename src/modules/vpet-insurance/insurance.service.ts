@@ -32,11 +32,15 @@ export class InsuranceService {
     private petRepository: Repository<PetEntity>,
   ) {}
 
-  async list(dto: QueryInsuranceClaimDto) {
+  async list(dto: QueryInsuranceClaimDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
     const { page = 1, pageSize = 10, status, keyword } = dto
+    const tenantId = context?.tenantId ?? 1
+    const areaId = context?.areaId ?? 1
     const qb = this.claimRepository.createQueryBuilder('claim')
       .leftJoinAndSelect('claim.customer', 'customer')
       .leftJoinAndSelect('claim.pet', 'pet')
+      .where('claim.tenantId = :tenantId', { tenantId })
+      .andWhere('claim.areaId = :areaId', { areaId })
 
     if (status !== undefined)
       qb.andWhere('claim.status = :status', { status })
@@ -54,12 +58,14 @@ export class InsuranceService {
     return paginate(qb, { page, pageSize })
   }
 
-  async create(dto: CreateInsuranceClaimDto) {
+  async create(dto: CreateInsuranceClaimDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
+    const tenantId = context?.tenantId ?? 1
+    const areaId = context?.areaId ?? 1
     const [visit, billing, customer, pet] = await Promise.all([
-      this.visitRepository.findOneBy({ id: dto.visitId }),
-      dto.billingId ? this.billingRepository.findOneBy({ id: dto.billingId }) : Promise.resolve(null),
-      this.customerRepository.findOneBy({ id: dto.customerId }),
-      this.petRepository.findOneBy({ id: dto.petId }),
+      this.visitRepository.findOneBy({ id: dto.visitId, tenantId, areaId }),
+      dto.billingId ? this.billingRepository.findOneBy({ id: dto.billingId, tenantId, areaId }) : Promise.resolve(null),
+      this.customerRepository.findOneBy({ id: dto.customerId, tenantId }),
+      this.petRepository.findOneBy({ id: dto.petId, tenantId }),
     ])
     if (!visit)
       throw new BusinessException('Visit not found')
@@ -75,6 +81,8 @@ export class InsuranceService {
     }
 
     return this.claimRepository.save(this.claimRepository.create({
+      tenantId,
+      areaId,
       claimNo: generateClaimNo(),
       ...dto,
       status: 1,
@@ -83,21 +91,25 @@ export class InsuranceService {
     }))
   }
 
-  async submit(id: number) {
-    await this.claimRepository.update(id, {
+  async submit(id: number, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
+    const tenantId = context?.tenantId ?? 1
+    const areaId = context?.areaId ?? 1
+    await this.claimRepository.update({ id, tenantId, areaId }, {
       status: 2,
       submittedAt: new Date().toISOString(),
     })
-    return this.claimRepository.findOneBy({ id })
+    return this.claimRepository.findOneBy({ id, tenantId, areaId })
   }
 
-  async settle(id: number, dto: SettleInsuranceClaimDto) {
-    await this.claimRepository.update(id, {
+  async settle(id: number, dto: SettleInsuranceClaimDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
+    const tenantId = context?.tenantId ?? 1
+    const areaId = context?.areaId ?? 1
+    await this.claimRepository.update({ id, tenantId, areaId }, {
       status: 3,
       approvedAmount: dto.approvedAmount,
       settledAt: new Date().toISOString(),
       remark: dto.remark,
     })
-    return this.claimRepository.findOneBy({ id })
+    return this.claimRepository.findOneBy({ id, tenantId, areaId })
   }
 }

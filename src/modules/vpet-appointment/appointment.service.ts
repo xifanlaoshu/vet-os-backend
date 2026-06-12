@@ -35,8 +35,11 @@ export class AppointmentService {
   async list(
     params: { page?: number, pageSize?: number, status?: number, doctorId?: number, date?: string, keyword?: string, scope?: string },
     currentUserId?: number,
+    context?: Pick<IAuthUser, 'tenantId' | 'areaId'>,
   ) {
     const { page = 1, pageSize = 10, status, doctorId, date, keyword } = params
+    const tenantId = context?.tenantId ?? 1
+    const areaId = context?.areaId ?? 1
     const scopedDoctorId = await this.resolveScopedDoctorId(params.scope, currentUserId)
     if (params.scope === 'currentStaff' && !scopedDoctorId)
       return { items: [], meta: { totalItems: 0, itemCount: 0, itemsPerPage: pageSize, totalPages: 0, currentPage: page } }
@@ -44,6 +47,8 @@ export class AppointmentService {
       .leftJoinAndSelect('a.customer', 'customer')
       .leftJoinAndSelect('a.pet', 'pet')
       .leftJoinAndSelect('a.doctor', 'doctor')
+      .andWhere('a.tenantId = :tenantId', { tenantId })
+      .andWhere('a.areaId = :areaId', { areaId })
 
     if (status !== undefined)
       qb.andWhere('a.status = :status', { status })
@@ -69,41 +74,50 @@ export class AppointmentService {
     return paginate(qb, { page, pageSize })
   }
 
-  async create(dto: CreateAppointmentDto): Promise<AppointmentEntity> {
-    await this.validateCustomerPetRelation(dto.customerId, dto.petId)
-    await this.validateDoctor(dto.doctorId)
-    await this.validateDoctorSchedule(dto.doctorId, dto.appointmentTime)
-    const appt = this.appointmentRepository.create(dto)
+  async create(dto: CreateAppointmentDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>): Promise<AppointmentEntity> {
+    const tenantId = context?.tenantId ?? 1
+    const areaId = context?.areaId ?? 1
+    await this.validateCustomerPetRelation(dto.customerId, dto.petId, tenantId)
+    await this.validateDoctor(dto.doctorId, tenantId)
+    await this.validateDoctorSchedule(dto.doctorId, dto.appointmentTime, tenantId, areaId)
+    const appt = this.appointmentRepository.create({ ...dto, tenantId, areaId })
     return this.appointmentRepository.save(appt)
   }
 
-  async update(id: number, dto: UpdateAppointmentDto): Promise<void> {
+  async update(id: number, dto: UpdateAppointmentDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>): Promise<void> {
+    const tenantId = context?.tenantId ?? 1
+    const areaId = context?.areaId ?? 1
     if (
       dto.customerId !== undefined
       || dto.petId !== undefined
       || dto.doctorId !== undefined
       || dto.appointmentTime !== undefined
     ) {
-      const current = await this.appointmentRepository.findOneBy({ id })
+      const current = await this.appointmentRepository.findOneBy({ id, tenantId, areaId })
       if (!current)
         throw new BusinessException('Appointment not found')
       if (dto.customerId !== undefined || dto.petId !== undefined) {
         await this.validateCustomerPetRelation(
           dto.customerId ?? current.customerId,
           dto.petId ?? current.petId,
+          tenantId,
         )
       }
-      await this.validateDoctor(dto.doctorId)
+      await this.validateDoctor(dto.doctorId, tenantId)
       await this.validateDoctorSchedule(
         dto.doctorId ?? current.doctorId,
         dto.appointmentTime ?? current.appointmentTime,
+        tenantId,
+        areaId,
       )
     }
-    await this.appointmentRepository.update(id, dto)
+    await this.appointmentRepository.update({ id, tenantId, areaId }, dto)
   }
 
-  async checkin(id: number, options: { scope?: string, currentUserId?: number } = {}) {
-    const appointment = await this.appointmentRepository.findOneBy({ id })
+  async checkin(id: number, options: { scope?: string, currentUserId?: number, tenantId?: number, areaId?: number } = {}) {
+    const tenantId = options.tenantId ?? 1
+    const areaId = options.areaId ?? 1
+    const appointment = await this.appointmentRepository.findOneBy({ id, tenantId, areaId })
     if (!appointment)
       throw new BusinessException('Appointment not found')
     const scopedDoctorId = await this.resolveScopedDoctorId(options.scope, options.currentUserId)
@@ -119,7 +133,7 @@ export class AppointmentService {
     const existingVisit = await this.visitService.findByAppointmentId(id)
     if (existingVisit) {
       if (appointment.status !== 2) {
-        await this.appointmentRepository.update(id, {
+        await this.appointmentRepository.update({ id, tenantId, areaId }, {
           status: 2,
           checkinTime: appointment.checkinTime ?? new Date().toISOString(),
         })
@@ -128,10 +142,10 @@ export class AppointmentService {
     }
 
     const doctor = appointment.doctorId
-      ? await this.doctorRepository.findOneBy({ id: appointment.doctorId })
+      ? await this.doctorRepository.findOneBy({ id: appointment.doctorId, tenantId })
       : null
 
-    await this.appointmentRepository.update(id, {
+    await this.appointmentRepository.update({ id, tenantId, areaId }, {
       status: 2,
       checkinTime: new Date().toISOString(),
     })
@@ -143,16 +157,24 @@ export class AppointmentService {
       type: this.mapVisitType(appointment.visitType),
       department: doctor?.department ?? undefined,
       doctorId: appointment.doctorId,
-    })
+      tenantId,
+      areaId,
+    } as any)
   }
 
-  async cancel(id: number): Promise<void> {
-    await this.appointmentRepository.update(id, { status: 4 })
+  async cancel(id: number, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>): Promise<void> {
+    await this.appointmentRepository.update({
+      id,
+      tenantId: context?.tenantId ?? 1,
+      areaId: context?.areaId ?? 1,
+    }, { status: 4 })
   }
 
-  async doctorList(dto: QueryDoctorDto) {
+  async doctorList(dto: QueryDoctorDto, context?: Pick<IAuthUser, 'tenantId'>) {
     const { page = 1, pageSize = 10, keyword, department, position, status, bookable, name, phone } = dto
+    const tenantId = context?.tenantId ?? 1
     const qb = this.doctorRepository.createQueryBuilder('d')
+      .andWhere('d.tenantId = :tenantId', { tenantId })
     if (keyword) {
       qb.andWhere('(d.name LIKE :kw OR d.phone LIKE :kw)', { kw: `%${keyword}%` })
     }
@@ -172,23 +194,25 @@ export class AppointmentService {
     return paginate(qb, { page, pageSize })
   }
 
-  async createDoctor(dto: CreateDoctorDto): Promise<DoctorEntity> {
+  async createDoctor(dto: CreateDoctorDto, context?: Pick<IAuthUser, 'tenantId'>): Promise<DoctorEntity> {
+    const tenantId = context?.tenantId ?? 1
     await this.validateDoctorUser(dto.userId)
-    const doctor = this.doctorRepository.create(dto)
+    const doctor = this.doctorRepository.create({ ...dto, tenantId })
     return this.doctorRepository.save(doctor)
   }
 
-  async updateDoctor(id: number, dto: UpdateDoctorDto): Promise<void> {
+  async updateDoctor(id: number, dto: UpdateDoctorDto, context?: Pick<IAuthUser, 'tenantId'>): Promise<void> {
+    const tenantId = context?.tenantId ?? 1
     await this.validateDoctorUser(dto.userId)
-    await this.doctorRepository.update(id, dto)
+    await this.doctorRepository.update({ id, tenantId }, dto)
   }
 
-  async deleteDoctor(id: number): Promise<void> {
-    await this.doctorRepository.delete(id)
+  async deleteDoctor(id: number, context?: Pick<IAuthUser, 'tenantId'>): Promise<void> {
+    await this.doctorRepository.delete({ id, tenantId: context?.tenantId ?? 1 })
   }
 
-  async getDoctors(bookableOnly = false): Promise<DoctorEntity[]> {
-    const where: FindOptionsWhere<DoctorEntity> = { status: 1 }
+  async getDoctors(bookableOnly = false, context?: Pick<IAuthUser, 'tenantId'>): Promise<DoctorEntity[]> {
+    const where: FindOptionsWhere<DoctorEntity> = { status: 1, tenantId: context?.tenantId ?? 1 }
     if (bookableOnly)
       where.bookable = 1
     return this.doctorRepository.find({
@@ -197,9 +221,11 @@ export class AppointmentService {
     })
   }
 
-  async shiftList(dto: QueryShiftDto) {
+  async shiftList(dto: QueryShiftDto, context?: Pick<IAuthUser, 'tenantId'>) {
     const { page = 1, pageSize = 10, keyword, code, name, status } = dto
+    const tenantId = context?.tenantId ?? 1
     const qb = this.shiftRepository.createQueryBuilder('s')
+      .andWhere('s.tenantId = :tenantId', { tenantId })
     if (keyword) {
       qb.andWhere('(s.code LIKE :kw OR s.name LIKE :kw OR s.remark LIKE :kw)', { kw: `%${keyword}%` })
     }
@@ -213,46 +239,54 @@ export class AppointmentService {
     return paginate(qb, { page, pageSize })
   }
 
-  async getActiveShifts() {
+  async getActiveShifts(context?: Pick<IAuthUser, 'tenantId'>) {
     return this.shiftRepository.find({
-      where: { status: 1 },
+      where: { status: 1, tenantId: context?.tenantId ?? 1 },
       order: { startTime: 'ASC', code: 'ASC' },
     })
   }
 
-  async createShift(dto: CreateShiftDto) {
-    await this.ensureShiftCodeAvailable(dto.code)
+  async createShift(dto: CreateShiftDto, context?: Pick<IAuthUser, 'tenantId'>) {
+    const tenantId = context?.tenantId ?? 1
+    await this.ensureShiftCodeAvailable(dto.code, undefined, tenantId)
     return this.shiftRepository.save(this.shiftRepository.create({
       ...dto,
+      tenantId,
       color: dto.color || '#1677ff',
       status: dto.status ?? 1,
     }))
   }
 
-  async updateShift(id: number, dto: UpdateShiftDto) {
-    const current = await this.shiftRepository.findOneBy({ id })
+  async updateShift(id: number, dto: UpdateShiftDto, context?: Pick<IAuthUser, 'tenantId'>) {
+    const tenantId = context?.tenantId ?? 1
+    const current = await this.shiftRepository.findOneBy({ id, tenantId })
     if (!current)
       throw new BusinessException('Shift not found')
     if (dto.code && dto.code !== current.code)
-      await this.ensureShiftCodeAvailable(dto.code, id)
-    await this.shiftRepository.update(id, dto)
+      await this.ensureShiftCodeAvailable(dto.code, id, tenantId)
+    await this.shiftRepository.update({ id, tenantId }, dto)
   }
 
-  async deleteShift(id: number) {
-    const used = await this.staffScheduleRepository.count({ where: { shiftId: id } })
+  async deleteShift(id: number, context?: Pick<IAuthUser, 'tenantId'>) {
+    const tenantId = context?.tenantId ?? 1
+    const used = await this.staffScheduleRepository.count({ where: { shiftId: id, tenantId } })
     if (used > 0)
       throw new BusinessException('Shift is used by schedules and cannot be deleted')
-    await this.shiftRepository.delete(id)
+    await this.shiftRepository.delete({ id, tenantId })
   }
 
-  async monthSchedules(dto: QueryStaffScheduleDto) {
+  async monthSchedules(dto: QueryStaffScheduleDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
+    const tenantId = context?.tenantId ?? 1
+    const areaId = context?.areaId ?? 1
     const { start, end } = this.resolveMonthRange(dto.month)
     const [doctors, shifts, schedules] = await Promise.all([
-      this.getDoctors(false),
-      this.getActiveShifts(),
+      this.getDoctors(false, { tenantId }),
+      this.getActiveShifts({ tenantId }),
       this.staffScheduleRepository.createQueryBuilder('s')
         .leftJoinAndSelect('s.shift', 'shift')
-        .where('s.scheduleDate BETWEEN :start AND :end', { start, end })
+        .where('s.tenantId = :tenantId', { tenantId })
+        .andWhere('s.areaId = :areaId', { areaId })
+        .andWhere('s.scheduleDate BETWEEN :start AND :end', { start, end })
         .getMany(),
     ])
     return {
@@ -263,13 +297,15 @@ export class AppointmentService {
     }
   }
 
-  async saveStaffSchedule(dto: SaveStaffScheduleDto) {
-    const doctor = await this.doctorRepository.findOneBy({ id: dto.doctorId, status: 1 })
+  async saveStaffSchedule(dto: SaveStaffScheduleDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
+    const tenantId = context?.tenantId ?? 1
+    const areaId = context?.areaId ?? 1
+    const doctor = await this.doctorRepository.findOneBy({ id: dto.doctorId, status: 1, tenantId })
     if (!doctor)
       throw new BusinessException('Medical staff not found')
 
     const existing = await this.staffScheduleRepository.findOne({
-      where: { doctorId: dto.doctorId, scheduleDate: dto.scheduleDate },
+      where: { doctorId: dto.doctorId, scheduleDate: dto.scheduleDate, tenantId, areaId },
     })
 
     if (!dto.shiftId) {
@@ -278,12 +314,14 @@ export class AppointmentService {
       return null
     }
 
-    const shift = await this.shiftRepository.findOneBy({ id: dto.shiftId, status: 1 })
+    const shift = await this.shiftRepository.findOneBy({ id: dto.shiftId, status: 1, tenantId })
     if (!shift)
       throw new BusinessException('Shift not found')
 
     const entity = this.staffScheduleRepository.create({
       ...(existing || {}),
+      tenantId,
+      areaId,
       doctorId: dto.doctorId,
       scheduleDate: dto.scheduleDate,
       shiftId: dto.shiftId,
@@ -301,8 +339,8 @@ export class AppointmentService {
     return 1
   }
 
-  private async validateCustomerPetRelation(customerId: number, petId: number) {
-    const pet = await this.petRepository.findOneBy({ id: petId })
+  private async validateCustomerPetRelation(customerId: number, petId: number, tenantId = 1) {
+    const pet = await this.petRepository.findOneBy({ id: petId, tenantId })
     if (!pet)
       throw new BusinessException('Pet not found')
     if (Number(pet.customerId) !== Number(customerId)) {
@@ -310,22 +348,22 @@ export class AppointmentService {
     }
   }
 
-  private async validateDoctor(doctorId?: number) {
+  private async validateDoctor(doctorId?: number, tenantId = 1) {
     if (!doctorId)
       return
-    const doctor = await this.doctorRepository.findOneBy({ id: doctorId, status: 1 })
+    const doctor = await this.doctorRepository.findOneBy({ id: doctorId, status: 1, tenantId })
     if (!doctor)
       throw new BusinessException('Medical staff not found')
     if (Number(doctor.bookable) !== 1)
       throw new BusinessException('Medical staff is not bookable')
   }
 
-  private async validateDoctorSchedule(doctorId?: number, appointmentTime?: string) {
+  private async validateDoctorSchedule(doctorId?: number, appointmentTime?: string, tenantId = 1, areaId = 1) {
     if (!doctorId || !appointmentTime)
       return
     const { date, time } = this.parseAppointmentDateTime(appointmentTime)
     const schedule = await this.staffScheduleRepository.findOne({
-      where: { doctorId, scheduleDate: date },
+      where: { doctorId, scheduleDate: date, tenantId, areaId },
       relations: ['shift'],
     })
     if (!schedule?.shift || Number(schedule.shift.status) !== 1)
@@ -386,10 +424,10 @@ export class AppointmentService {
     return doctor?.id ?? null
   }
 
-  private async ensureShiftCodeAvailable(code?: string, excludeId?: number) {
+  private async ensureShiftCodeAvailable(code?: string, excludeId?: number, tenantId = 1) {
     if (!code)
       return
-    const existing = await this.shiftRepository.findOneBy({ code })
+    const existing = await this.shiftRepository.findOneBy({ code, tenantId })
     if (existing && existing.id !== excludeId)
       throw new BusinessException('Shift code already exists')
   }

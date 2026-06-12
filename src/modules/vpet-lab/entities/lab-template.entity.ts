@@ -5,6 +5,9 @@ import { CommonEntity } from '~/common/entity/common.entity'
 @Index('idx_vpet_lab_template_active', ['isActive'])
 @Entity('vpet_lab_template')
 export class LabTemplateEntity extends CommonEntity {
+  @Column({ name: 'tenant_id', default: 1, comment: '租户 ID' })
+  tenantId: number
+
   @Column({ length: 50, unique: true })
   code: string
 

@@ -24,8 +24,9 @@ export class DictTypeService {
     pageSize,
     name,
     code,
-  }: DictTypeQueryDto): Promise<Pagination<DictTypeEntity>> {
+  }: DictTypeQueryDto, context?: Pick<IAuthUser, 'tenantId'>): Promise<Pagination<DictTypeEntity>> {
     const queryBuilder = this.dictTypeRepository.createQueryBuilder('dict_type').where({
+      tenantId: context?.tenantId ?? 1,
       ...(name && { name: Like(`%${name}%`) }),
       ...(code && { code: Like(`%${code}%`) }),
     })
@@ -34,8 +35,8 @@ export class DictTypeService {
   }
 
   /** 一次性获取所有的字典类型 */
-  async getAll() {
-    return this.dictTypeRepository.find()
+  async getAll(context?: Pick<IAuthUser, 'tenantId'>) {
+    return this.dictTypeRepository.find({ where: { tenantId: context?.tenantId ?? 1 } })
   }
 
   /**
@@ -48,28 +49,28 @@ export class DictTypeService {
   /**
    * 新增
    */
-  async create(dto: DictTypeDto): Promise<void> {
-    await this.dictTypeRepository.insert(dto)
+  async create(dto: DictTypeDto, context?: Pick<IAuthUser, 'tenantId'>): Promise<void> {
+    await this.dictTypeRepository.insert({ ...dto, tenantId: context?.tenantId ?? 1 })
   }
 
   /**
    * 更新
    */
-  async update(id: number, dto: Partial<DictTypeDto>): Promise<void> {
-    await this.dictTypeRepository.update(id, dto)
+  async update(id: number, dto: Partial<DictTypeDto>, context?: Pick<IAuthUser, 'tenantId'>): Promise<void> {
+    await this.dictTypeRepository.update({ id, tenantId: context?.tenantId ?? 1 }, dto)
   }
 
   /**
    * 删除
    */
-  async delete(id: number): Promise<void> {
-    await this.dictTypeRepository.delete(id)
+  async delete(id: number, context?: Pick<IAuthUser, 'tenantId'>): Promise<void> {
+    await this.dictTypeRepository.delete({ id, tenantId: context?.tenantId ?? 1 })
   }
 
   /**
    * 查询单个
    */
-  async findOne(id: number): Promise<DictTypeEntity> {
-    return this.dictTypeRepository.findOneBy({ id })
+  async findOne(id: number, context?: Pick<IAuthUser, 'tenantId'>): Promise<DictTypeEntity> {
+    return this.dictTypeRepository.findOneBy({ id, tenantId: context?.tenantId ?? 1 })
   }
 }

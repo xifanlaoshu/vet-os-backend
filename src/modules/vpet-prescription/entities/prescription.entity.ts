@@ -1,11 +1,18 @@
-import { Column, Entity, Index, OneToMany } from 'typeorm'
+import { Column, Entity, Index, JoinColumn, ManyToOne, OneToMany } from 'typeorm'
 import { CommonEntity } from '~/common/entity/common.entity'
+import { DoctorEntity } from '~/modules/vpet-appointment/entities/doctor.entity'
 import { RxDetailEntity } from './rx-detail.entity'
 
 @Index('idx_rx_visit', ['visitId'])
 @Index('idx_rx_batch', ['visitId', 'batchNo'])
 @Entity('vpet_prescription')
 export class PrescriptionEntity extends CommonEntity {
+  @Column({ name: 'tenant_id', default: 1, comment: '租户 ID' })
+  tenantId: number
+
+  @Column({ name: 'area_id', default: 1, comment: '院区 ID' })
+  areaId: number
+
   @Column({ length: 30, unique: true, name: 'rx_no' })
   rxNo: string
 
@@ -30,8 +37,16 @@ export class PrescriptionEntity extends CommonEntity {
   @Column({ name: 'doctor_id' })
   doctorId: number
 
+  @ManyToOne(() => DoctorEntity)
+  @JoinColumn({ name: 'doctor_id' })
+  doctor: DoctorEntity
+
   @Column({ nullable: true, name: 'pharmacist_id' })
   pharmacistId: number
+
+  @ManyToOne(() => DoctorEntity, { nullable: true })
+  @JoinColumn({ name: 'pharmacist_id' })
+  pharmacist: DoctorEntity | null
 
   @Column({ length: 30, nullable: true, name: 'batch_no' })
   batchNo: string | null

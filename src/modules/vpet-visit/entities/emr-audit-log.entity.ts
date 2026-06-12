@@ -1,5 +1,6 @@
 import { Column, Entity, Index, JoinColumn, ManyToOne } from 'typeorm'
 import { CommonEntity } from '~/common/entity/common.entity'
+import { DoctorEntity } from '~/modules/vpet-appointment/entities/doctor.entity'
 import { VisitEmrEntity } from './visit-emr.entity'
 import { VisitEntity } from './visit.entity'
 
@@ -7,6 +8,12 @@ import { VisitEntity } from './visit.entity'
 @Index('idx_vpet_emr_audit_action', ['action'])
 @Entity('vpet_emr_audit_log')
 export class EmrAuditLogEntity extends CommonEntity {
+  @Column({ name: 'tenant_id', default: 1, comment: '租户 ID' })
+  tenantId: number
+
+  @Column({ name: 'area_id', default: 1, comment: '院区 ID' })
+  areaId: number
+
   @Column({ name: 'visit_id' })
   visitId: number
 
@@ -35,4 +42,8 @@ export class EmrAuditLogEntity extends CommonEntity {
 
   @Column({ nullable: true, name: 'operator_id' })
   operatorId: number | null
+
+  @ManyToOne(() => DoctorEntity, { nullable: true })
+  @JoinColumn({ name: 'operator_id' })
+  operator: DoctorEntity | null
 }

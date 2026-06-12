@@ -1,11 +1,18 @@
 import { Column, Entity, Index, JoinColumn, ManyToOne } from 'typeorm'
 import { CommonEntity } from '~/common/entity/common.entity'
+import { DoctorEntity } from '~/modules/vpet-appointment/entities/doctor.entity'
 import { VisitEntity } from './visit.entity'
 
 @Index('idx_visit_progress_visit', ['visitId'])
 @Index('idx_visit_progress_batch_no', ['visitId', 'batchNo'], { unique: true })
 @Entity('vpet_visit_progress_batch')
 export class VisitProgressBatchEntity extends CommonEntity {
+  @Column({ name: 'tenant_id', default: 1, comment: '租户 ID' })
+  tenantId: number
+
+  @Column({ name: 'area_id', default: 1, comment: '院区 ID' })
+  areaId: number
+
   @Column({ name: 'visit_id' })
   visitId: number
 
@@ -39,4 +46,8 @@ export class VisitProgressBatchEntity extends CommonEntity {
 
   @Column({ nullable: true, name: 'recorded_by' })
   recordedBy: number | null
+
+  @ManyToOne(() => DoctorEntity, { nullable: true })
+  @JoinColumn({ name: 'recorded_by' })
+  recorder: DoctorEntity | null
 }

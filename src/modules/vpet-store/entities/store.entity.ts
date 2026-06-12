@@ -4,6 +4,12 @@ import { CommonEntity } from '~/common/entity/common.entity'
 @Index('idx_vpet_store_code', ['storeCode'], { unique: true })
 @Entity('vpet_store')
 export class StoreEntity extends CommonEntity {
+  @Column({ name: 'tenant_id', default: 1, comment: '租户 ID' })
+  tenantId: number
+
+  @Column({ name: 'area_id', default: 1, comment: '院区 ID' })
+  areaId: number
+
   @Column({ name: 'store_code', length: 30, unique: true })
   storeCode: string
 

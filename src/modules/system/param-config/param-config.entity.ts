@@ -5,6 +5,9 @@ import { CommonEntity } from '~/common/entity/common.entity'
 
 @Entity({ name: 'sys_config' })
 export class ParamConfigEntity extends CommonEntity {
+  @Column({ name: 'tenant_id', default: 1, comment: '租户 ID' })
+  tenantId: number
+
   @Column({ type: 'varchar', length: 50 })
   @ApiProperty({ description: '配置名' })
   name: string

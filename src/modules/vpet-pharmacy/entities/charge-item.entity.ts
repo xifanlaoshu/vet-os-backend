@@ -5,6 +5,9 @@ import { CommonEntity } from '~/common/entity/common.entity'
 @Index('idx_charge_item_category', ['category'])
 @Entity('vpet_charge_item')
 export class ChargeItemEntity extends CommonEntity {
+  @Column({ name: 'tenant_id', default: 1, comment: '租户 ID' })
+  tenantId: number
+
   @Column({ length: 30, unique: true, name: 'item_code' })
   itemCode: string
 

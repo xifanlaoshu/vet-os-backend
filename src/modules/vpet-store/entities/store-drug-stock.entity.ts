@@ -6,6 +6,12 @@ import { StoreEntity } from './store.entity'
 @Index('idx_vpet_store_stock_unique', ['storeId', 'drugId'], { unique: true })
 @Entity('vpet_store_drug_stock')
 export class StoreDrugStockEntity extends CommonEntity {
+  @Column({ name: 'tenant_id', default: 1, comment: '租户 ID' })
+  tenantId: number
+
+  @Column({ name: 'area_id', default: 1, comment: '院区 ID' })
+  areaId: number
+
   @Column({ name: 'store_id' })
   storeId: number
 

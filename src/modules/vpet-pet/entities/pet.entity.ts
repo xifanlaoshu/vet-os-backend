@@ -5,6 +5,12 @@ import { CustomerEntity } from '~/modules/vpet-customer/entities/customer.entity
 @Index('idx_pet_customer', ['customerId'])
 @Entity('vpet_pet')
 export class PetEntity extends CommonEntity {
+  @Column({ name: 'tenant_id', default: 1, comment: '租户 ID' })
+  tenantId: number
+
+  @Column({ name: 'home_area_id', nullable: true, comment: '常用院区 ID' })
+  homeAreaId: number | null
+
   @Column({ name: 'customer_id' })
   customerId: number
 

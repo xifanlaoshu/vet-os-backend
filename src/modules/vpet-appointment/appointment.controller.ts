@@ -16,19 +16,19 @@ export class AppointmentController {
   @Get()
   @ApiOperation({ summary: '预约列表' })
   async list(@Query() params: any, @AuthUser() user: IAuthUser) {
-    return this.apptService.list(params, user?.uid)
+    return this.apptService.list(params, user?.uid, user)
   }
 
   @Post()
   @ApiOperation({ summary: '新增预约' })
-  async create(@Body() dto: CreateAppointmentDto) {
-    return this.apptService.create(dto)
+  async create(@Body() dto: CreateAppointmentDto, @AuthUser() user: IAuthUser) {
+    return this.apptService.create(dto, user)
   }
 
   @Put(':id')
   @ApiOperation({ summary: '更新预约' })
-  async update(@IdParam() id: number, @Body() dto: UpdateAppointmentDto) {
-    await this.apptService.update(id, dto)
+  async update(@IdParam() id: number, @Body() dto: UpdateAppointmentDto, @AuthUser() user: IAuthUser) {
+    await this.apptService.update(id, dto, user)
   }
 
   @Post(':id/checkin')
@@ -38,87 +38,92 @@ export class AppointmentController {
     @Query('scope') scope: string | undefined,
     @AuthUser() user: IAuthUser,
   ) {
-    return this.apptService.checkin(id, { scope, currentUserId: user?.uid })
+    return this.apptService.checkin(id, {
+      scope,
+      currentUserId: user?.uid,
+      tenantId: user?.tenantId,
+      areaId: user?.areaId,
+    })
   }
 
   @Post(':id/cancel')
   @ApiOperation({ summary: '取消预约' })
-  async cancel(@IdParam() id: number) {
-    await this.apptService.cancel(id)
+  async cancel(@IdParam() id: number, @AuthUser() user: IAuthUser) {
+    await this.apptService.cancel(id, user)
   }
 
   // ---- 医护人员管理 ----
   @Get('doctors')
   @ApiOperation({ summary: '医护人员列表' })
-  async doctorList(@Query() dto: QueryDoctorDto) {
-    return this.apptService.doctorList(dto)
+  async doctorList(@Query() dto: QueryDoctorDto, @AuthUser() user: IAuthUser) {
+    return this.apptService.doctorList(dto, user)
   }
 
   @Get('doctors/all')
   @ApiOperation({ summary: '所有医护人员(不分页)' })
-  async getAllDoctors(@Query('bookableOnly') bookableOnly?: string) {
-    return this.apptService.getDoctors(bookableOnly === '1' || bookableOnly === 'true')
+  async getAllDoctors(@Query('bookableOnly') bookableOnly?: string, @AuthUser() user?: IAuthUser) {
+    return this.apptService.getDoctors(bookableOnly === '1' || bookableOnly === 'true', user)
   }
 
   @Post('doctors')
   @ApiOperation({ summary: '新增医护人员' })
-  async createDoctor(@Body() dto: CreateDoctorDto) {
-    return this.apptService.createDoctor(dto)
+  async createDoctor(@Body() dto: CreateDoctorDto, @AuthUser() user: IAuthUser) {
+    return this.apptService.createDoctor(dto, user)
   }
 
   @Put('doctors/:id')
   @ApiOperation({ summary: '更新医护人员' })
-  async updateDoctor(@IdParam() id: number, @Body() dto: UpdateDoctorDto) {
-    await this.apptService.updateDoctor(id, dto)
+  async updateDoctor(@IdParam() id: number, @Body() dto: UpdateDoctorDto, @AuthUser() user: IAuthUser) {
+    await this.apptService.updateDoctor(id, dto, user)
   }
 
   @Delete('doctors/:id')
   @ApiOperation({ summary: '删除医护人员' })
-  async deleteDoctor(@IdParam() id: number) {
-    await this.apptService.deleteDoctor(id)
+  async deleteDoctor(@IdParam() id: number, @AuthUser() user: IAuthUser) {
+    await this.apptService.deleteDoctor(id, user)
   }
 
   // ---- 班次管理 ----
   @Get('shifts')
   @ApiOperation({ summary: '班次列表' })
-  async shiftList(@Query() dto: QueryShiftDto) {
-    return this.apptService.shiftList(dto)
+  async shiftList(@Query() dto: QueryShiftDto, @AuthUser() user: IAuthUser) {
+    return this.apptService.shiftList(dto, user)
   }
 
   @Get('shifts/active')
   @ApiOperation({ summary: '启用班次' })
-  async activeShifts() {
-    return this.apptService.getActiveShifts()
+  async activeShifts(@AuthUser() user: IAuthUser) {
+    return this.apptService.getActiveShifts(user)
   }
 
   @Post('shifts')
   @ApiOperation({ summary: '新增班次' })
-  async createShift(@Body() dto: CreateShiftDto) {
-    return this.apptService.createShift(dto)
+  async createShift(@Body() dto: CreateShiftDto, @AuthUser() user: IAuthUser) {
+    return this.apptService.createShift(dto, user)
   }
 
   @Put('shifts/:id')
   @ApiOperation({ summary: '更新班次' })
-  async updateShift(@IdParam() id: number, @Body() dto: UpdateShiftDto) {
-    await this.apptService.updateShift(id, dto)
+  async updateShift(@IdParam() id: number, @Body() dto: UpdateShiftDto, @AuthUser() user: IAuthUser) {
+    await this.apptService.updateShift(id, dto, user)
   }
 
   @Delete('shifts/:id')
   @ApiOperation({ summary: '删除班次' })
-  async deleteShift(@IdParam() id: number) {
-    await this.apptService.deleteShift(id)
+  async deleteShift(@IdParam() id: number, @AuthUser() user: IAuthUser) {
+    await this.apptService.deleteShift(id, user)
   }
 
   // ---- 排班管理 ----
   @Get('schedules/month')
   @ApiOperation({ summary: '月度排班' })
-  async monthSchedules(@Query() dto: QueryStaffScheduleDto) {
-    return this.apptService.monthSchedules(dto)
+  async monthSchedules(@Query() dto: QueryStaffScheduleDto, @AuthUser() user: IAuthUser) {
+    return this.apptService.monthSchedules(dto, user)
   }
 
   @Post('schedules')
   @ApiOperation({ summary: '保存单日排班' })
-  async saveStaffSchedule(@Body() dto: SaveStaffScheduleDto) {
-    return this.apptService.saveStaffSchedule(dto)
+  async saveStaffSchedule(@Body() dto: SaveStaffScheduleDto, @AuthUser() user: IAuthUser) {
+    return this.apptService.saveStaffSchedule(dto, user)
   }
 }

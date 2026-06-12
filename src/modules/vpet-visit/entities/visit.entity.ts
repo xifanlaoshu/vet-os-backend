@@ -17,6 +17,12 @@ import { VisitQueueEventEntity } from './visit-queue-event.entity'
 @Index('idx_visit_no', ['visitNo'], { unique: true })
 @Entity('vpet_visit')
 export class VisitEntity extends CommonEntity {
+  @Column({ name: 'tenant_id', default: 1, comment: '租户 ID' })
+  tenantId: number
+
+  @Column({ name: 'area_id', default: 1, comment: '院区 ID' })
+  areaId: number
+
   @Column({ length: 20, unique: true, name: 'visit_no' })
   visitNo: string
 

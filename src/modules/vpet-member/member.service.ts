@@ -24,8 +24,13 @@ export class MemberService {
     private customerRepository: Repository<CustomerEntity>,
   ) {}
 
-  async openCard(dto: OpenCardDto): Promise<MemberCardEntity> {
-    const existing = await this.cardRepository.findOneBy({ customerId: dto.customerId })
+  async openCard(dto: OpenCardDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>): Promise<MemberCardEntity> {
+    const tenantId = context?.tenantId ?? 1
+    const areaId = context?.areaId ?? 1
+    const customer = await this.customerRepository.findOneBy({ id: dto.customerId, tenantId })
+    if (!customer)
+      throw new BadRequestException('Customer not found')
+    const existing = await this.cardRepository.findOneBy({ customerId: dto.customerId, tenantId })
     if (existing)
       throw new BadRequestException('Member card already exists for this customer')
 
@@ -33,6 +38,7 @@ export class MemberService {
     const giftAmount = dto.giftAmount ?? 0
 
     const card = this.cardRepository.create({
+      tenantId,
       customerId: dto.customerId,
       cardNo: await this.generateCardNo(),
       level: dto.level ?? 1,
@@ -45,6 +51,8 @@ export class MemberService {
 
     if (initialBalance > 0) {
       await this.logRepository.save({
+        tenantId,
+        areaId,
         cardId: saved.id,
         type: 1,
         amount: initialBalance,
@@ -58,11 +66,13 @@ export class MemberService {
     return saved
   }
 
-  async listCards(dto: QueryMemberCardDto) {
+  async listCards(dto: QueryMemberCardDto, context?: Pick<IAuthUser, 'tenantId'>) {
     const { page = 1, pageSize = 10, keyword, customerId, status, level } = dto
+    const tenantId = context?.tenantId ?? 1
     const queryBuilder = this.cardRepository
       .createQueryBuilder('card')
-      .leftJoin(CustomerEntity, 'customer', 'customer.id = card.customerId')
+      .leftJoin(CustomerEntity, 'customer', 'customer.id = card.customerId AND customer.tenantId = card.tenantId')
+      .where('card.tenantId = :tenantId', { tenantId })
       .addSelect([
         'customer.id',
         'customer.name',
@@ -107,16 +117,18 @@ export class MemberService {
     }
   }
 
-  async getCardByCustomer(customerId: number): Promise<MemberCardEntity | null> {
-    return this.cardRepository.findOneBy({ customerId })
+  async getCardByCustomer(customerId: number, context?: Pick<IAuthUser, 'tenantId'>): Promise<MemberCardEntity | null> {
+    return this.cardRepository.findOneBy({ customerId, tenantId: context?.tenantId ?? 1 })
   }
 
-  async getCardById(id: number): Promise<MemberCardEntity | null> {
-    return this.cardRepository.findOneBy({ id })
+  async getCardById(id: number, context?: Pick<IAuthUser, 'tenantId'>): Promise<MemberCardEntity | null> {
+    return this.cardRepository.findOneBy({ id, tenantId: context?.tenantId ?? 1 })
   }
 
-  async recharge(cardId: number, dto: RechargeDto): Promise<MemberCardEntity> {
-    const card = await this.cardRepository.findOneBy({ id: cardId })
+  async recharge(cardId: number, dto: RechargeDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>): Promise<MemberCardEntity> {
+    const tenantId = context?.tenantId ?? 1
+    const areaId = context?.areaId ?? 1
+    const card = await this.cardRepository.findOneBy({ id: cardId, tenantId })
     if (!card)
       throw new BadRequestException('Member card not found')
 
@@ -126,6 +138,8 @@ export class MemberService {
 
     await this.cardRepository.save(card)
     await this.logRepository.save({
+      tenantId,
+      areaId,
       cardId,
       type: 1,
       amount: dto.amount,
@@ -139,8 +153,10 @@ export class MemberService {
     return card
   }
 
-  async deduct(cardId: number, dto: DeductDto): Promise<MemberCardEntity> {
-    const card = await this.cardRepository.findOneBy({ id: cardId })
+  async deduct(cardId: number, dto: DeductDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>): Promise<MemberCardEntity> {
+    const tenantId = context?.tenantId ?? 1
+    const areaId = context?.areaId ?? 1
+    const card = await this.cardRepository.findOneBy({ id: cardId, tenantId })
     if (!card)
       throw new BadRequestException('Member card not found')
     if (Number(card.balance) < dto.amount)
@@ -152,6 +168,8 @@ export class MemberService {
 
     await this.cardRepository.save(card)
     await this.logRepository.save({
+      tenantId,
+      areaId,
       cardId,
       type: 3,
       amount: dto.amount,
@@ -166,8 +184,10 @@ export class MemberService {
     return card
   }
 
-  async getCardLogs(cardId: number, dto: QueryMemberCardLogDto) {
-    const card = await this.cardRepository.findOneBy({ id: cardId })
+  async getCardLogs(cardId: number, dto: QueryMemberCardLogDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
+    const tenantId = context?.tenantId ?? 1
+    const areaId = context?.areaId ?? 1
+    const card = await this.cardRepository.findOneBy({ id: cardId, tenantId })
     if (!card)
       throw new BadRequestException('Member card not found')
 
@@ -175,11 +195,13 @@ export class MemberService {
     const items = await paginate(
       this.logRepository.createQueryBuilder('log')
         .where('log.cardId = :cardId', { cardId })
+        .andWhere('log.tenantId = :tenantId', { tenantId })
+        .andWhere('log.areaId = :areaId', { areaId })
         .orderBy('log.createdAt', 'DESC'),
       { page, pageSize },
     )
 
-    const customer = await this.customerRepository.findOneBy({ id: card.customerId })
+    const customer = await this.customerRepository.findOneBy({ id: card.customerId, tenantId })
     return {
       ...items,
       card: {
@@ -189,8 +211,8 @@ export class MemberService {
     }
   }
 
-  async getBalance(customerId: number): Promise<{ cardNo: string, balance: number, points: number } | null> {
-    const card = await this.cardRepository.findOneBy({ customerId })
+  async getBalance(customerId: number, context?: Pick<IAuthUser, 'tenantId'>): Promise<{ cardNo: string, balance: number, points: number } | null> {
+    const card = await this.cardRepository.findOneBy({ customerId, tenantId: context?.tenantId ?? 1 })
     if (!card)
       return null
     return { cardNo: card.cardNo, balance: Number(card.balance), points: card.points }

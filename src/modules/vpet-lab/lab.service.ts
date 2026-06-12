@@ -34,13 +34,17 @@ export class LabService {
     private doctorRepository: Repository<DoctorEntity>,
   ) {}
 
-  async list(dto: QueryLabOrderDto) {
+  async list(dto: QueryLabOrderDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
     const { page = 1, pageSize = 10, visitId, doctorId, status, keyword } = dto
+    const tenantId = context?.tenantId ?? 1
+    const areaId = context?.areaId ?? 1
     const qb = this.labOrderRepository.createQueryBuilder('lab')
       .leftJoinAndSelect('lab.pet', 'pet')
       .leftJoinAndSelect('lab.customer', 'customer')
       .leftJoinAndSelect('lab.doctor', 'doctor')
       .leftJoinAndSelect('lab.lisOrder', 'lisOrder')
+      .where('lab.tenantId = :tenantId', { tenantId })
+      .andWhere('lab.areaId = :areaId', { areaId })
 
     if (visitId)
       qb.andWhere('lab.visitId = :visitId', { visitId })
@@ -62,22 +66,24 @@ export class LabService {
     return paginate(qb, { page, pageSize })
   }
 
-  async create(dto: CreateLabOrderDto) {
+  async create(dto: CreateLabOrderDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
+    const tenantId = context?.tenantId ?? 1
+    const areaId = context?.areaId ?? 1
     const visit = await this.visitRepository.findOne({
-      where: { id: dto.visitId },
+      where: { id: dto.visitId, tenantId, areaId },
       relations: ['customer', 'pet'],
     })
     if (!visit)
       throw new BusinessException('Visit not found')
 
     const template = dto.templateId
-      ? await this.labTemplateRepository.findOneBy({ id: dto.templateId })
+      ? await this.labTemplateRepository.findOneBy({ id: dto.templateId, tenantId })
       : null
 
     const [customer, pet, doctor] = await Promise.all([
-      this.customerRepository.findOneBy({ id: dto.customerId ?? visit.customerId }),
-      this.petRepository.findOneBy({ id: dto.petId ?? visit.petId }),
-      (dto.doctorId ?? visit.doctorId) ? this.doctorRepository.findOneBy({ id: dto.doctorId ?? visit.doctorId }) : Promise.resolve(null),
+      this.customerRepository.findOneBy({ id: dto.customerId ?? visit.customerId, tenantId }),
+      this.petRepository.findOneBy({ id: dto.petId ?? visit.petId, tenantId }),
+      (dto.doctorId ?? visit.doctorId) ? this.doctorRepository.findOneBy({ id: dto.doctorId ?? visit.doctorId, tenantId }) : Promise.resolve(null),
     ])
 
     if (!customer)
@@ -92,6 +98,8 @@ export class LabService {
     }
 
     const order = this.labOrderRepository.create({
+      tenantId,
+      areaId,
       orderNo: await this.generateLabOrderNo(),
       visitId: dto.visitId,
       customerId: customer.id,
@@ -133,6 +141,8 @@ export class LabService {
           }
         : null,
       resultItems: this.resolveInitialItems(dto.items, template).flatMap((item, index) => this.labResultItemRepository.create({
+        tenantId,
+        areaId,
         ...item,
         flag: item.flag ?? this.resolveFlag(item.resultValue, item.refMin, item.refMax),
         displayOrder: index,
@@ -140,26 +150,30 @@ export class LabService {
     })
 
     const saved = await this.labOrderRepository.save(order)
-    return this.getDetail(saved.id)
+    return this.getDetail(saved.id, { tenantId, areaId })
   }
 
-  async getDetail(id: number) {
+  async getDetail(id: number, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
     return this.labOrderRepository.findOne({
-      where: { id },
+      where: { id, tenantId: context?.tenantId ?? 1, areaId: context?.areaId ?? 1 },
       relations: ['pet', 'customer', 'doctor', 'resultItems', 'lisOrder'],
     })
   }
 
-  async saveReport(id: number, dto: UpdateLabReportDto) {
+  async saveReport(id: number, dto: UpdateLabReportDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
+    const tenantId = context?.tenantId ?? 1
+    const areaId = context?.areaId ?? 1
     const order = await this.labOrderRepository.findOne({
-      where: { id },
+      where: { id, tenantId, areaId },
       relations: ['resultItems'],
     })
     if (!order)
       throw new BusinessException('Lab order not found')
 
-    await this.labResultItemRepository.delete({ labOrderId: id })
+    await this.labResultItemRepository.delete({ labOrderId: id, tenantId, areaId })
     const items = dto.items.map((item, index) => this.labResultItemRepository.create({
+      tenantId,
+      areaId,
       labOrderId: id,
       itemCode: item.itemCode,
       itemName: item.itemName,
@@ -173,7 +187,7 @@ export class LabService {
     await this.labResultItemRepository.save(items)
 
     const abnormalCount = items.filter(item => ['H', 'L'].includes(String(item.flag || '').toUpperCase())).length
-    await this.labOrderRepository.update(id, {
+    await this.labOrderRepository.update({ id, tenantId, areaId }, {
       sampledAt: dto.sampledAt ?? order.sampledAt ?? new Date().toISOString(),
       reportedAt: dto.reportedAt ?? new Date().toISOString(),
       reportSummary: dto.reportSummary,
@@ -183,29 +197,31 @@ export class LabService {
       rawReportFiles: dto.rawReportFiles ?? order.rawReportFiles ?? null,
     })
 
-    const lisOrder = await this.lisOrderRepository.findOneBy({ labOrderId: id })
+    const lisOrder = await this.lisOrderRepository.findOneBy({ labOrderId: id, tenantId, areaId })
     if (lisOrder) {
-      await this.lisOrderRepository.update(lisOrder.id, {
+      await this.lisOrderRepository.update({ id: lisOrder.id, tenantId, areaId }, {
         status: 4,
         receivedAt: new Date().toISOString(),
       })
     }
 
-    return this.getDetail(id)
+    return this.getDetail(id, { tenantId, areaId })
   }
 
-  async listTemplates() {
+  async listTemplates(context?: Pick<IAuthUser, 'tenantId'>) {
     return this.labTemplateRepository.find({
-      where: { isActive: 1 },
+      where: { isActive: 1, tenantId: context?.tenantId ?? 1 },
       order: { category: 'ASC', name: 'ASC' },
     })
   }
 
-  async createTemplate(dto: CreateLabTemplateDto) {
-    const existing = await this.labTemplateRepository.findOneBy({ code: dto.code })
+  async createTemplate(dto: CreateLabTemplateDto, context?: Pick<IAuthUser, 'tenantId'>) {
+    const tenantId = context?.tenantId ?? 1
+    const existing = await this.labTemplateRepository.findOneBy({ code: dto.code, tenantId })
     if (existing)
       throw new BusinessException('Lab template code already exists')
     const template = this.labTemplateRepository.create({
+      tenantId,
       code: dto.code,
       name: dto.name,
       category: dto.category ?? 1,
@@ -222,12 +238,13 @@ export class LabService {
     return this.labTemplateRepository.save(template)
   }
 
-  async updateTemplate(id: number, dto: UpdateLabTemplateDto) {
-    const current = await this.labTemplateRepository.findOneBy({ id })
+  async updateTemplate(id: number, dto: UpdateLabTemplateDto, context?: Pick<IAuthUser, 'tenantId'>) {
+    const tenantId = context?.tenantId ?? 1
+    const current = await this.labTemplateRepository.findOneBy({ id, tenantId })
     if (!current)
       throw new BusinessException('Lab template not found')
     if (dto.code && dto.code !== current.code) {
-      const existing = await this.labTemplateRepository.findOneBy({ code: dto.code })
+      const existing = await this.labTemplateRepository.findOneBy({ code: dto.code, tenantId })
       if (existing)
         throw new BusinessException('Lab template code already exists')
     }
@@ -259,25 +276,30 @@ export class LabService {
       payload.isActive = dto.isActive
 
     if (Object.keys(payload).length > 0)
-      await this.labTemplateRepository.update(id, payload)
-    return this.labTemplateRepository.findOneBy({ id })
+      await this.labTemplateRepository.update({ id, tenantId }, payload)
+    return this.labTemplateRepository.findOneBy({ id, tenantId })
   }
 
-  async disableTemplate(id: number) {
-    const current = await this.labTemplateRepository.findOneBy({ id })
+  async disableTemplate(id: number, context?: Pick<IAuthUser, 'tenantId'>) {
+    const tenantId = context?.tenantId ?? 1
+    const current = await this.labTemplateRepository.findOneBy({ id, tenantId })
     if (!current)
       throw new BusinessException('Lab template not found')
-    await this.labTemplateRepository.update(id, { isActive: 0 })
+    await this.labTemplateRepository.update({ id, tenantId }, { isActive: 0 })
   }
 
-  async submitLisOrder(id: number, dto: SubmitLisOrderDto) {
-    const order = await this.labOrderRepository.findOneBy({ id })
+  async submitLisOrder(id: number, dto: SubmitLisOrderDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
+    const tenantId = context?.tenantId ?? 1
+    const areaId = context?.areaId ?? 1
+    const order = await this.labOrderRepository.findOneBy({ id, tenantId, areaId })
     if (!order)
       throw new BusinessException('Lab order not found')
 
-    let lisOrder = await this.lisOrderRepository.findOneBy({ labOrderId: id })
+    let lisOrder = await this.lisOrderRepository.findOneBy({ labOrderId: id, tenantId, areaId })
     if (!lisOrder) {
       lisOrder = this.lisOrderRepository.create({
+        tenantId,
+        areaId,
         labOrderId: id,
         barcode: dto.barcode || await this.generateBarcode(),
         deviceCode: dto.deviceCode,
@@ -293,8 +315,8 @@ export class LabService {
     }
 
     await this.lisOrderRepository.save(lisOrder)
-    await this.labOrderRepository.update(id, { status: 2, sampledAt: order.sampledAt ?? new Date().toISOString() })
-    return this.getDetail(id)
+    await this.labOrderRepository.update({ id, tenantId, areaId }, { status: 2, sampledAt: order.sampledAt ?? new Date().toISOString() })
+    return this.getDetail(id, { tenantId, areaId })
   }
 
   private resolveFlag(resultValue?: string, refMin?: number, refMax?: number) {

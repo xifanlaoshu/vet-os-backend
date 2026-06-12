@@ -33,41 +33,52 @@ export class StoreService {
     private dataSource: DataSource,
   ) {}
 
-  async listStores(dto: QueryStoreDto) {
+  async listStores(dto: QueryStoreDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
     const { page = 1, pageSize = 10, keyword } = dto
+    const tenantId = context?.tenantId ?? 1
+    const areaId = context?.areaId ?? 1
     const qb = this.storeRepository.createQueryBuilder('store')
+      .where('store.tenantId = :tenantId', { tenantId })
+      .andWhere('store.areaId = :areaId', { areaId })
     if (keyword) {
-      qb.where('store.storeCode LIKE :keyword OR store.storeName LIKE :keyword', { keyword: `%${keyword}%` })
+      qb.andWhere('store.storeCode LIKE :keyword OR store.storeName LIKE :keyword', { keyword: `%${keyword}%` })
     }
     qb.orderBy('store.createdAt', 'DESC')
     return paginate(qb, { page, pageSize })
   }
 
-  async createStore(dto: CreateStoreDto) {
-    return this.storeRepository.save(this.storeRepository.create({ ...dto, status: 1 }))
+  async createStore(dto: CreateStoreDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
+    return this.storeRepository.save(this.storeRepository.create({
+      ...dto,
+      tenantId: context?.tenantId ?? 1,
+      areaId: context?.areaId ?? 1,
+      status: 1,
+    }))
   }
 
-  async listStock(storeId: number) {
+  async listStock(storeId: number, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
     return this.stockRepository.find({
-      where: { storeId },
+      where: { storeId, tenantId: context?.tenantId ?? 1, areaId: context?.areaId ?? 1 },
       relations: ['drug'],
       order: { updatedAt: 'DESC' },
     })
   }
 
-  async setStock(storeId: number, dto: SetStoreStockDto) {
+  async setStock(storeId: number, dto: SetStoreStockDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
+    const tenantId = context?.tenantId ?? 1
+    const areaId = context?.areaId ?? 1
     const [store, drug] = await Promise.all([
-      this.storeRepository.findOneBy({ id: storeId }),
-      this.drugRepository.findOneBy({ id: dto.drugId }),
+      this.storeRepository.findOneBy({ id: storeId, tenantId, areaId }),
+      this.drugRepository.findOneBy({ id: dto.drugId, tenantId }),
     ])
     if (!store)
       throw new BusinessException('Store not found')
     if (!drug)
       throw new BusinessException('Drug not found')
 
-    let stock = await this.stockRepository.findOneBy({ storeId, drugId: dto.drugId })
+    let stock = await this.stockRepository.findOneBy({ storeId, drugId: dto.drugId, tenantId, areaId })
     if (!stock) {
-      stock = this.stockRepository.create({ storeId, drugId: dto.drugId, quantity: dto.quantity, safetyStock: dto.safetyStock ?? 0 })
+      stock = this.stockRepository.create({ tenantId, areaId, storeId, drugId: dto.drugId, quantity: dto.quantity, safetyStock: dto.safetyStock ?? 0 })
     }
     else {
       stock.quantity = dto.quantity
@@ -76,25 +87,29 @@ export class StoreService {
     return this.stockRepository.save(stock)
   }
 
-  async listTransfers(dto: QueryStoreDto) {
+  async listTransfers(dto: QueryStoreDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
     const { page = 1, pageSize = 10 } = dto
     const qb = this.transferRepository.createQueryBuilder('transfer')
       .leftJoinAndSelect('transfer.sourceStore', 'sourceStore')
       .leftJoinAndSelect('transfer.targetStore', 'targetStore')
       .leftJoinAndSelect('transfer.items', 'items')
+      .where('transfer.tenantId = :tenantId', { tenantId: context?.tenantId ?? 1 })
+      .andWhere('transfer.areaId = :areaId', { areaId: context?.areaId ?? 1 })
     qb.orderBy('transfer.createdAt', 'DESC')
     return paginate(qb, { page, pageSize })
   }
 
-  async createTransfer(dto: CreateTransferDto) {
+  async createTransfer(dto: CreateTransferDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
+    const tenantId = context?.tenantId ?? 1
+    const areaId = context?.areaId ?? 1
     if (dto.sourceStoreId === dto.targetStoreId) {
       throw new BusinessException('Source and target store must be different')
     }
 
     const items = await Promise.all(dto.items.map(async (item) => {
       const [stock, drug] = await Promise.all([
-        this.stockRepository.findOneBy({ storeId: dto.sourceStoreId, drugId: item.drugId }),
-        this.drugRepository.findOneBy({ id: item.drugId }),
+        this.stockRepository.findOneBy({ storeId: dto.sourceStoreId, drugId: item.drugId, tenantId, areaId }),
+        this.drugRepository.findOneBy({ id: item.drugId, tenantId }),
       ])
       if (!drug)
         throw new BusinessException(`Drug not found: ${item.drugId}`)
@@ -102,6 +117,8 @@ export class StoreService {
         throw new BusinessException(`Insufficient stock for drug ${drug.drugName}`)
       }
       return this.transferItemRepository.create({
+        tenantId,
+        areaId,
         drugId: drug.id,
         drugName: drug.drugName,
         specification: drug.specification,
@@ -112,6 +129,8 @@ export class StoreService {
     }))
 
     return this.transferRepository.save(this.transferRepository.create({
+      tenantId,
+      areaId,
       transferNo: generateTransferNo(),
       sourceStoreId: dto.sourceStoreId,
       targetStoreId: dto.targetStoreId,
@@ -123,26 +142,30 @@ export class StoreService {
     }))
   }
 
-  async approveTransfer(id: number, dto: ApproveTransferDto) {
-    await this.transferRepository.update(id, {
+  async approveTransfer(id: number, dto: ApproveTransferDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
+    const tenantId = context?.tenantId ?? 1
+    const areaId = context?.areaId ?? 1
+    await this.transferRepository.update({ id, tenantId, areaId }, {
       status: 2,
       approvedBy: dto.approvedBy ?? null,
       approvedAt: new Date().toISOString(),
     })
     return this.transferRepository.findOne({
-      where: { id },
+      where: { id, tenantId, areaId },
       relations: ['items', 'sourceStore', 'targetStore'],
     })
   }
 
-  async completeTransfer(id: number) {
+  async completeTransfer(id: number, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
+    const tenantId = context?.tenantId ?? 1
+    const areaId = context?.areaId ?? 1
     return this.dataSource.transaction(async (manager) => {
       const transferRepository = manager.getRepository(DrugTransferEntity)
       const transferItemRepository = manager.getRepository(DrugTransferItemEntity)
       const stockRepository = manager.getRepository(StoreDrugStockEntity)
 
       const transfer = await transferRepository.findOne({
-        where: { id },
+        where: { id, tenantId, areaId },
         relations: ['items'],
       })
       if (!transfer)
@@ -152,18 +175,20 @@ export class StoreService {
       if (Number(transfer.status) !== 2)
         throw new BusinessException('Transfer must be approved before completion')
 
-      const items = await transferItemRepository.find({ where: { transferId: id } })
+      const items = await transferItemRepository.find({ where: { transferId: id, tenantId, areaId } })
       for (const item of items) {
-        const sourceStock = await stockRepository.findOneBy({ storeId: transfer.sourceStoreId, drugId: item.drugId })
+        const sourceStock = await stockRepository.findOneBy({ storeId: transfer.sourceStoreId, drugId: item.drugId, tenantId, areaId })
         if (!sourceStock || Number(sourceStock.quantity) < Number(item.quantity)) {
           throw new BusinessException(`Insufficient source stock for ${item.drugName}`)
         }
         sourceStock.quantity = Number(sourceStock.quantity) - Number(item.quantity)
         await stockRepository.save(sourceStock)
 
-        let targetStock = await stockRepository.findOneBy({ storeId: transfer.targetStoreId, drugId: item.drugId })
+        let targetStock = await stockRepository.findOneBy({ storeId: transfer.targetStoreId, drugId: item.drugId, tenantId, areaId })
         if (!targetStock) {
           targetStock = stockRepository.create({
+            tenantId,
+            areaId,
             storeId: transfer.targetStoreId,
             drugId: item.drugId,
             quantity: item.quantity,
@@ -176,12 +201,12 @@ export class StoreService {
         await stockRepository.save(targetStock)
       }
 
-      await transferRepository.update(id, {
+      await transferRepository.update({ id, tenantId, areaId }, {
         status: 3,
         completedAt: new Date().toISOString(),
       })
       return transferRepository.findOne({
-        where: { id },
+        where: { id, tenantId, areaId },
         relations: ['items', 'sourceStore', 'targetStore'],
       })
     })

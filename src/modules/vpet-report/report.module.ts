@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common'
 import { TypeOrmModule } from '@nestjs/typeorm'
 import { AppointmentEntity } from '../vpet-appointment/entities/appointment.entity'
+import { DoctorEntity } from '../vpet-appointment/entities/doctor.entity'
 import { BillingPaymentEntity } from '../vpet-billing/entities/billing-payment.entity'
 import { CustomerEntity } from '../vpet-customer/entities/customer.entity'
 import { HospitalizationEntity } from '../vpet-hospitalization/entities/hospitalization.entity'
@@ -18,6 +19,7 @@ import { ReportService } from './report.service'
   imports: [
     TypeOrmModule.forFeature([
       AppointmentEntity,
+      DoctorEntity,
       VisitEntity,
       BillingPaymentEntity,
       PrescriptionEntity,

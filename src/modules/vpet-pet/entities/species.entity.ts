@@ -3,6 +3,9 @@ import { CommonEntity } from '~/common/entity/common.entity'
 
 @Entity('vpet_species')
 export class SpeciesEntity {
+  @Column({ name: 'tenant_id', default: 1, comment: '租户 ID' })
+  tenantId: number
+
   @PrimaryColumn({ length: 20 })
   code: string
 
@@ -12,6 +15,9 @@ export class SpeciesEntity {
 
 @Entity('vpet_breed')
 export class BreedEntity extends CommonEntity {
+  @Column({ name: 'tenant_id', default: 1, comment: '租户 ID' })
+  tenantId: number
+
   @Column({ length: 20, name: 'species_code' })
   speciesCode: string
 

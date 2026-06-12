@@ -8,6 +8,9 @@ import { MenuEntity } from '../menu/menu.entity'
 
 @Entity({ name: 'sys_role' })
 export class RoleEntity extends CompleteEntity {
+  @Column({ name: 'tenant_id', default: 1 })
+  tenantId: number
+
   @Column({ length: 50, unique: true })
   @ApiProperty({ description: '角色名' })
   name: string

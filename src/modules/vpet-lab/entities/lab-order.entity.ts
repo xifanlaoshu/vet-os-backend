@@ -12,6 +12,12 @@ import { LisOrderEntity } from './lis-order.entity'
 @Index('idx_vpet_lab_status', ['status'])
 @Entity('vpet_lab_order')
 export class LabOrderEntity extends CommonEntity {
+  @Column({ name: 'tenant_id', default: 1, comment: '租户 ID' })
+  tenantId: number
+
+  @Column({ name: 'area_id', default: 1, comment: '院区 ID' })
+  areaId: number
+
   @Column({ name: 'order_no', length: 30, unique: true })
   orderNo: string
 

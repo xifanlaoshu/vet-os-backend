@@ -31,15 +31,19 @@ export class VisitController {
   @Post()
   @ApiOperation({ summary: '创建就诊(挂号)' })
   @ApiResult({ type: VisitEntity })
-  async create(@Body() dto: CreateVisitDto) {
-    return this.visitService.createVisit(dto)
+  async create(@Body() dto: CreateVisitDto, @AuthUser() user: IAuthUser) {
+    return this.visitService.createVisit({
+      ...dto,
+      tenantId: user?.tenantId,
+      areaId: user?.areaId,
+    } as any)
   }
 
   @Get()
   @ApiOperation({ summary: '就诊列表' })
   @ApiResult({ type: [VisitEntity], isPage: true })
   async list(@Query() dto: QueryVisitDto, @AuthUser() user: IAuthUser) {
-    return this.visitService.queryList(dto, user?.uid)
+    return this.visitService.queryList(dto, user?.uid, user)
   }
 
   @Get('queue')
@@ -49,7 +53,13 @@ export class VisitController {
     @Query('scope') scope: string | undefined,
     @AuthUser() user: IAuthUser,
   ) {
-    return this.visitService.getTodayQueue({ doctorId, scope, currentUserId: user?.uid })
+    return this.visitService.getTodayQueue({
+      doctorId,
+      scope,
+      currentUserId: user?.uid,
+      tenantId: user?.tenantId,
+      areaId: user?.areaId,
+    })
   }
 
   @Get('diagnosis-codes')
@@ -57,32 +67,33 @@ export class VisitController {
   async searchDiagnosisCodes(
     @Query('keyword') keyword?: string,
     @Query('species') species?: string,
+    @AuthUser() user?: IAuthUser,
   ) {
-    return this.visitService.searchDiagnosisCodes({ keyword, species })
+    return this.visitService.searchDiagnosisCodes({ keyword, species }, user)
   }
 
   @Get('diagnosis-codes/page')
   @ApiOperation({ summary: 'Diagnosis code master data page' })
-  async listDiagnosisCodes(@Query() dto: QueryDiagnosisCodeDto) {
-    return this.visitService.listDiagnosisCodes(dto)
+  async listDiagnosisCodes(@Query() dto: QueryDiagnosisCodeDto, @AuthUser() user: IAuthUser) {
+    return this.visitService.listDiagnosisCodes(dto, user)
   }
 
   @Post('diagnosis-codes')
   @ApiOperation({ summary: 'Create diagnosis master data' })
-  async createDiagnosisCode(@Body() dto: CreateDiagnosisCodeDto) {
-    return this.visitService.createDiagnosisCode(dto)
+  async createDiagnosisCode(@Body() dto: CreateDiagnosisCodeDto, @AuthUser() user: IAuthUser) {
+    return this.visitService.createDiagnosisCode(dto, user)
   }
 
   @Put('diagnosis-codes/:code')
   @ApiOperation({ summary: 'Update diagnosis master data' })
-  async updateDiagnosisCode(@Param('code') code: string, @Body() dto: UpdateDiagnosisCodeDto) {
-    return this.visitService.updateDiagnosisCode(String(code), dto)
+  async updateDiagnosisCode(@Param('code') code: string, @Body() dto: UpdateDiagnosisCodeDto, @AuthUser() user: IAuthUser) {
+    return this.visitService.updateDiagnosisCode(String(code), dto, user)
   }
 
   @Delete('diagnosis-codes/:code')
   @ApiOperation({ summary: 'Delete diagnosis master data' })
-  async deleteDiagnosisCode(@Param('code') code: string) {
-    return this.visitService.deleteDiagnosisCode(String(code))
+  async deleteDiagnosisCode(@Param('code') code: string, @AuthUser() user: IAuthUser) {
+    return this.visitService.deleteDiagnosisCode(String(code), user)
   }
 
   @Get('unlock-requests')
@@ -90,17 +101,18 @@ export class VisitController {
   async listUnlockRequests(
     @Query('visitId') visitId?: number,
     @Query('status') status?: number,
+    @AuthUser() user?: IAuthUser,
   ) {
     return this.visitService.listUnlockRequests({
       visitId: visitId ? Number(visitId) : undefined,
       status: status !== undefined ? Number(status) : undefined,
-    })
+    }, user)
   }
 
   @Post('unlock-requests/:id/review')
   @ApiOperation({ summary: 'Review EMR unlock request' })
-  async reviewUnlockRequest(@IdParam() id: number, @Body() dto: ReviewUnlockEmrDto) {
-    return this.visitService.reviewUnlockRequest(id, dto)
+  async reviewUnlockRequest(@IdParam() id: number, @Body() dto: ReviewUnlockEmrDto, @AuthUser() user: IAuthUser) {
+    return this.visitService.reviewUnlockRequest(id, dto, { tenantId: user?.tenantId, areaId: user?.areaId, currentUserId: user?.uid })
   }
 
   @Get(':id')
@@ -111,7 +123,12 @@ export class VisitController {
     @Query('scope') scope: string | undefined,
     @AuthUser() user: IAuthUser,
   ) {
-    return this.visitService.findOneDetailed(id, { scope, currentUserId: user?.uid })
+    return this.visitService.findOneDetailed(id, {
+      scope,
+      currentUserId: user?.uid,
+      tenantId: user?.tenantId,
+      areaId: user?.areaId,
+    })
   }
 
   @Get(':id/care-followups')
@@ -121,7 +138,7 @@ export class VisitController {
     @Query('scope') scope: string | undefined,
     @AuthUser() user: IAuthUser,
   ) {
-    return this.visitService.listVisitCareFollowups(id, { scope, currentUserId: user?.uid })
+    return this.visitService.listVisitCareFollowups(id, { scope, currentUserId: user?.uid, tenantId: user?.tenantId, areaId: user?.areaId })
   }
 
   @Post(':id/care-followups')
@@ -132,7 +149,7 @@ export class VisitController {
     @Query('scope') scope: string | undefined,
     @AuthUser() user: IAuthUser,
   ) {
-    return this.visitService.createVisitCareFollowup(id, dto, { scope, currentUserId: user?.uid })
+    return this.visitService.createVisitCareFollowup(id, dto, { scope, currentUserId: user?.uid, tenantId: user?.tenantId, areaId: user?.areaId })
   }
 
   @Get(':id/media-batches')
@@ -142,7 +159,7 @@ export class VisitController {
     @Query('scope') scope: string | undefined,
     @AuthUser() user: IAuthUser,
   ) {
-    return this.visitService.listVisitMediaBatches(id, { scope, currentUserId: user?.uid })
+    return this.visitService.listVisitMediaBatches(id, { scope, currentUserId: user?.uid, tenantId: user?.tenantId, areaId: user?.areaId })
   }
 
   @Post(':id/media-batches')
@@ -153,7 +170,7 @@ export class VisitController {
     @Query('scope') scope: string | undefined,
     @AuthUser() user: IAuthUser,
   ) {
-    return this.visitService.createVisitMediaBatch(id, dto, { scope, currentUserId: user?.uid })
+    return this.visitService.createVisitMediaBatch(id, dto, { scope, currentUserId: user?.uid, tenantId: user?.tenantId, areaId: user?.areaId })
   }
 
   @Post(':id/media-batches/:batchId/files')
@@ -165,7 +182,7 @@ export class VisitController {
     @Query('scope') scope: string | undefined,
     @AuthUser() user: IAuthUser,
   ) {
-    return this.visitService.createVisitMediaFile(id, Number(batchId), dto, { scope, currentUserId: user?.uid })
+    return this.visitService.createVisitMediaFile(id, Number(batchId), dto, { scope, currentUserId: user?.uid, tenantId: user?.tenantId, areaId: user?.areaId })
   }
 
   @Put(':id')
@@ -176,7 +193,7 @@ export class VisitController {
     @Query('scope') scope: string | undefined,
     @AuthUser() user: IAuthUser,
   ) {
-    await this.visitService.saveSoap(id, dto, { scope, currentUserId: user?.uid })
+    await this.visitService.saveSoap(id, dto, { scope, currentUserId: user?.uid, tenantId: user?.tenantId, areaId: user?.areaId })
   }
 
   @Post(':id/lock')
@@ -187,7 +204,7 @@ export class VisitController {
     @Query('scope') scope: string | undefined,
     @AuthUser() user: IAuthUser,
   ) {
-    return this.visitService.lockEmr(id, dto, { scope, currentUserId: user?.uid })
+    return this.visitService.lockEmr(id, dto, { scope, currentUserId: user?.uid, tenantId: user?.tenantId, areaId: user?.areaId })
   }
 
   @Post(':id/unlock-request')
@@ -198,7 +215,7 @@ export class VisitController {
     @Query('scope') scope: string | undefined,
     @AuthUser() user: IAuthUser,
   ) {
-    return this.visitService.requestUnlockEmr(id, dto, { scope, currentUserId: user?.uid })
+    return this.visitService.requestUnlockEmr(id, dto, { scope, currentUserId: user?.uid, tenantId: user?.tenantId, areaId: user?.areaId })
   }
 
   @Post(':id/sign')
@@ -209,7 +226,7 @@ export class VisitController {
     @Query('scope') scope: string | undefined,
     @AuthUser() user: IAuthUser,
   ) {
-    return this.visitService.signEmr(id, dto, { scope, currentUserId: user?.uid })
+    return this.visitService.signEmr(id, dto, { scope, currentUserId: user?.uid, tenantId: user?.tenantId, areaId: user?.areaId })
   }
 
   @Get(':id/audit-logs')
@@ -219,7 +236,7 @@ export class VisitController {
     @Query('scope') scope: string | undefined,
     @AuthUser() user: IAuthUser,
   ) {
-    return this.visitService.listEmrAuditLogs(id, { scope, currentUserId: user?.uid })
+    return this.visitService.listEmrAuditLogs(id, { scope, currentUserId: user?.uid, tenantId: user?.tenantId, areaId: user?.areaId })
   }
 
   @Get(':id/signatures')
@@ -229,7 +246,7 @@ export class VisitController {
     @Query('scope') scope: string | undefined,
     @AuthUser() user: IAuthUser,
   ) {
-    return this.visitService.listSignatures(id, { scope, currentUserId: user?.uid })
+    return this.visitService.listSignatures(id, { scope, currentUserId: user?.uid, tenantId: user?.tenantId, areaId: user?.areaId })
   }
 
   @Post(':id/start')
@@ -239,7 +256,7 @@ export class VisitController {
     @Query('scope') scope: string | undefined,
     @AuthUser() user: IAuthUser,
   ) {
-    return this.visitService.startConsultation(id, { scope, currentUserId: user?.uid })
+    return this.visitService.startConsultation(id, { scope, currentUserId: user?.uid, tenantId: user?.tenantId, areaId: user?.areaId })
   }
 
   @Post(':id/end')
@@ -249,7 +266,7 @@ export class VisitController {
     @Query('scope') scope: string | undefined,
     @AuthUser() user: IAuthUser,
   ) {
-    await this.visitService.endConsultation(id, { scope, currentUserId: user?.uid })
+    await this.visitService.endConsultation(id, { scope, currentUserId: user?.uid, tenantId: user?.tenantId, areaId: user?.areaId })
   }
 
   @Get('chronic/cases')
@@ -259,36 +276,37 @@ export class VisitController {
     @Query('customerId') customerId?: number,
     @Query('status') status?: number,
     @Query('keyword') keyword?: string,
+    @AuthUser() user?: IAuthUser,
   ) {
     return this.visitService.listChronicCases({
       petId: petId ? Number(petId) : undefined,
       customerId: customerId ? Number(customerId) : undefined,
       status: status !== undefined ? Number(status) : undefined,
       keyword,
-    })
+    }, user)
   }
 
   @Post('chronic/cases')
   @ApiOperation({ summary: 'Create chronic case' })
-  async createChronicCase(@Body() dto: CreateChronicCaseDto) {
-    return this.visitService.createChronicCase(dto)
+  async createChronicCase(@Body() dto: CreateChronicCaseDto, @AuthUser() user: IAuthUser) {
+    return this.visitService.createChronicCase(dto, user)
   }
 
   @Get('chronic/cases/:id')
   @ApiOperation({ summary: 'Chronic case detail' })
-  async getChronicCase(@IdParam() id: number) {
-    return this.visitService.getChronicCaseDetail(id)
+  async getChronicCase(@IdParam() id: number, @AuthUser() user: IAuthUser) {
+    return this.visitService.getChronicCaseDetail(id, user)
   }
 
   @Post('chronic/cases/:id/followups')
   @ApiOperation({ summary: 'Add chronic followup' })
-  async addChronicFollowup(@IdParam() id: number, @Body() dto: CreateChronicFollowupDto) {
-    return this.visitService.addChronicFollowup(id, dto)
+  async addChronicFollowup(@IdParam() id: number, @Body() dto: CreateChronicFollowupDto, @AuthUser() user: IAuthUser) {
+    return this.visitService.addChronicFollowup(id, dto, user)
   }
 
   @Get('chronic/cases/:id/report')
   @ApiOperation({ summary: 'Chronic report' })
-  async getChronicReport(@IdParam() id: number) {
-    return this.visitService.getChronicReport(id)
+  async getChronicReport(@IdParam() id: number, @AuthUser() user: IAuthUser) {
+    return this.visitService.getChronicReport(id, user)
   }
 }

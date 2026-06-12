@@ -3,6 +3,8 @@ import { InjectRepository } from '@nestjs/typeorm'
 import { DataSource, LessThan, Repository } from 'typeorm'
 import { BusinessException } from '~/common/exceptions/biz.exception'
 import { paginate } from '~/helper/paginate'
+import { ConsentTemplateChargeItemEntity } from '../vpet-consent/entities/consent-template-charge-item.entity'
+import { ConsentTemplateEntity } from '../vpet-consent/entities/consent-template.entity'
 import { CreateChargeItemDto, CreateDrugDto, QueryChargeItemDto, QueryDrugDto, QueryStockTxnDto, StockInDto, UpdateChargeItemDto, UpdateDrugDto } from './dto/pharmacy.dto'
 import { ChargeItemEntity } from './entities/charge-item.entity'
 import { DrugBatchEntity } from './entities/drug-batch.entity'
@@ -20,13 +22,20 @@ export class PharmacyService {
     private txnRepository: Repository<DrugStockTxnEntity>,
     @InjectRepository(ChargeItemEntity)
     private chargeItemRepository: Repository<ChargeItemEntity>,
+    @InjectRepository(ConsentTemplateEntity)
+    private consentTemplateRepository: Repository<ConsentTemplateEntity>,
+    @InjectRepository(ConsentTemplateChargeItemEntity)
+    private consentTemplateChargeItemRepository: Repository<ConsentTemplateChargeItemEntity>,
     private dataSource: DataSource,
   ) {}
 
-  async list(dto: QueryDrugDto) {
+  async list(dto: QueryDrugDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
     const { page = 1, pageSize = 10, keyword, category, drugType } = dto
+    const tenantId = context?.tenantId ?? 1
+    const areaId = context?.areaId ?? 1
     const qb = this.drugRepository.createQueryBuilder('d')
       .loadRelationCountAndMap('d.batchCount', 'd.batches')
+      .andWhere('d.tenantId = :tenantId', { tenantId })
 
     if (keyword) {
       qb.where('d.drugName LIKE :kw OR d.tradeName LIKE :kw OR d.drugCode LIKE :kw', {
@@ -44,7 +53,7 @@ export class PharmacyService {
     const result = await paginate(qb, { page, pageSize })
 
     const items = await Promise.all(result.items.map(async (drug) => {
-      const stock = await this.getTotalStock(drug.id)
+      const stock = await this.getTotalStock(drug.id, { tenantId, areaId })
       const batchCount = (drug as any).batchCount ?? 0
       return { ...drug, ...this.buildDrugStockSnapshot(drug, stock), batchCount }
     }))
@@ -52,18 +61,20 @@ export class PharmacyService {
     return { items, meta: result.meta }
   }
 
-  async getTotalStock(drugId: number): Promise<number> {
+  async getTotalStock(drugId: number, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>): Promise<number> {
     const result = await this.batchRepository
       .createQueryBuilder('b')
       .select('COALESCE(SUM(b.quantity), 0)', 'total')
       .where('b.drugId = :drugId AND b.status = 1', { drugId })
+      .andWhere('b.tenantId = :tenantId', { tenantId: context?.tenantId ?? 1 })
+      .andWhere('b.areaId = :areaId', { areaId: context?.areaId ?? 1 })
       .getRawOne()
     return Number(result?.total ?? 0)
   }
 
-  async findOne(id: number) {
+  async findOne(id: number, context?: Pick<IAuthUser, 'tenantId'>) {
     const drug = await this.drugRepository.findOne({
-      where: { id },
+      where: { id, tenantId: context?.tenantId ?? 1 },
       relations: ['batches'],
     })
     if (!drug)
@@ -71,20 +82,23 @@ export class PharmacyService {
     return drug
   }
 
-  async create(dto: CreateDrugDto) {
-    return this.drugRepository.save(this.normalizeDrugPayload(dto))
+  async create(dto: CreateDrugDto, context?: Pick<IAuthUser, 'tenantId'>) {
+    return this.drugRepository.save({ ...this.normalizeDrugPayload(dto), tenantId: context?.tenantId ?? 1 })
   }
 
-  async update(id: number, dto: UpdateDrugDto) {
-    const current = await this.drugRepository.findOneBy({ id })
+  async update(id: number, dto: UpdateDrugDto, context?: Pick<IAuthUser, 'tenantId'>) {
+    const tenantId = context?.tenantId ?? 1
+    const current = await this.drugRepository.findOneBy({ id, tenantId })
     if (!current)
       throw new BusinessException('Drug not found')
-    await this.drugRepository.update(id, this.normalizeDrugPayload(dto, current))
+    await this.drugRepository.update({ id, tenantId }, this.normalizeDrugPayload(dto, current))
   }
 
-  async listChargeItems(dto: QueryChargeItemDto) {
+  async listChargeItems(dto: QueryChargeItemDto, context?: Pick<IAuthUser, 'tenantId'>) {
     const { page = 1, pageSize = 10, keyword, category, status } = dto
+    const tenantId = context?.tenantId ?? 1
     const qb = this.chargeItemRepository.createQueryBuilder('item')
+      .andWhere('item.tenantId = :tenantId', { tenantId })
 
     if (keyword) {
       qb.andWhere('(item.itemCode LIKE :keyword OR item.itemName LIKE :keyword OR item.description LIKE :keyword)', {
@@ -97,38 +111,51 @@ export class PharmacyService {
       qb.andWhere('item.status = :status', { status: Number(status) })
 
     qb.orderBy('item.updatedAt', 'DESC')
-    return paginate(qb, { page, pageSize })
+    const result = await paginate(qb, { page, pageSize })
+    const items = await this.attachConsentTemplates(result.items)
+    return { ...result, items }
   }
 
-  async createChargeItem(dto: CreateChargeItemDto) {
-    return this.chargeItemRepository.save(this.chargeItemRepository.create({
+  async createChargeItem(dto: CreateChargeItemDto, context?: Pick<IAuthUser, 'tenantId'>) {
+    const item = await this.chargeItemRepository.save(this.chargeItemRepository.create({
       ...dto,
+      tenantId: context?.tenantId ?? 1,
       status: dto.status ?? 1,
       retailPrice: dto.retailPrice ?? 0,
     }))
+    await this.saveChargeItemConsentTemplates(item.id, dto.consentTemplateIds)
+    return this.findChargeItem(item.id, context)
   }
 
-  async updateChargeItem(id: number, dto: UpdateChargeItemDto) {
-    await this.chargeItemRepository.update(id, dto)
+  async updateChargeItem(id: number, dto: UpdateChargeItemDto, context?: Pick<IAuthUser, 'tenantId'>) {
+    const tenantId = context?.tenantId ?? 1
+    const { consentTemplateIds, ...payload } = dto
+    await this.chargeItemRepository.update({ id, tenantId }, payload)
+    if (consentTemplateIds !== undefined)
+      await this.saveChargeItemConsentTemplates(id, consentTemplateIds)
+    return this.findChargeItem(id, context)
   }
 
-  async deleteChargeItem(id: number) {
-    const item = await this.chargeItemRepository.findOneBy({ id })
+  async deleteChargeItem(id: number, context?: Pick<IAuthUser, 'tenantId'>) {
+    const item = await this.chargeItemRepository.findOneBy({ id, tenantId: context?.tenantId ?? 1 })
     if (!item)
       throw new BusinessException('Charge item not found')
     await this.chargeItemRepository.remove(item)
   }
 
-  async delete(id: number) {
-    const drug = await this.drugRepository.findOneBy({ id })
+  async delete(id: number, context?: Pick<IAuthUser, 'tenantId'>) {
+    const tenantId = context?.tenantId ?? 1
+    const drug = await this.drugRepository.findOneBy({ id, tenantId })
     if (!drug)
       throw new BusinessException('Drug not found')
-    await this.batchRepository.delete({ drugId: id })
+    await this.batchRepository.delete({ drugId: id, tenantId })
     await this.drugRepository.remove(drug)
   }
 
-  async stockIn(drugId: number, dto: StockInDto): Promise<DrugBatchEntity> {
-    const drug = await this.drugRepository.findOneBy({ id: drugId })
+  async stockIn(drugId: number, dto: StockInDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>): Promise<DrugBatchEntity> {
+    const tenantId = context?.tenantId ?? 1
+    const areaId = context?.areaId ?? 1
+    const drug = await this.drugRepository.findOneBy({ id: drugId, tenantId })
     if (!drug)
       throw new BusinessException('Drug not found')
 
@@ -137,6 +164,8 @@ export class PharmacyService {
 
     const batch = this.batchRepository.create({
       drugId,
+      tenantId,
+      areaId,
       batchNo: dto.batchNo,
       expireDate: dto.expireDate,
       purchasePrice: dto.purchasePrice ?? 0,
@@ -151,6 +180,8 @@ export class PharmacyService {
       txnType: 1,
       refType: 'stock_in',
       refId: saved.id,
+      tenantId,
+      areaId,
       quantityBefore: 0,
       quantityChange: stockQuantity,
       quantityAfter: stockQuantity,
@@ -166,6 +197,8 @@ export class PharmacyService {
       refType?: string | null
       refId?: number | null
       operatorId?: number | null
+      tenantId?: number
+      areaId?: number
     },
   ): Promise<void> {
     if (quantity <= 0) {
@@ -175,8 +208,10 @@ export class PharmacyService {
     await this.dataSource.transaction(async (manager) => {
       const batchRepository = manager.getRepository(DrugBatchEntity)
       const txnRepository = manager.getRepository(DrugStockTxnEntity)
+      const tenantId = options?.tenantId ?? 1
+      const areaId = options?.areaId ?? 1
       const batches = await batchRepository.find({
-        where: { drugId, status: 1 },
+        where: { drugId, tenantId, areaId, status: 1 },
         order: { expireDate: 'ASC', id: 'ASC' },
       })
 
@@ -203,6 +238,8 @@ export class PharmacyService {
           refType: options?.refType ?? 'stock_out',
           refId: options?.refId ?? null,
           operatorId: options?.operatorId ?? null,
+          tenantId,
+          areaId,
           quantityBefore,
           quantityChange: -take,
           quantityAfter: Number(batch.quantity),
@@ -211,10 +248,12 @@ export class PharmacyService {
     })
   }
 
-  async getBatches(drugId: number): Promise<DrugBatchEntity[]> {
-    const drug = await this.drugRepository.findOneBy({ id: drugId })
+  async getBatches(drugId: number, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>): Promise<DrugBatchEntity[]> {
+    const tenantId = context?.tenantId ?? 1
+    const areaId = context?.areaId ?? 1
+    const drug = await this.drugRepository.findOneBy({ id: drugId, tenantId })
     const batches = await this.batchRepository.find({
-      where: { drugId },
+      where: { drugId, tenantId, areaId },
       order: { expireDate: 'ASC' },
     })
     if (!drug)
@@ -230,11 +269,13 @@ export class PharmacyService {
     })) as any
   }
 
-  async getLowStock(): Promise<any[]> {
-    const drugs = await this.drugRepository.find({ where: { status: 1 } })
+  async getLowStock(context?: Pick<IAuthUser, 'tenantId' | 'areaId'>): Promise<any[]> {
+    const tenantId = context?.tenantId ?? 1
+    const areaId = context?.areaId ?? 1
+    const drugs = await this.drugRepository.find({ where: { status: 1, tenantId } })
     const result = []
     for (const drug of drugs) {
-      const total = await this.getTotalStock(drug.id)
+      const total = await this.getTotalStock(drug.id, { tenantId, areaId })
       const minStock = Number(drug.minStock || 0) * this.getPackageContentQuantity(drug)
       if (total < minStock) {
         result.push({ ...drug, ...this.buildDrugStockSnapshot(drug, total) })
@@ -243,11 +284,13 @@ export class PharmacyService {
     return result.sort((a, b) => a.currentStock - b.currentStock).slice(0, 20)
   }
 
-  async getExpiringSoon(days = 30): Promise<DrugBatchEntity[]> {
+  async getExpiringSoon(days = 30, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>): Promise<DrugBatchEntity[]> {
     const future = new Date()
     future.setDate(future.getDate() + days)
     return this.batchRepository.find({
       where: {
+        tenantId: context?.tenantId ?? 1,
+        areaId: context?.areaId ?? 1,
         status: 1,
         expireDate: LessThan(future.toISOString().split('T')[0]),
       },
@@ -256,17 +299,24 @@ export class PharmacyService {
     })
   }
 
-  async updateBatch(id: number, dto: any): Promise<void> {
-    await this.batchRepository.update(id, {
+  async updateBatch(id: number, dto: any, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>): Promise<void> {
+    await this.batchRepository.update({
+      id,
+      tenantId: context?.tenantId ?? 1,
+      areaId: context?.areaId ?? 1,
+    }, {
       batchNo: dto.batchNo,
       expireDate: dto.expireDate,
       purchasePrice: dto.purchasePrice,
     })
   }
 
-  async searchDrugs(keyword: string): Promise<any[]> {
+  async searchDrugs(keyword: string, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>): Promise<any[]> {
+    const tenantId = context?.tenantId ?? 1
+    const areaId = context?.areaId ?? 1
     const qb = this.drugRepository.createQueryBuilder('d')
       .where('d.status = :status', { status: 1 })
+      .andWhere('d.tenantId = :tenantId', { tenantId })
 
     if (keyword) {
       qb.andWhere('(d.drugName LIKE :keyword OR d.tradeName LIKE :keyword OR d.drugCode LIKE :keyword)', {
@@ -287,14 +337,14 @@ export class PharmacyService {
       retailPrice: this.getDosageUnitPrice(drug),
       packageRetailPrice: Number(drug.retailPrice || 0),
       dosageUnitPrice: this.getDosageUnitPrice(drug),
-      currentStock: await this.getTotalStock(drug.id),
+      currentStock: await this.getTotalStock(drug.id, { tenantId, areaId }),
     })))
   }
 
-  async searchChargeableItems(keyword: string): Promise<any[]> {
+  async searchChargeableItems(keyword: string, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>): Promise<any[]> {
     const [drugs, chargeItems] = await Promise.all([
-      this.searchDrugs(keyword),
-      this.searchChargeItems(keyword),
+      this.searchDrugs(keyword, context),
+      this.searchChargeItems(keyword, context),
     ])
     return [
       ...drugs.map(item => ({
@@ -317,16 +367,65 @@ export class PharmacyService {
     ]
   }
 
-  async findChargeItem(id: number) {
-    const item = await this.chargeItemRepository.findOneBy({ id })
+  async findChargeItem(id: number, context?: Pick<IAuthUser, 'tenantId'>) {
+    const item = await this.chargeItemRepository.findOneBy({ id, tenantId: context?.tenantId ?? 1 })
     if (!item)
       throw new BusinessException('Charge item not found')
-    return item
+    const [withTemplates] = await this.attachConsentTemplates([item])
+    return withTemplates
   }
 
-  private async searchChargeItems(keyword: string): Promise<any[]> {
+  private async attachConsentTemplates(items: ChargeItemEntity[]) {
+    if (!items.length)
+      return []
+    const itemIds = items.map(item => item.id)
+    const links = await this.consentTemplateChargeItemRepository
+      .createQueryBuilder('link')
+      .leftJoinAndSelect('link.template', 'template')
+      .where('link.chargeItemId IN (:...itemIds)', { itemIds })
+      .orderBy('template.category', 'ASC')
+      .addOrderBy('template.name', 'ASC')
+      .getMany()
+    const map = new Map<number, ConsentTemplateEntity[]>()
+    for (const link of links) {
+      if (!map.has(link.chargeItemId))
+        map.set(link.chargeItemId, [])
+      if (link.template)
+        map.get(link.chargeItemId)!.push(link.template)
+    }
+    return items.map(item => ({
+      ...item,
+      consentTemplates: map.get(item.id) || [],
+      consentTemplateIds: (map.get(item.id) || []).map(template => template.id),
+    }))
+  }
+
+  private async saveChargeItemConsentTemplates(chargeItemId: number, templateIds?: number[]) {
+    if (templateIds === undefined)
+      return
+    const uniqueTemplateIds = [...new Set((templateIds || []).map(Number).filter(Boolean))]
+    if (uniqueTemplateIds.length) {
+      const count = await this.consentTemplateRepository
+        .createQueryBuilder('template')
+        .where('template.id IN (:...ids)', { ids: uniqueTemplateIds })
+        .andWhere('template.isActive = :isActive', { isActive: 1 })
+        .getCount()
+      if (count !== uniqueTemplateIds.length)
+        throw new BusinessException('Consent template not found or inactive')
+    }
+    await this.consentTemplateChargeItemRepository.delete({ chargeItemId })
+    if (!uniqueTemplateIds.length)
+      return
+    await this.consentTemplateChargeItemRepository.save(uniqueTemplateIds.map(templateId => this.consentTemplateChargeItemRepository.create({
+      chargeItemId,
+      templateId,
+    })))
+  }
+
+  private async searchChargeItems(keyword: string, context?: Pick<IAuthUser, 'tenantId'>): Promise<any[]> {
     const qb = this.chargeItemRepository.createQueryBuilder('item')
       .where('item.status = :status', { status: 1 })
+      .andWhere('item.tenantId = :tenantId', { tenantId: context?.tenantId ?? 1 })
 
     if (keyword) {
       qb.andWhere('(item.itemName LIKE :keyword OR item.itemCode LIKE :keyword OR item.category LIKE :keyword)', {
@@ -406,11 +505,14 @@ export class PharmacyService {
     }
   }
 
-  async listStockTxns(dto: QueryStockTxnDto) {
+  async listStockTxns(dto: QueryStockTxnDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
     const { page = 1, pageSize = 20, drugId, refType, refId } = dto
     const qb = this.txnRepository.createQueryBuilder('txn')
       .leftJoinAndSelect('txn.drug', 'drug')
       .leftJoinAndSelect('txn.batch', 'batch')
+      .leftJoinAndSelect('txn.operator', 'operator')
+      .andWhere('txn.tenantId = :tenantId', { tenantId: context?.tenantId ?? 1 })
+      .andWhere('txn.areaId = :areaId', { areaId: context?.areaId ?? 1 })
 
     if (drugId)
       qb.andWhere('txn.drugId = :drugId', { drugId })
@@ -432,6 +534,8 @@ export class PharmacyService {
       refType?: string | null
       refId?: number | null
       operatorId?: number | null
+      tenantId?: number
+      areaId?: number
       quantityBefore: number
       quantityChange: number
       quantityAfter: number

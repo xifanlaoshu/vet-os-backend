@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, Post, Put, Query } from '@nestjs/common'
 import { ApiOperation, ApiTags } from '@nestjs/swagger'
 import { ApiResult } from '~/common/decorators/api-result.decorator'
 import { IdParam } from '~/common/decorators/id-param.decorator'
+import { AuthUser } from '~/modules/auth/decorators/auth-user.decorator'
 import { CustomerService } from './customer.service'
 import { CreateCustomerDto, QueryCustomerDto, UpdateCustomerDto } from './dto/customer.dto'
 import { CustomerEntity } from './entities/customer.entity'
@@ -14,33 +15,33 @@ export class CustomerController {
   @Get()
   @ApiOperation({ summary: '客户列表' })
   @ApiResult({ type: [CustomerEntity], isPage: true })
-  async list(@Query() dto: QueryCustomerDto) {
-    return this.customerService.list(dto)
+  async list(@Query() dto: QueryCustomerDto, @AuthUser() user: IAuthUser) {
+    return this.customerService.list(dto, user)
   }
 
   @Get(':id')
   @ApiOperation({ summary: '客户详情' })
   @ApiResult({ type: CustomerEntity })
-  async get(@IdParam() id: number) {
-    return this.customerService.findOne(id)
+  async get(@IdParam() id: number, @AuthUser() user: IAuthUser) {
+    return this.customerService.getById(id, user)
   }
 
   @Post()
   @ApiOperation({ summary: '创建客户' })
   @ApiResult({ type: CustomerEntity })
-  async create(@Body() dto: CreateCustomerDto) {
-    return this.customerService.create(dto)
+  async create(@Body() dto: CreateCustomerDto, @AuthUser() user: IAuthUser) {
+    return this.customerService.createCustomer(dto, user)
   }
 
   @Put(':id')
   @ApiOperation({ summary: '更新客户' })
-  async update(@IdParam() id: number, @Body() dto: UpdateCustomerDto) {
-    await this.customerService.update(id, dto)
+  async update(@IdParam() id: number, @Body() dto: UpdateCustomerDto, @AuthUser() user: IAuthUser) {
+    await this.customerService.updateCustomer(id, dto, user)
   }
 
   @Delete(':id')
   @ApiOperation({ summary: '删除客户' })
-  async delete(@IdParam() id: number) {
-    await this.customerService.delete(id)
+  async delete(@IdParam() id: number, @AuthUser() user: IAuthUser) {
+    await this.customerService.deleteCustomer(id, user)
   }
 }

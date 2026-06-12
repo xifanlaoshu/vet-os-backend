@@ -25,8 +25,9 @@ export class DictItemService {
     label,
     value,
     typeId,
-  }: DictItemQueryDto): Promise<Pagination<DictItemEntity>> {
+  }: DictItemQueryDto, context?: Pick<IAuthUser, 'tenantId'>): Promise<Pagination<DictItemEntity>> {
     const queryBuilder = this.dictItemRepository.createQueryBuilder('dict_item').orderBy({ orderNo: 'ASC' }).where({
+      tenantId: context?.tenantId ?? 1,
       ...(label && { label: Like(`%${label}%`) }),
       ...(value && { value: Like(`%${value}%`) }),
       type: {
@@ -47,9 +48,10 @@ export class DictItemService {
   /**
    * 新增
    */
-  async create(dto: DictItemDto): Promise<void> {
+  async create(dto: DictItemDto, context?: Pick<IAuthUser, 'tenantId'>): Promise<void> {
     const { typeId, ...rest } = dto
     await this.dictItemRepository.insert({
+      tenantId: context?.tenantId ?? 1,
       ...rest,
       type: {
         id: typeId,
@@ -60,9 +62,9 @@ export class DictItemService {
   /**
    * 更新
    */
-  async update(id: number, dto: Partial<DictItemDto>): Promise<void> {
+  async update(id: number, dto: Partial<DictItemDto>, context?: Pick<IAuthUser, 'tenantId'>): Promise<void> {
     const { typeId, ...rest } = dto
-    await this.dictItemRepository.update(id, {
+    await this.dictItemRepository.update({ id, tenantId: context?.tenantId ?? 1 }, {
       ...rest,
       type: {
         id: typeId,
@@ -73,14 +75,14 @@ export class DictItemService {
   /**
    * 删除
    */
-  async delete(id: number): Promise<void> {
-    await this.dictItemRepository.delete(id)
+  async delete(id: number, context?: Pick<IAuthUser, 'tenantId'>): Promise<void> {
+    await this.dictItemRepository.delete({ id, tenantId: context?.tenantId ?? 1 })
   }
 
   /**
    * 查询单个
    */
-  async findOne(id: number): Promise<DictItemEntity> {
-    return this.dictItemRepository.findOneBy({ id })
+  async findOne(id: number, context?: Pick<IAuthUser, 'tenantId'>): Promise<DictItemEntity> {
+    return this.dictItemRepository.findOneBy({ id, tenantId: context?.tenantId ?? 1 })
   }
 }

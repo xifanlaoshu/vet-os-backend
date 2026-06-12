@@ -4,6 +4,12 @@ import { LabOrderEntity } from './lab-order.entity'
 
 @Entity('vpet_lab_result_item')
 export class LabResultItemEntity extends CommonEntity {
+  @Column({ name: 'tenant_id', default: 1, comment: '租户 ID' })
+  tenantId: number
+
+  @Column({ name: 'area_id', default: 1, comment: '院区 ID' })
+  areaId: number
+
   @Column({ name: 'lab_order_id' })
   labOrderId: number
 

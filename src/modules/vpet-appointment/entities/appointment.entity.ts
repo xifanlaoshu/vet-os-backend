@@ -9,6 +9,12 @@ import { DoctorEntity } from './doctor.entity'
 @Index('idx_appt_status', ['status'])
 @Entity('vpet_appointment')
 export class AppointmentEntity extends CommonEntity {
+  @Column({ name: 'tenant_id', default: 1, comment: '租户 ID' })
+  tenantId: number
+
+  @Column({ name: 'area_id', default: 1, comment: '院区 ID' })
+  areaId: number
+
   @Column()
   customerId: number
 

@@ -1,11 +1,19 @@
-import { Column, Entity, Index } from 'typeorm'
+import { Column, Entity, Index, VirtualColumn } from 'typeorm'
 import { CommonEntity } from '~/common/entity/common.entity'
 
 @Index('idx_doctor_user', ['userId'], { unique: true })
 @Entity('vpet_doctor')
 export class DoctorEntity extends CommonEntity {
+  @Column({ name: 'tenant_id', default: 1, comment: '租户 ID' })
+  tenantId: number
+
   @Column({ nullable: true })
   userId: number | null
+
+  @VirtualColumn({
+    query: alias => `SELECT COALESCE(u.nickname, u.username) FROM sys_user u WHERE u.id = ${alias}.userId`,
+  })
+  userNickname: string | null
 
   @Column({ length: 50 })
   name: string

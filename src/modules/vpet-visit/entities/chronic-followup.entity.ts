@@ -7,6 +7,12 @@ import { VisitEntity } from './visit.entity'
 @Index('idx_vpet_chronic_followup_review', ['reviewDate'])
 @Entity('vpet_chronic_followup')
 export class ChronicFollowupEntity extends CommonEntity {
+  @Column({ name: 'tenant_id', default: 1, comment: '租户 ID' })
+  tenantId: number
+
+  @Column({ name: 'area_id', default: 1, comment: '院区 ID' })
+  areaId: number
+
   @Column({ name: 'chronic_case_id' })
   chronicCaseId: number
 

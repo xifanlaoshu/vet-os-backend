@@ -4,6 +4,12 @@ import { PrescriptionEntity } from './prescription.entity'
 
 @Entity('vpet_rx_detail')
 export class RxDetailEntity extends CommonEntity {
+  @Column({ name: 'tenant_id', default: 1, comment: '租户 ID' })
+  tenantId: number
+
+  @Column({ name: 'area_id', default: 1, comment: '院区 ID' })
+  areaId: number
+
   @Column({ name: 'prescription_id', nullable: true })
   prescriptionId: number
 

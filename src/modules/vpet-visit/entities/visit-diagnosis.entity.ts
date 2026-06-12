@@ -1,10 +1,17 @@
 import { Column, Entity, Index, JoinColumn, ManyToOne } from 'typeorm'
 import { CommonEntity } from '~/common/entity/common.entity'
+import { DoctorEntity } from '~/modules/vpet-appointment/entities/doctor.entity'
 import { VisitEntity } from './visit.entity'
 
 @Index('idx_visit_diagnosis_visit', ['visitId'])
 @Entity('vpet_visit_diagnosis')
 export class VisitDiagnosisEntity extends CommonEntity {
+  @Column({ name: 'tenant_id', default: 1, comment: '租户 ID' })
+  tenantId: number
+
+  @Column({ name: 'area_id', default: 1, comment: '院区 ID' })
+  areaId: number
+
   @Column({ name: 'visit_id' })
   visitId: number
 
@@ -26,4 +33,11 @@ export class VisitDiagnosisEntity extends CommonEntity {
 
   @Column({ type: 'tinyint', default: 0, name: 'is_primary' })
   isPrimary: number
+
+  @Column({ nullable: true, name: 'recorded_by' })
+  recordedBy: number | null
+
+  @ManyToOne(() => DoctorEntity, { nullable: true })
+  @JoinColumn({ name: 'recorded_by' })
+  recorder: DoctorEntity | null
 }

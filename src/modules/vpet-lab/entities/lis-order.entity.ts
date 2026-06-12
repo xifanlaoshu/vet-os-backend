@@ -6,6 +6,12 @@ import { LabOrderEntity } from './lab-order.entity'
 @Index('idx_vpet_lis_lab_order', ['labOrderId'], { unique: true })
 @Entity('vpet_lis_order')
 export class LisOrderEntity extends CommonEntity {
+  @Column({ name: 'tenant_id', default: 1, comment: '租户 ID' })
+  tenantId: number
+
+  @Column({ name: 'area_id', default: 1, comment: '院区 ID' })
+  areaId: number
+
   @Column({ name: 'lab_order_id', unique: true })
   labOrderId: number
 

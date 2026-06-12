@@ -7,6 +7,12 @@ import { BillingPaymentEntity } from './billing-payment.entity'
 @Index('idx_billing_customer', ['customerId'])
 @Entity('vpet_billing')
 export class BillingEntity extends CommonEntity {
+  @Column({ name: 'tenant_id', default: 1, comment: '租户 ID' })
+  tenantId: number
+
+  @Column({ name: 'area_id', default: 1, comment: '院区 ID' })
+  areaId: number
+
   @Column({ length: 30, unique: true, name: 'bill_no' })
   billNo: string
 

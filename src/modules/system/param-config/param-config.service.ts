@@ -23,11 +23,12 @@ export class ParamConfigService {
     page,
     pageSize,
     name,
-  }: ParamConfigQueryDto): Promise<Pagination<ParamConfigEntity>> {
+  }: ParamConfigQueryDto, context?: Pick<IAuthUser, 'tenantId'>): Promise<Pagination<ParamConfigEntity>> {
     const queryBuilder = this.paramConfigRepository.createQueryBuilder('config')
+      .where('config.tenantId = :tenantId', { tenantId: context?.tenantId ?? 1 })
 
     if (name) {
-      queryBuilder.where('config.name LIKE :name', {
+      queryBuilder.andWhere('config.name LIKE :name', {
         name: `%${name}%`,
       })
     }
@@ -45,34 +46,34 @@ export class ParamConfigService {
   /**
    * 新增
    */
-  async create(dto: ParamConfigDto): Promise<void> {
-    await this.paramConfigRepository.insert(dto)
+  async create(dto: ParamConfigDto, context?: Pick<IAuthUser, 'tenantId'>): Promise<void> {
+    await this.paramConfigRepository.insert({ ...dto, tenantId: context?.tenantId ?? 1 })
   }
 
   /**
    * 更新
    */
-  async update(id: number, dto: Partial<ParamConfigDto>): Promise<void> {
-    await this.paramConfigRepository.update(id, dto)
+  async update(id: number, dto: Partial<ParamConfigDto>, context?: Pick<IAuthUser, 'tenantId'>): Promise<void> {
+    await this.paramConfigRepository.update({ id, tenantId: context?.tenantId ?? 1 }, dto)
   }
 
   /**
    * 删除
    */
-  async delete(id: number): Promise<void> {
-    await this.paramConfigRepository.delete(id)
+  async delete(id: number, context?: Pick<IAuthUser, 'tenantId'>): Promise<void> {
+    await this.paramConfigRepository.delete({ id, tenantId: context?.tenantId ?? 1 })
   }
 
   /**
    * 查询单个
    */
-  async findOne(id: number): Promise<ParamConfigEntity> {
-    return this.paramConfigRepository.findOneBy({ id })
+  async findOne(id: number, context?: Pick<IAuthUser, 'tenantId'>): Promise<ParamConfigEntity> {
+    return this.paramConfigRepository.findOneBy({ id, tenantId: context?.tenantId ?? 1 })
   }
 
-  async findValueByKey(key: string): Promise<string | null> {
+  async findValueByKey(key: string, context?: Pick<IAuthUser, 'tenantId'>): Promise<string | null> {
     const result = await this.paramConfigRepository.findOne({
-      where: { key },
+      where: { key, tenantId: context?.tenantId ?? 1 },
       select: ['value'],
     })
     if (result)

@@ -8,6 +8,12 @@ import { VisitEntity } from '~/modules/vpet-visit/entities/visit.entity'
 @Index('idx_vpet_claim_no', ['claimNo'], { unique: true })
 @Entity('vpet_insurance_claim')
 export class InsuranceClaimEntity extends CommonEntity {
+  @Column({ name: 'tenant_id', default: 1, comment: '租户 ID' })
+  tenantId: number
+
+  @Column({ name: 'area_id', default: 1, comment: '院区 ID' })
+  areaId: number
+
   @Column({ name: 'claim_no', length: 30, unique: true })
   claimNo: string
 

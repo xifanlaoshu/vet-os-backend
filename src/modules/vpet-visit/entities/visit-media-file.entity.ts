@@ -7,6 +7,12 @@ import { VisitEntity } from './visit.entity'
 @Index('idx_visit_media_file_visit', ['visitId'])
 @Entity('vpet_visit_media_file')
 export class VisitMediaFileEntity extends CommonEntity {
+  @Column({ name: 'tenant_id', default: 1, comment: '租户 ID' })
+  tenantId: number
+
+  @Column({ name: 'area_id', default: 1, comment: '院区 ID' })
+  areaId: number
+
   @Column({ name: 'batch_id' })
   batchId: number
 

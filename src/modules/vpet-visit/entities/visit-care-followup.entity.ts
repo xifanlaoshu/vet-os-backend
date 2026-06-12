@@ -1,5 +1,6 @@
 import { Column, Entity, Index, JoinColumn, ManyToOne, OneToMany } from 'typeorm'
 import { CommonEntity } from '~/common/entity/common.entity'
+import { DoctorEntity } from '~/modules/vpet-appointment/entities/doctor.entity'
 import { VisitCareFollowupLabEntity } from './visit-care-followup-lab.entity'
 import { VisitCareFollowupPrescriptionEntity } from './visit-care-followup-prescription.entity'
 import { VisitEntity } from './visit.entity'
@@ -9,6 +10,12 @@ import { VisitEntity } from './visit.entity'
 @Index('idx_visit_care_followup_occurred_at', ['occurredAt'])
 @Entity('vpet_visit_care_followup')
 export class VisitCareFollowupEntity extends CommonEntity {
+  @Column({ name: 'tenant_id', default: 1, comment: '租户 ID' })
+  tenantId: number
+
+  @Column({ name: 'area_id', default: 1, comment: '院区 ID' })
+  areaId: number
+
   @Column({ name: 'visit_id' })
   visitId: number
 
@@ -51,6 +58,10 @@ export class VisitCareFollowupEntity extends CommonEntity {
 
   @Column({ nullable: true, name: 'recorded_by' })
   recordedBy: number | null
+
+  @ManyToOne(() => DoctorEntity, { nullable: true })
+  @JoinColumn({ name: 'recorded_by' })
+  recorder: DoctorEntity | null
 
   @OneToMany(() => VisitCareFollowupLabEntity, link => link.followup)
   labLinks: VisitCareFollowupLabEntity[]

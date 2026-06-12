@@ -8,6 +8,12 @@ import { VisitCareFollowupEntity } from './visit-care-followup.entity'
 @Index('idx_visit_care_followup_rx_unique', ['followupId', 'prescriptionId'], { unique: true })
 @Entity('vpet_visit_care_followup_prescription')
 export class VisitCareFollowupPrescriptionEntity extends CommonEntity {
+  @Column({ name: 'tenant_id', default: 1, comment: '租户 ID' })
+  tenantId: number
+
+  @Column({ name: 'area_id', default: 1, comment: '院区 ID' })
+  areaId: number
+
   @Column({ name: 'followup_id' })
   followupId: number
 

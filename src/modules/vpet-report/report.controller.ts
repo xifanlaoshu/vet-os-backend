@@ -1,5 +1,6 @@
 import { Controller, Get, Query } from '@nestjs/common'
 import { ApiOperation, ApiTags } from '@nestjs/swagger'
+import { AuthUser } from '~/modules/auth/decorators/auth-user.decorator'
 import { ReportService } from './report.service'
 
 @ApiTags('VPet - Report')
@@ -9,13 +10,13 @@ export class ReportController {
 
   @Get('daily')
   @ApiOperation({ summary: 'Daily business report' })
-  async daily(@Query('date') date?: string) {
-    return this.reportService.getDailySummary(date)
+  async daily(@Query('date') date: string | undefined, @AuthUser() user: IAuthUser) {
+    return this.reportService.getDailySummary(date, user)
   }
 
   @Get('chronic')
   @ApiOperation({ summary: 'Chronic management summary' })
-  async chronic() {
-    return this.reportService.getChronicSummary()
+  async chronic(@AuthUser() user: IAuthUser) {
+    return this.reportService.getChronicSummary(user)
   }
 }

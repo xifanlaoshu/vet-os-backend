@@ -5,6 +5,9 @@ import { CommonEntity } from '~/common/entity/common.entity'
 @Index('idx_member_card_no', ['cardNo'], { unique: true })
 @Entity('vpet_member_card')
 export class MemberCardEntity extends CommonEntity {
+  @Column({ name: 'tenant_id', default: 1, comment: '租户 ID' })
+  tenantId: number
+
   @Column({ name: 'customer_id' })
   customerId: number
 
