@@ -55,6 +55,7 @@ auditStorageTokenExpiration()
 auditTrustedClientIpResolution()
 auditSanitizedExceptionLogging()
 auditExternalHttpTimeouts()
+auditCaptchaLogMasking()
 
 const rules = [
   {
@@ -414,6 +415,34 @@ function auditExternalHttpTimeouts() {
       })
     })
   }
+}
+
+function auditCaptchaLogMasking() {
+  const servicePath = join(root, 'src', 'modules', 'system', 'log', 'services', 'captcha-log.service.ts')
+  if (!existsSync(servicePath))
+    return
+
+  const content = readFileSync(servicePath, 'utf8')
+  if (!content.includes('maskCaptchaCode')) {
+    findings.push({
+      file: 'src/modules/system/log/services/captcha-log.service.ts',
+      line: 1,
+      rule: 'captcha-log-code-mask-required',
+      message: 'Captcha audit logs must store masked codes instead of raw verification codes.',
+    })
+  }
+
+  const lines = content.split(/\r?\n/)
+  lines.forEach((lineText, index) => {
+    if (!/\bcode\s*,\s*$/.test(lineText) && !/\bcode\s*:\s*code\b/.test(lineText))
+      return
+    findings.push({
+      file: 'src/modules/system/log/services/captcha-log.service.ts',
+      line: index + 1,
+      rule: 'captcha-log-raw-code-write',
+      message: 'Do not save raw verification codes in captcha audit logs.',
+    })
+  })
 }
 
 function readPublicRouteAllowlist() {

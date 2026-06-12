@@ -23,10 +23,17 @@ export class CaptchaLogService {
   ): Promise<void> {
     await this.captchaLogRepository.save({
       account,
-      code,
+      code: this.maskCaptchaCode(code),
       provider,
       userId: uid,
     })
+  }
+
+  private maskCaptchaCode(code: string) {
+    if (!code)
+      return ''
+
+    return `${'*'.repeat(Math.max(code.length - 1, 0))}${code.at(-1)}`
   }
 
   async paginate({ page, pageSize }: CaptchaLogQueryDto) {

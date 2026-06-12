@@ -14,6 +14,9 @@ import { randomValue } from '~/utils'
 @Injectable()
 export class MailerService {
   private readonly logger = new Logger(MailerService.name)
+  private readonly codeTtlSeconds = 60 * 5
+  private readonly sendIntervalSeconds = 60
+  private readonly dailyLimit = 5
 
   constructor(
     @Inject(AppConfig.KEY) private appConfig: IAppConfig,
@@ -22,79 +25,60 @@ export class MailerService {
   ) {}
 
   async log(to: string, code: string, ip: string) {
-    const getRemainTime = () => {
-      const now = dayjs()
-      return now.endOf('day').diff(now, 'second')
-    }
+    const recipient = this.normalizeRecipient(to)
+    const clientIp = this.normalizeIp(ip)
+    const remainSeconds = this.getRemainSecondsOfDay()
+    const recipientDailyKey = this.recipientDailyLimitKey(recipient)
+    const ipDailyKey = this.ipDailyLimitKey(clientIp)
 
-    await this.redis.set(`captcha:${to}`, code, 'EX', 60 * 5)
+    await this.redis.set(this.verificationCodeKey(recipient), code, 'EX', this.codeTtlSeconds)
+    await this.redis.set(this.recipientIntervalKey(recipient), '1', 'EX', this.sendIntervalSeconds)
+    await this.redis.set(this.ipIntervalKey(clientIp), '1', 'EX', this.sendIntervalSeconds)
 
-    const limitCountOfDay = await this.redis.get(`captcha:${to}:limit-day`)
-    const ipLimitCountOfDay = await this.redis.get(`ip:${ip}:send:limit-day`)
+    const [recipientDailyCount, ipDailyCount] = await Promise.all([
+      this.redis.incr(recipientDailyKey),
+      this.redis.incr(ipDailyKey),
+    ])
 
-    await this.redis.set(`ip:${ip}:send:limit`, 1, 'EX', 60)
-    await this.redis.set(`captcha:${to}:limit`, 1, 'EX', 60)
-    await this.redis.set(
-      `captcha:${to}:send:limit-count-day`,
-      limitCountOfDay,
-      'EX',
-      getRemainTime(),
-    )
-    await this.redis.set(
-      `ip:${ip}:send:limit-count-day`,
-      ipLimitCountOfDay,
-      'EX',
-      getRemainTime(),
-    )
+    await Promise.all([
+      recipientDailyCount === 1 ? this.redis.expire(recipientDailyKey, remainSeconds) : Promise.resolve(0),
+      ipDailyCount === 1 ? this.redis.expire(ipDailyKey, remainSeconds) : Promise.resolve(0),
+    ])
   }
 
-  async checkCode(to, code) {
-    const ret = await this.redis.get(`captcha:${to}`)
+  async checkCode(to: string, code: string) {
+    const recipient = this.normalizeRecipient(to)
+    const ret = await this.redis.get(this.verificationCodeKey(recipient))
     if (ret !== code)
       throw new BusinessException(ErrorEnum.INVALID_VERIFICATION_CODE)
 
-    await this.redis.del(`captcha:${to}`)
+    await this.redis.del(this.verificationCodeKey(recipient))
   }
 
-  async checkLimit(to, ip) {
-    const LIMIT_TIME = 5
+  async checkLimit(to: string, ip: string) {
+    const recipient = this.normalizeRecipient(to)
+    const clientIp = this.normalizeIp(ip)
 
-    // ip限制
-    const ipLimit = await this.redis.get(`ip:${ip}:send:limit`)
+    const ipLimit = await this.redis.get(this.ipIntervalKey(clientIp))
     if (ipLimit)
       throw new BusinessException(ErrorEnum.TOO_MANY_REQUESTS)
 
-    // 1分钟最多接收1条
-    const limit = await this.redis.get(`captcha:${to}:limit`)
-    if (limit)
+    const recipientLimit = await this.redis.get(this.recipientIntervalKey(recipient))
+    if (recipientLimit)
       throw new BusinessException(ErrorEnum.TOO_MANY_REQUESTS)
 
-    // 1天一个邮箱最多接收5条
-    let limitCountOfDay: string | number = await this.redis.get(
-      `captcha:${to}:limit-day`,
-    )
-    limitCountOfDay = limitCountOfDay ? Number(limitCountOfDay) : 0
-    if (limitCountOfDay > LIMIT_TIME) {
-      throw new BusinessException(
-        ErrorEnum.MAXIMUM_FIVE_VERIFICATION_CODES_PER_DAY,
-      )
-    }
+    const recipientDailyCount = Number(await this.redis.get(this.recipientDailyLimitKey(recipient)) ?? 0)
+    if (recipientDailyCount >= this.dailyLimit)
+      throw new BusinessException(ErrorEnum.MAXIMUM_FIVE_VERIFICATION_CODES_PER_DAY)
 
-    // 1天一个ip最多发送5条
-    let ipLimitCountOfDay: string | number = await this.redis.get(
-      `ip:${ip}:send:limit-day`,
-    )
-    ipLimitCountOfDay = ipLimitCountOfDay ? Number(ipLimitCountOfDay) : 0
-    if (ipLimitCountOfDay > LIMIT_TIME) {
-      throw new BusinessException(
-        ErrorEnum.MAXIMUM_FIVE_VERIFICATION_CODES_PER_DAY,
-      )
-    }
+    const ipDailyCount = Number(await this.redis.get(this.ipDailyLimitKey(clientIp)) ?? 0)
+    if (ipDailyCount >= this.dailyLimit)
+      throw new BusinessException(ErrorEnum.MAXIMUM_FIVE_VERIFICATION_CODES_PER_DAY)
   }
 
   async send(
-    to,
-    subject,
+    to: string,
+    subject: string,
     content: string,
     type: 'text' | 'html' = 'text',
   ): Promise<any> {
@@ -105,17 +89,16 @@ export class MailerService {
         text: content,
       })
     }
-    else {
-      return this.mailerService.sendMail({
-        to,
-        subject,
-        html: content,
-      })
-    }
+
+    return this.mailerService.sendMail({
+      to,
+      subject,
+      html: content,
+    })
   }
 
-  async sendVerificationCode(to, code = randomValue(4, '1234567890')) {
-    const subject = `[${this.appConfig.name}] 验证码`
+  async sendVerificationCode(to: string, code = randomValue(4, '1234567890')) {
+    const subject = `[${this.appConfig.name}] \u9A8C\u8BC1\u7801`
 
     try {
       await this.mailerService.sendMail({
@@ -138,16 +121,36 @@ export class MailerService {
     }
   }
 
-  // async sendUserConfirmation(user: UserEntity, token: string) {
-  //   const url = `example.com/auth/confirm?token=${token}`
-  //   await this.mailerService.sendMail({
-  //     to: user.email,
-  //     subject: 'Confirm your Email',
-  //     template: './confirmation',
-  //     context: {
-  //       name: user.name,
-  //       url,
-  //     },
-  //   })
-  // }
+  private normalizeRecipient(to: string) {
+    return String(to ?? '').trim().toLowerCase()
+  }
+
+  private normalizeIp(ip: string) {
+    return String(ip ?? '').trim()
+  }
+
+  private verificationCodeKey(recipient: string) {
+    return `captcha:${recipient}`
+  }
+
+  private recipientIntervalKey(recipient: string) {
+    return `captcha:${recipient}:limit`
+  }
+
+  private recipientDailyLimitKey(recipient: string) {
+    return `captcha:${recipient}:limit-day`
+  }
+
+  private ipIntervalKey(ip: string) {
+    return `ip:${ip}:send:limit`
+  }
+
+  private ipDailyLimitKey(ip: string) {
+    return `ip:${ip}:send:limit-day`
+  }
+
+  private getRemainSecondsOfDay() {
+    const now = dayjs()
+    return Math.max(now.endOf('day').diff(now, 'second'), this.codeTtlSeconds)
+  }
 }
