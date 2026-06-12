@@ -45,6 +45,8 @@ export class UploadService {
 
   private readonly maxFileSize = 1024 * 1024 * 100
 
+  private readonly anonymousTokenTtlHours = 24
+
   constructor(
     @InjectRepository(Storage)
     private storageRepository: Repository<Storage>,
@@ -53,7 +55,7 @@ export class UploadService {
   /**
    * 保存文件上传记录
    */
-  async saveFile(file: MultipartFile, user: IAuthUser): Promise<string> {
+  async saveFile(file: MultipartFile, user: IAuthUser): Promise<{ id: number, path: string, tokenExpiresAt: Date }> {
     if (isNil(file))
       throw new NotFoundException('Have not any file to upload!')
     const { tenantId, areaId } = requireTenantAreaContext(user)
@@ -76,18 +78,20 @@ export class UploadService {
     const name = fileRename(fileName)
     const currentDate = dayjs().format('YYYY-MM-DD')
     const accessToken = randomBytes(32).toString('base64url')
+    const tokenExpiresAt = dayjs().add(this.anonymousTokenTtlHours, 'hour').toDate()
     const diskPath = getProtectedUploadPath(tenantId, areaId, name, currentDate, type)
     const path = `/api/storage/file/${accessToken}`
 
     saveLocalFile(buffer, name, currentDate, type, tenantId, areaId)
 
-    await this.storageRepository.save({
+    const storage = await this.storageRepository.save({
       name,
       fileName,
       extName,
       path,
       diskPath,
       accessToken,
+      tokenExpiresAt,
       type,
       size,
       userId: user.uid,
@@ -96,7 +100,11 @@ export class UploadService {
       scanStatus: 2,
     })
 
-    return path
+    return {
+      id: storage.id,
+      path,
+      tokenExpiresAt,
+    }
   }
 
   private matchesDeclaredFileType(buffer: Buffer, extName: string, mimeType: string) {

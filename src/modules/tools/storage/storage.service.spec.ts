@@ -58,4 +58,41 @@ describe('storageService security boundaries', () => {
 
     await expect(service.getAuthorizedFileById(10, { tenantId: 2, areaId: 99 })).rejects.toBeInstanceOf(BadRequestException)
   })
+
+  it('rejects expired anonymous file tokens', async () => {
+    const repository = {
+      findOneBy: jest.fn().mockResolvedValue({
+        id: 10,
+        scanStatus: 2,
+        tokenExpiresAt: new Date(Date.now() - 1000),
+        diskPath: 'tenant/2/area/3/file.png',
+        extName: 'png',
+        fileName: 'file.png',
+        name: 'file.png',
+      }),
+    }
+    const service = createService(repository)
+
+    await expect(service.getAuthorizedFileByToken('expired-token')).rejects.toBeInstanceOf(BadRequestException)
+  })
+
+  it('keeps legacy anonymous tokens without expiration readable', async () => {
+    const repository = {
+      findOneBy: jest.fn().mockResolvedValue({
+        id: 10,
+        scanStatus: 2,
+        tokenExpiresAt: null,
+        diskPath: 'tenant/2/area/3/file.png',
+        extName: 'png',
+        fileName: 'file.png',
+        name: 'file.png',
+      }),
+    }
+    const service = createService(repository)
+
+    await expect(service.getAuthorizedFileByToken('legacy-token')).resolves.toMatchObject({
+      filePath: 'D:/protected/tenant/2/area/3/file.png',
+      mimeType: 'image/png',
+    })
+  })
 })

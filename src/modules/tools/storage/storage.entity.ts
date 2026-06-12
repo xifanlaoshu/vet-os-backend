@@ -29,6 +29,10 @@ export class Storage extends TenantAreaEntity {
   @ApiProperty({ description: 'opaque access token' })
   accessToken: string | null
 
+  @Column({ name: 'token_expires_at', type: 'datetime', nullable: true, comment: 'opaque token expiration time' })
+  @ApiProperty({ description: 'opaque token expiration time' })
+  tokenExpiresAt: Date | null
+
   @Column({ type: 'varchar', nullable: true, comment: 'file type' })
   @ApiProperty({ description: 'file type' })
   type: string
