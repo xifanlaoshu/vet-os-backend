@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { In, Repository } from 'typeorm'
+import { requireTenantAreaContext } from '~/common/utils/tenant-context.util'
 import { AppointmentEntity } from '../vpet-appointment/entities/appointment.entity'
 import { DoctorEntity } from '../vpet-appointment/entities/doctor.entity'
 import { BillingPaymentEntity } from '../vpet-billing/entities/billing-payment.entity'
@@ -43,8 +44,7 @@ export class ReportService {
   ) {}
 
   async getDailySummary(date?: string, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
-    const tenantId = context?.tenantId ?? 1
-    const areaId = context?.areaId ?? 1
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     const target = date ? new Date(date) : new Date()
     const start = new Date(target)
     start.setHours(0, 0, 0, 0)
@@ -168,8 +168,7 @@ export class ReportService {
   }
 
   async getChronicSummary(context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
-    const tenantId = context?.tenantId ?? 1
-    const areaId = context?.areaId ?? 1
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     const [activeCases, pendingReviews, recentFollowups] = await Promise.all([
       this.chronicCaseRepository.count({ where: { status: 1, tenantId, areaId } }),
       this.chronicCaseRepository.createQueryBuilder('c')

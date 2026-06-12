@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Brackets, Repository } from 'typeorm'
 import { BusinessException } from '~/common/exceptions/biz.exception'
+import { requireTenantAreaContext } from '~/common/utils/tenant-context.util'
 import { paginate } from '~/helper/paginate'
 import { CustomerEntity } from '../vpet-customer/entities/customer.entity'
 import { PetEntity } from '../vpet-pet/entities/pet.entity'
@@ -24,8 +25,7 @@ export class ReminderService {
 
   async list(dto: QueryReminderDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
     const { page = 1, pageSize = 10, customerId, petId, status, type, keyword } = dto
-    const tenantId = context?.tenantId ?? 1
-    const areaId = context?.areaId ?? 1
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     const qb = this.reminderRepository.createQueryBuilder('r')
       .leftJoinAndSelect('r.customer', 'customer')
       .leftJoinAndSelect('r.pet', 'pet')
@@ -54,8 +54,7 @@ export class ReminderService {
   }
 
   async create(dto: CreateReminderDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
-    const tenantId = context?.tenantId ?? 1
-    const areaId = context?.areaId ?? 1
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     const [customer, pet, visit] = await Promise.all([
       this.customerRepository.findOneBy({ id: dto.customerId, tenantId }),
       this.petRepository.findOneBy({ id: dto.petId, tenantId }),
@@ -82,8 +81,7 @@ export class ReminderService {
   }
 
   async update(id: number, dto: UpdateReminderDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
-    const tenantId = context?.tenantId ?? 1
-    const areaId = context?.areaId ?? 1
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     const current = await this.reminderRepository.findOneBy({ id, tenantId, areaId })
     if (!current)
       throw new BusinessException('Reminder not found')
@@ -92,8 +90,7 @@ export class ReminderService {
   }
 
   async complete(id: number, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
-    const tenantId = context?.tenantId ?? 1
-    const areaId = context?.areaId ?? 1
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     const current = await this.reminderRepository.findOneBy({ id, tenantId, areaId })
     if (!current)
       throw new BusinessException('Reminder not found')
@@ -106,8 +103,7 @@ export class ReminderService {
   }
 
   async cancel(id: number, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
-    const tenantId = context?.tenantId ?? 1
-    const areaId = context?.areaId ?? 1
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     const current = await this.reminderRepository.findOneBy({ id, tenantId, areaId })
     if (!current)
       throw new BusinessException('Reminder not found')

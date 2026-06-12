@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Brackets, Repository } from 'typeorm'
 import { BusinessException } from '~/common/exceptions/biz.exception'
+import { requireTenantAreaContext } from '~/common/utils/tenant-context.util'
 import { paginate } from '~/helper/paginate'
 import { BillingEntity } from '../vpet-billing/entities/billing.entity'
 import { CustomerEntity } from '../vpet-customer/entities/customer.entity'
@@ -34,8 +35,7 @@ export class InsuranceService {
 
   async list(dto: QueryInsuranceClaimDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
     const { page = 1, pageSize = 10, status, keyword } = dto
-    const tenantId = context?.tenantId ?? 1
-    const areaId = context?.areaId ?? 1
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     const qb = this.claimRepository.createQueryBuilder('claim')
       .leftJoinAndSelect('claim.customer', 'customer')
       .leftJoinAndSelect('claim.pet', 'pet')
@@ -59,8 +59,7 @@ export class InsuranceService {
   }
 
   async create(dto: CreateInsuranceClaimDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
-    const tenantId = context?.tenantId ?? 1
-    const areaId = context?.areaId ?? 1
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     const [visit, billing, customer, pet] = await Promise.all([
       this.visitRepository.findOneBy({ id: dto.visitId, tenantId, areaId }),
       dto.billingId ? this.billingRepository.findOneBy({ id: dto.billingId, tenantId, areaId }) : Promise.resolve(null),
@@ -92,8 +91,7 @@ export class InsuranceService {
   }
 
   async submit(id: number, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
-    const tenantId = context?.tenantId ?? 1
-    const areaId = context?.areaId ?? 1
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     await this.claimRepository.update({ id, tenantId, areaId }, {
       status: 2,
       submittedAt: new Date().toISOString(),
@@ -102,8 +100,7 @@ export class InsuranceService {
   }
 
   async settle(id: number, dto: SettleInsuranceClaimDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
-    const tenantId = context?.tenantId ?? 1
-    const areaId = context?.areaId ?? 1
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     await this.claimRepository.update({ id, tenantId, areaId }, {
       status: 3,
       approvedAmount: dto.approvedAmount,

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Brackets, Repository } from 'typeorm'
 import { BusinessException } from '~/common/exceptions/biz.exception'
+import { requireTenantAreaContext, requireTenantContext } from '~/common/utils/tenant-context.util'
 import { paginate } from '~/helper/paginate'
 import { DoctorEntity } from '../vpet-appointment/entities/doctor.entity'
 import { CustomerEntity } from '../vpet-customer/entities/customer.entity'
@@ -36,8 +37,7 @@ export class LabService {
 
   async list(dto: QueryLabOrderDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
     const { page = 1, pageSize = 10, visitId, doctorId, status, keyword } = dto
-    const tenantId = context?.tenantId ?? 1
-    const areaId = context?.areaId ?? 1
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     const qb = this.labOrderRepository.createQueryBuilder('lab')
       .leftJoinAndSelect('lab.pet', 'pet')
       .leftJoinAndSelect('lab.customer', 'customer')
@@ -67,8 +67,7 @@ export class LabService {
   }
 
   async create(dto: CreateLabOrderDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
-    const tenantId = context?.tenantId ?? 1
-    const areaId = context?.areaId ?? 1
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     const visit = await this.visitRepository.findOne({
       where: { id: dto.visitId, tenantId, areaId },
       relations: ['customer', 'pet'],
@@ -100,7 +99,7 @@ export class LabService {
     const order = this.labOrderRepository.create({
       tenantId,
       areaId,
-      orderNo: await this.generateLabOrderNo(),
+      orderNo: await this.generateLabOrderNo({ tenantId, areaId }),
       visitId: dto.visitId,
       customerId: customer.id,
       petId: pet.id,
@@ -154,15 +153,15 @@ export class LabService {
   }
 
   async getDetail(id: number, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     return this.labOrderRepository.findOne({
-      where: { id, tenantId: context?.tenantId ?? 1, areaId: context?.areaId ?? 1 },
+      where: { id, tenantId, areaId },
       relations: ['pet', 'customer', 'doctor', 'resultItems', 'lisOrder'],
     })
   }
 
   async saveReport(id: number, dto: UpdateLabReportDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
-    const tenantId = context?.tenantId ?? 1
-    const areaId = context?.areaId ?? 1
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     const order = await this.labOrderRepository.findOne({
       where: { id, tenantId, areaId },
       relations: ['resultItems'],
@@ -209,14 +208,15 @@ export class LabService {
   }
 
   async listTemplates(context?: Pick<IAuthUser, 'tenantId'>) {
+    const { tenantId } = requireTenantContext(context)
     return this.labTemplateRepository.find({
-      where: { isActive: 1, tenantId: context?.tenantId ?? 1 },
+      where: { isActive: 1, tenantId },
       order: { category: 'ASC', name: 'ASC' },
     })
   }
 
   async createTemplate(dto: CreateLabTemplateDto, context?: Pick<IAuthUser, 'tenantId'>) {
-    const tenantId = context?.tenantId ?? 1
+    const { tenantId } = requireTenantContext(context)
     const existing = await this.labTemplateRepository.findOneBy({ code: dto.code, tenantId })
     if (existing)
       throw new BusinessException('Lab template code already exists')
@@ -239,7 +239,7 @@ export class LabService {
   }
 
   async updateTemplate(id: number, dto: UpdateLabTemplateDto, context?: Pick<IAuthUser, 'tenantId'>) {
-    const tenantId = context?.tenantId ?? 1
+    const { tenantId } = requireTenantContext(context)
     const current = await this.labTemplateRepository.findOneBy({ id, tenantId })
     if (!current)
       throw new BusinessException('Lab template not found')
@@ -281,7 +281,7 @@ export class LabService {
   }
 
   async disableTemplate(id: number, context?: Pick<IAuthUser, 'tenantId'>) {
-    const tenantId = context?.tenantId ?? 1
+    const { tenantId } = requireTenantContext(context)
     const current = await this.labTemplateRepository.findOneBy({ id, tenantId })
     if (!current)
       throw new BusinessException('Lab template not found')
@@ -289,8 +289,7 @@ export class LabService {
   }
 
   async submitLisOrder(id: number, dto: SubmitLisOrderDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
-    const tenantId = context?.tenantId ?? 1
-    const areaId = context?.areaId ?? 1
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     const order = await this.labOrderRepository.findOneBy({ id, tenantId, areaId })
     if (!order)
       throw new BusinessException('Lab order not found')
@@ -301,7 +300,7 @@ export class LabService {
         tenantId,
         areaId,
         labOrderId: id,
-        barcode: dto.barcode || await this.generateBarcode(),
+        barcode: dto.barcode || await this.generateBarcode({ tenantId, areaId }),
         deviceCode: dto.deviceCode,
         status: 2,
         sentAt: new Date().toISOString(),
@@ -347,13 +346,16 @@ export class LabService {
     }))
   }
 
-  private async generateLabOrderNo() {
+  private async generateLabOrderNo(context: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     const date = this.getTodaySequenceDate()
     const prefix = `LAB${date}`
     const latestOrder = await this.labOrderRepository
       .createQueryBuilder('lab')
       .select(['lab.orderNo'])
       .where('lab.orderNo LIKE :prefix', { prefix: `${prefix}%` })
+      .andWhere('lab.tenantId = :tenantId', { tenantId })
+      .andWhere('lab.areaId = :areaId', { areaId })
       .orderBy('lab.orderNo', 'DESC')
       .getOne()
 
@@ -363,13 +365,16 @@ export class LabService {
     return `${prefix}${String(currentSeq + 1).padStart(4, '0')}`
   }
 
-  private async generateBarcode() {
+  private async generateBarcode(context: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     const date = this.getTodaySequenceDate()
     const prefix = `BC${date}`
     const latestLisOrder = await this.lisOrderRepository
       .createQueryBuilder('lis')
       .select(['lis.barcode'])
       .where('lis.barcode LIKE :prefix', { prefix: `${prefix}%` })
+      .andWhere('lis.tenantId = :tenantId', { tenantId })
+      .andWhere('lis.areaId = :areaId', { areaId })
       .orderBy('lis.barcode', 'DESC')
       .getOne()
 

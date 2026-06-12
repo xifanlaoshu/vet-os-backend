@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
+import { requireTenantAreaContext, requireTenantContext } from '~/common/utils/tenant-context.util'
 import { paginate, paginateRawAndEntities } from '~/helper/paginate'
 import { CustomerEntity } from '../vpet-customer/entities/customer.entity'
 import {
@@ -25,8 +26,7 @@ export class MemberService {
   ) {}
 
   async openCard(dto: OpenCardDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>): Promise<MemberCardEntity> {
-    const tenantId = context?.tenantId ?? 1
-    const areaId = context?.areaId ?? 1
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     const customer = await this.customerRepository.findOneBy({ id: dto.customerId, tenantId })
     if (!customer)
       throw new BadRequestException('Customer not found')
@@ -40,7 +40,7 @@ export class MemberService {
     const card = this.cardRepository.create({
       tenantId,
       customerId: dto.customerId,
-      cardNo: await this.generateCardNo(),
+      cardNo: await this.generateCardNo({ tenantId }),
       level: dto.level ?? 1,
       balance: initialBalance,
       giftBalance: giftAmount,
@@ -68,7 +68,7 @@ export class MemberService {
 
   async listCards(dto: QueryMemberCardDto, context?: Pick<IAuthUser, 'tenantId'>) {
     const { page = 1, pageSize = 10, keyword, customerId, status, level } = dto
-    const tenantId = context?.tenantId ?? 1
+    const { tenantId } = requireTenantContext(context)
     const queryBuilder = this.cardRepository
       .createQueryBuilder('card')
       .leftJoin(CustomerEntity, 'customer', 'customer.id = card.customerId AND customer.tenantId = card.tenantId')
@@ -118,16 +118,17 @@ export class MemberService {
   }
 
   async getCardByCustomer(customerId: number, context?: Pick<IAuthUser, 'tenantId'>): Promise<MemberCardEntity | null> {
-    return this.cardRepository.findOneBy({ customerId, tenantId: context?.tenantId ?? 1 })
+    const { tenantId } = requireTenantContext(context)
+    return this.cardRepository.findOneBy({ customerId, tenantId })
   }
 
   async getCardById(id: number, context?: Pick<IAuthUser, 'tenantId'>): Promise<MemberCardEntity | null> {
-    return this.cardRepository.findOneBy({ id, tenantId: context?.tenantId ?? 1 })
+    const { tenantId } = requireTenantContext(context)
+    return this.cardRepository.findOneBy({ id, tenantId })
   }
 
   async recharge(cardId: number, dto: RechargeDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>): Promise<MemberCardEntity> {
-    const tenantId = context?.tenantId ?? 1
-    const areaId = context?.areaId ?? 1
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     const card = await this.cardRepository.findOneBy({ id: cardId, tenantId })
     if (!card)
       throw new BadRequestException('Member card not found')
@@ -154,8 +155,7 @@ export class MemberService {
   }
 
   async deduct(cardId: number, dto: DeductDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>): Promise<MemberCardEntity> {
-    const tenantId = context?.tenantId ?? 1
-    const areaId = context?.areaId ?? 1
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     const card = await this.cardRepository.findOneBy({ id: cardId, tenantId })
     if (!card)
       throw new BadRequestException('Member card not found')
@@ -185,8 +185,7 @@ export class MemberService {
   }
 
   async getCardLogs(cardId: number, dto: QueryMemberCardLogDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
-    const tenantId = context?.tenantId ?? 1
-    const areaId = context?.areaId ?? 1
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     const card = await this.cardRepository.findOneBy({ id: cardId, tenantId })
     if (!card)
       throw new BadRequestException('Member card not found')
@@ -212,19 +211,22 @@ export class MemberService {
   }
 
   async getBalance(customerId: number, context?: Pick<IAuthUser, 'tenantId'>): Promise<{ cardNo: string, balance: number, points: number } | null> {
-    const card = await this.cardRepository.findOneBy({ customerId, tenantId: context?.tenantId ?? 1 })
+    const { tenantId } = requireTenantContext(context)
+    const card = await this.cardRepository.findOneBy({ customerId, tenantId })
     if (!card)
       return null
     return { cardNo: card.cardNo, balance: Number(card.balance), points: card.points }
   }
 
-  private async generateCardNo() {
+  private async generateCardNo(context: Pick<IAuthUser, 'tenantId'>) {
+    const { tenantId } = requireTenantContext(context)
     const date = this.getTodaySequenceDate()
     const prefix = `MC${date}`
     const latestCard = await this.cardRepository
       .createQueryBuilder('card')
       .select(['card.cardNo'])
       .where('card.cardNo LIKE :prefix', { prefix: `${prefix}%` })
+      .andWhere('card.tenantId = :tenantId', { tenantId })
       .orderBy('card.cardNo', 'DESC')
       .getOne()
 

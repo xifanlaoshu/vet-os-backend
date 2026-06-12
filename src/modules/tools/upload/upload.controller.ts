@@ -41,7 +41,7 @@ export class UploadController {
     //   console.log(part.file)
 
     try {
-      const path = await this.uploadService.saveFile(file, user.uid)
+      const path = await this.uploadService.saveFile(file, user)
 
       return {
         filename: path,

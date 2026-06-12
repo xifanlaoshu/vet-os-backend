@@ -3,6 +3,7 @@ import { Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Brackets, QueryFailedError, Repository } from 'typeorm'
 import { BusinessException } from '~/common/exceptions/biz.exception'
+import { requireTenantAreaContext, requireTenantContext } from '~/common/utils/tenant-context.util'
 import { BaseService } from '~/helper/crud/base.service'
 import { paginate } from '~/helper/paginate'
 import { AppointmentEntity } from '../vpet-appointment/entities/appointment.entity'
@@ -107,8 +108,7 @@ export class VisitService extends BaseService<VisitEntity> {
   }
 
   async createVisit(dto: CreateVisitDto): Promise<any> {
-    const tenantId = (dto as any).tenantId ?? 1
-    const areaId = (dto as any).areaId ?? 1
+    const { tenantId, areaId } = requireTenantAreaContext(dto as any)
     if (dto.appointmentId) {
       const existing = await this.visitRepository.findOneBy({ appointmentId: dto.appointmentId, tenantId, areaId })
       if (existing)
@@ -148,8 +148,7 @@ export class VisitService extends BaseService<VisitEntity> {
   }
 
   async queryList(dto: QueryVisitDto, currentUserId?: number, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
-    const tenantId = context?.tenantId ?? 1
-    const areaId = context?.areaId ?? 1
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     const {
       page = 1,
       pageSize = 10,
@@ -385,8 +384,9 @@ export class VisitService extends BaseService<VisitEntity> {
   }
 
   async lockEmr(id: number, dto: LockEmrDto, options: CurrentStaffScopeOptions = {}) {
+    const { tenantId, areaId } = requireTenantAreaContext(options)
     const visit = await this.visitRepository.findOne({
-      where: { id, tenantId: options.tenantId ?? 1, areaId: options.areaId ?? 1 },
+      where: { id, tenantId, areaId },
       relations: ['emr'],
     })
     if (!visit) {
@@ -414,8 +414,9 @@ export class VisitService extends BaseService<VisitEntity> {
   }
 
   async requestUnlockEmr(id: number, dto: RequestUnlockEmrDto, options: CurrentStaffScopeOptions = {}) {
+    const { tenantId, areaId } = requireTenantAreaContext(options)
     const visit = await this.visitRepository.findOne({
-      where: { id, tenantId: options.tenantId ?? 1, areaId: options.areaId ?? 1 },
+      where: { id, tenantId, areaId },
       relations: ['emr'],
     })
     if (!visit) {
@@ -461,8 +462,7 @@ export class VisitService extends BaseService<VisitEntity> {
   }
 
   async reviewUnlockRequest(requestId: number, dto: ReviewUnlockEmrDto, options: CurrentStaffScopeOptions = {}) {
-    const tenantId = options.tenantId ?? 1
-    const areaId = options.areaId ?? 1
+    const { tenantId, areaId } = requireTenantAreaContext(options)
     const request = await this.emrUnlockRequestRepository.findOneBy({ id: requestId, tenantId, areaId })
     if (!request)
       throw new BusinessException('Unlock request not found')
@@ -513,8 +513,9 @@ export class VisitService extends BaseService<VisitEntity> {
   }
 
   async signEmr(id: number, dto: SignEmrDto, options: CurrentStaffScopeOptions = {}) {
+    const { tenantId, areaId } = requireTenantAreaContext(options)
     const visit = await this.visitRepository.findOne({
-      where: { id, tenantId: options.tenantId ?? 1, areaId: options.areaId ?? 1 },
+      where: { id, tenantId, areaId },
       relations: ['emr', 'diagnoses', 'progressBatches', 'planBatches'],
     })
     if (!visit) {
@@ -578,8 +579,7 @@ export class VisitService extends BaseService<VisitEntity> {
   }
 
   async listUnlockRequests(params: { visitId?: number, status?: number }, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
-    const tenantId = context?.tenantId ?? 1
-    const areaId = context?.areaId ?? 1
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     const qb = this.emrUnlockRequestRepository.createQueryBuilder('r')
       .where('r.tenantId = :tenantId', { tenantId })
       .andWhere('r.areaId = :areaId', { areaId })
@@ -630,8 +630,7 @@ export class VisitService extends BaseService<VisitEntity> {
   }
 
   async getTodayQueue(params: { doctorId?: number, scope?: string, currentUserId?: number, tenantId?: number, areaId?: number } = {}) {
-    const tenantId = params.tenantId ?? 1
-    const areaId = params.areaId ?? 1
+    const { tenantId, areaId } = requireTenantAreaContext(params)
     const scopedDoctorId = await this.resolveScopedDoctorId(params.scope, params.currentUserId, tenantId)
     if (params.scope === 'currentStaff' && !scopedDoctorId)
       return []
@@ -657,8 +656,9 @@ export class VisitService extends BaseService<VisitEntity> {
 
   async searchDiagnosisCodes(params: { keyword?: string, species?: string }, context?: Pick<IAuthUser, 'tenantId'>) {
     const { keyword, species } = params
+    const { tenantId } = requireTenantContext(context)
     const qb = this.diagnosisCodeRepository.createQueryBuilder('d')
-      .where('d.tenantId = :tenantId', { tenantId: context?.tenantId ?? 1 })
+      .where('d.tenantId = :tenantId', { tenantId })
 
     if (species) {
       qb.andWhere('d.speciesScope IN (:...speciesScopes)', {
@@ -680,8 +680,9 @@ export class VisitService extends BaseService<VisitEntity> {
 
   async listDiagnosisCodes(dto: QueryDiagnosisCodeDto, context?: Pick<IAuthUser, 'tenantId'>) {
     const { page = 1, pageSize = 10, keyword, category, species } = dto
+    const { tenantId } = requireTenantContext(context)
     const qb = this.diagnosisCodeRepository.createQueryBuilder('d')
-      .where('d.tenantId = :tenantId', { tenantId: context?.tenantId ?? 1 })
+      .where('d.tenantId = :tenantId', { tenantId })
 
     if (keyword) {
       qb.andWhere(new Brackets((subQb) => {
@@ -700,7 +701,7 @@ export class VisitService extends BaseService<VisitEntity> {
   }
 
   async createDiagnosisCode(dto: CreateDiagnosisCodeDto, context?: Pick<IAuthUser, 'tenantId'>) {
-    const tenantId = context?.tenantId ?? 1
+    const { tenantId } = requireTenantContext(context)
     const exists = await this.diagnosisCodeRepository.findOneBy({ code: dto.code, tenantId })
     if (exists)
       throw new BusinessException('Diagnosis code already exists')
@@ -714,7 +715,7 @@ export class VisitService extends BaseService<VisitEntity> {
   }
 
   async updateDiagnosisCode(code: string, dto: UpdateDiagnosisCodeDto, context?: Pick<IAuthUser, 'tenantId'>) {
-    const tenantId = context?.tenantId ?? 1
+    const { tenantId } = requireTenantContext(context)
     const current = await this.diagnosisCodeRepository.findOneBy({ code, tenantId })
     if (!current)
       throw new BusinessException('Diagnosis code not found')
@@ -728,7 +729,7 @@ export class VisitService extends BaseService<VisitEntity> {
   }
 
   async deleteDiagnosisCode(code: string, context?: Pick<IAuthUser, 'tenantId'>) {
-    const tenantId = context?.tenantId ?? 1
+    const { tenantId } = requireTenantContext(context)
     const current = await this.diagnosisCodeRepository.findOneBy({ code, tenantId })
     if (!current)
       throw new BusinessException('Diagnosis code not found')
@@ -736,8 +737,9 @@ export class VisitService extends BaseService<VisitEntity> {
   }
 
   async findOneDetailed(id: number, options: CurrentStaffScopeOptions = {}): Promise<any> {
+    const { tenantId, areaId } = requireTenantAreaContext(options)
     const item = await this.visitRepository.findOne({
-      where: { id, tenantId: options.tenantId ?? 1, areaId: options.areaId ?? 1 },
+      where: { id, tenantId, areaId },
       relations: [
         'pet',
         'customer',
@@ -1004,16 +1006,16 @@ export class VisitService extends BaseService<VisitEntity> {
       throw new BusinessException('Video media must use a video MIME type')
   }
 
-  async findByAppointmentId(appointmentId: number): Promise<any> {
-    const visit = await this.visitRepository.findOneBy({ appointmentId })
+  async findByAppointmentId(appointmentId: number, context: Pick<IAuthUser, 'tenantId' | 'areaId'>): Promise<any> {
+    const { tenantId, areaId } = requireTenantAreaContext(context)
+    const visit = await this.visitRepository.findOneBy({ appointmentId, tenantId, areaId })
     if (!visit)
       return null
     return this.findOneDetailed(visit.id, { tenantId: visit.tenantId, areaId: visit.areaId })
   }
 
   async createChronicCase(dto: CreateChronicCaseDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
-    const tenantId = context?.tenantId ?? 1
-    const areaId = context?.areaId ?? 1
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     const visit = dto.visitId
       ? await this.visitRepository.findOne({
         where: { id: dto.visitId, tenantId, areaId },
@@ -1044,7 +1046,7 @@ export class VisitService extends BaseService<VisitEntity> {
     const chronicCase = this.chronicCaseRepository.create({
       tenantId,
       areaId,
-      caseNo: await this.generateChronicCaseNo(),
+      caseNo: await this.generateChronicCaseNo({ tenantId, areaId }),
       customerId: customer.id,
       petId: pet.id,
       visitId: dto.visitId ?? null,
@@ -1063,8 +1065,7 @@ export class VisitService extends BaseService<VisitEntity> {
   }
 
   async addChronicFollowup(chronicCaseId: number, dto: CreateChronicFollowupDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
-    const tenantId = context?.tenantId ?? 1
-    const areaId = context?.areaId ?? 1
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     const chronicCase = await this.chronicCaseRepository.findOneBy({ id: chronicCaseId, tenantId, areaId })
     if (!chronicCase) {
       throw new BusinessException('Chronic case not found')
@@ -1109,8 +1110,7 @@ export class VisitService extends BaseService<VisitEntity> {
     keyword?: string
   }, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
     const { petId, customerId, status, keyword } = params
-    const tenantId = context?.tenantId ?? 1
-    const areaId = context?.areaId ?? 1
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     const qb = this.chronicCaseRepository.createQueryBuilder('c')
       .leftJoinAndSelect('c.customer', 'customer')
       .leftJoinAndSelect('c.pet', 'pet')
@@ -1142,16 +1142,18 @@ export class VisitService extends BaseService<VisitEntity> {
   }
 
   async getChronicCaseDetail(id: number, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     return this.chronicCaseRepository.findOne({
-      where: { id, tenantId: context?.tenantId ?? 1, areaId: context?.areaId ?? 1 },
+      where: { id, tenantId, areaId },
       relations: ['customer', 'pet', 'visit', 'followups'],
       order: { followups: { reviewDate: 'DESC' } },
     })
   }
 
   async getChronicReport(id: number, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     const chronicCase = await this.chronicCaseRepository.findOne({
-      where: { id, tenantId: context?.tenantId ?? 1, areaId: context?.areaId ?? 1 },
+      where: { id, tenantId, areaId },
       relations: ['followups'],
     })
     if (!chronicCase) {
@@ -1451,9 +1453,10 @@ export class VisitService extends BaseService<VisitEntity> {
     operatorId?: number | null,
     context?: Pick<IAuthUser, 'tenantId' | 'areaId'>,
   ) {
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     await this.emrAuditRepository.save(this.emrAuditRepository.create({
-      tenantId: context?.tenantId ?? 1,
-      areaId: context?.areaId ?? 1,
+      tenantId,
+      areaId,
       visitId,
       emrId,
       action,
@@ -1503,14 +1506,15 @@ export class VisitService extends BaseService<VisitEntity> {
   }
 
   private async generateVisitNo(context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     const date = this.getTodaySequenceDate()
     const prefix = `V${date}`
     const latestVisit = await this.visitRepository
       .createQueryBuilder('v')
       .select(['v.visitNo'])
       .where('v.visitNo LIKE :prefix', { prefix: `${prefix}%` })
-      .andWhere('v.tenantId = :tenantId', { tenantId: context?.tenantId ?? 1 })
-      .andWhere('v.areaId = :areaId', { areaId: context?.areaId ?? 1 })
+      .andWhere('v.tenantId = :tenantId', { tenantId })
+      .andWhere('v.areaId = :areaId', { areaId })
       .orderBy('v.visitNo', 'DESC')
       .getOne()
 
@@ -1521,14 +1525,15 @@ export class VisitService extends BaseService<VisitEntity> {
   }
 
   private async generateQueueNumber(context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     const today = new Date()
     today.setHours(0, 0, 0, 0)
     const result = await this.visitRepository
       .createQueryBuilder('v')
       .select('MAX(v.queueNumber)', 'maxQueueNumber')
       .where('v.createdAt >= :today', { today })
-      .andWhere('v.tenantId = :tenantId', { tenantId: context?.tenantId ?? 1 })
-      .andWhere('v.areaId = :areaId', { areaId: context?.areaId ?? 1 })
+      .andWhere('v.tenantId = :tenantId', { tenantId })
+      .andWhere('v.areaId = :areaId', { areaId })
       .getRawOne<{ maxQueueNumber: number | string | null }>()
 
     return Number(result?.maxQueueNumber ?? 0) + 1
@@ -1557,6 +1562,7 @@ export class VisitService extends BaseService<VisitEntity> {
     dedupeLatest = false,
     context?: Pick<IAuthUser, 'tenantId' | 'areaId'>,
   ) {
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     if (dedupeLatest) {
       const latest = await this.queueEventRepository.findOne({
         where: { visitId },
@@ -1568,8 +1574,8 @@ export class VisitService extends BaseService<VisitEntity> {
     }
 
     await this.queueEventRepository.save(this.queueEventRepository.create({
-      tenantId: context?.tenantId ?? 1,
-      areaId: context?.areaId ?? 1,
+      tenantId,
+      areaId,
       visitId,
       eventType,
       queueNo: payload?.queueNo ?? null,
@@ -1700,6 +1706,8 @@ export class VisitService extends BaseService<VisitEntity> {
       .createQueryBuilder('batch')
       .select(['batch.batchNo'])
       .where('batch.batchNo LIKE :prefix', { prefix: `${prefix}%` })
+      .andWhere('batch.tenantId = :tenantId', { tenantId: visit.tenantId })
+      .andWhere('batch.areaId = :areaId', { areaId: visit.areaId })
       .orderBy('batch.batchNo', 'DESC')
       .getOne()
     const currentSeq = latest?.batchNo
@@ -1733,20 +1741,22 @@ export class VisitService extends BaseService<VisitEntity> {
   }
 
   private async findScopedVisit(id: number, options: CurrentStaffScopeOptions = {}) {
+    const { tenantId, areaId } = requireTenantAreaContext(options)
     return this.visitRepository.findOneBy({
       id,
-      tenantId: options.tenantId ?? 1,
-      areaId: options.areaId ?? 1,
+      tenantId,
+      areaId,
     })
   }
 
-  private async resolveScopedDoctorId(scope?: string, currentUserId?: number, tenantId = 1) {
+  private async resolveScopedDoctorId(scope?: string, currentUserId?: number, tenantId?: number) {
     if (scope !== 'currentStaff')
       return undefined
+    const { tenantId: requiredTenantId } = requireTenantContext({ tenantId })
     if (!currentUserId)
       return null
     const doctor = await this.doctorRepository.findOne({
-      where: { userId: currentUserId, tenantId, status: 1 },
+      where: { userId: currentUserId, tenantId: requiredTenantId, status: 1 },
     })
     return doctor?.id ?? null
   }
@@ -1774,13 +1784,16 @@ export class VisitService extends BaseService<VisitEntity> {
       throw new BusinessException('Current staff cannot access this visit')
   }
 
-  private async generateChronicCaseNo() {
+  private async generateChronicCaseNo(context: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     const date = this.getTodaySequenceDate()
     const prefix = `CC${date}`
     const latestCase = await this.chronicCaseRepository
       .createQueryBuilder('c')
       .select(['c.caseNo'])
       .where('c.caseNo LIKE :prefix', { prefix: `${prefix}%` })
+      .andWhere('c.tenantId = :tenantId', { tenantId })
+      .andWhere('c.areaId = :areaId', { areaId })
       .orderBy('c.caseNo', 'DESC')
       .getOne()
 

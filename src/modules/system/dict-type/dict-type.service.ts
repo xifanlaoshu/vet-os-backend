@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm'
 
 import { Like, Repository } from 'typeorm'
 
+import { requireTenantContext } from '~/common/utils/tenant-context.util'
 import { paginate } from '~/helper/paginate'
 import { Pagination } from '~/helper/paginate/pagination'
 import { DictTypeEntity } from '~/modules/system/dict-type/dict-type.entity'
@@ -25,8 +26,9 @@ export class DictTypeService {
     name,
     code,
   }: DictTypeQueryDto, context?: Pick<IAuthUser, 'tenantId'>): Promise<Pagination<DictTypeEntity>> {
+    const { tenantId } = requireTenantContext(context)
     const queryBuilder = this.dictTypeRepository.createQueryBuilder('dict_type').where({
-      tenantId: context?.tenantId ?? 1,
+      tenantId,
       ...(name && { name: Like(`%${name}%`) }),
       ...(code && { code: Like(`%${code}%`) }),
     })
@@ -36,7 +38,8 @@ export class DictTypeService {
 
   /** 一次性获取所有的字典类型 */
   async getAll(context?: Pick<IAuthUser, 'tenantId'>) {
-    return this.dictTypeRepository.find({ where: { tenantId: context?.tenantId ?? 1 } })
+    const { tenantId } = requireTenantContext(context)
+    return this.dictTypeRepository.find({ where: { tenantId } })
   }
 
   /**
@@ -50,27 +53,31 @@ export class DictTypeService {
    * 新增
    */
   async create(dto: DictTypeDto, context?: Pick<IAuthUser, 'tenantId'>): Promise<void> {
-    await this.dictTypeRepository.insert({ ...dto, tenantId: context?.tenantId ?? 1 })
+    const { tenantId } = requireTenantContext(context)
+    await this.dictTypeRepository.insert({ ...dto, tenantId })
   }
 
   /**
    * 更新
    */
   async update(id: number, dto: Partial<DictTypeDto>, context?: Pick<IAuthUser, 'tenantId'>): Promise<void> {
-    await this.dictTypeRepository.update({ id, tenantId: context?.tenantId ?? 1 }, dto)
+    const { tenantId } = requireTenantContext(context)
+    await this.dictTypeRepository.update({ id, tenantId }, dto)
   }
 
   /**
    * 删除
    */
   async delete(id: number, context?: Pick<IAuthUser, 'tenantId'>): Promise<void> {
-    await this.dictTypeRepository.delete({ id, tenantId: context?.tenantId ?? 1 })
+    const { tenantId } = requireTenantContext(context)
+    await this.dictTypeRepository.delete({ id, tenantId })
   }
 
   /**
    * 查询单个
    */
   async findOne(id: number, context?: Pick<IAuthUser, 'tenantId'>): Promise<DictTypeEntity> {
-    return this.dictTypeRepository.findOneBy({ id, tenantId: context?.tenantId ?? 1 })
+    const { tenantId } = requireTenantContext(context)
+    return this.dictTypeRepository.findOneBy({ id, tenantId })
   }
 }

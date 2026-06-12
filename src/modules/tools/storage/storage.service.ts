@@ -1,7 +1,8 @@
-import { Injectable } from '@nestjs/common'
+import { BadRequestException, Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
-import { Between, Like, Repository } from 'typeorm'
+import { Between, In, Like, Repository } from 'typeorm'
 
+import { requireTenantAreaContext } from '~/common/utils/tenant-context.util'
 import { paginateRaw } from '~/helper/paginate'
 import { PaginationTypeEnum } from '~/helper/paginate/interface'
 import { Pagination } from '~/helper/paginate/pagination'
@@ -21,19 +22,27 @@ export class StorageService {
     private userRepository: Repository<UserEntity>,
   ) {}
 
-  async create(dto: StorageCreateDto, userId: number): Promise<void> {
+  async create(dto: StorageCreateDto, user: IAuthUser): Promise<void> {
+    const { tenantId, areaId } = requireTenantAreaContext(user)
     await this.storageRepository.save({
       ...dto,
-      userId,
+      userId: user.uid,
+      tenantId,
+      areaId,
     })
   }
 
   /**
    * 删除文件
    */
-  async delete(fileIds: number[]): Promise<void> {
-    const items = await this.storageRepository.findByIds(fileIds)
-    await this.storageRepository.delete(fileIds)
+  async delete(fileIds: number[], context: Pick<IAuthUser, 'tenantId' | 'areaId'>): Promise<void> {
+    const { tenantId, areaId } = requireTenantAreaContext(context)
+    const items = await this.storageRepository.find({
+      where: { id: In(fileIds), tenantId, areaId },
+    })
+    if (items.length !== fileIds.length)
+      throw new BadRequestException('File not found or no permission')
+    await this.storageRepository.delete({ id: In(fileIds), tenantId, areaId })
 
     items.forEach((el) => {
       deleteFile(el.path)
@@ -49,7 +58,8 @@ export class StorageService {
     extName,
     time,
     username,
-  }: StoragePageDto): Promise<Pagination<StorageInfo>> {
+  }: StoragePageDto, context: Pick<IAuthUser, 'tenantId' | 'areaId'>): Promise<Pagination<StorageInfo>> {
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     const queryBuilder = this.storageRepository
       .createQueryBuilder('storage')
       .leftJoinAndSelect('sys_user', 'user', 'storage.user_id = user.id')
@@ -62,6 +72,8 @@ export class StorageService {
         ...(username && {
           userId: await (await this.userRepository.findOneBy({ username }))?.id,
         }),
+        tenantId,
+        areaId,
       })
       .orderBy('storage.created_at', 'DESC')
 
@@ -92,7 +104,8 @@ export class StorageService {
     }
   }
 
-  async count(): Promise<number> {
-    return this.storageRepository.count()
+  async count(context: Pick<IAuthUser, 'tenantId' | 'areaId'>): Promise<number> {
+    const { tenantId, areaId } = requireTenantAreaContext(context)
+    return this.storageRepository.count({ where: { tenantId, areaId } })
   }
 }

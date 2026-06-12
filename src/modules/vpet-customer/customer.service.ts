@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
 import { BusinessException } from '~/common/exceptions/biz.exception'
+import { requireTenantContext } from '~/common/utils/tenant-context.util'
 import { BaseService } from '~/helper/crud/base.service'
 import { paginate } from '~/helper/paginate'
 import { CreateCustomerDto, QueryCustomerDto, UpdateCustomerDto } from './dto/customer.dto'
@@ -18,7 +19,7 @@ export class CustomerService extends BaseService<CustomerEntity> {
 
   async list(dto: QueryCustomerDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
     const { page = 1, pageSize = 10, keyword, name, phone } = dto
-    const tenantId = context?.tenantId ?? 1
+    const { tenantId } = requireTenantContext(context)
     const queryBuilder = this.customerRepository.createQueryBuilder('c')
       .where('c.tenantId = :tenantId', { tenantId })
 
@@ -40,11 +41,12 @@ export class CustomerService extends BaseService<CustomerEntity> {
   }
 
   async getById(id: number, context?: Pick<IAuthUser, 'tenantId'>): Promise<CustomerEntity | null> {
-    return this.customerRepository.findOneBy({ id, tenantId: context?.tenantId ?? 1 })
+    const { tenantId } = requireTenantContext(context)
+    return this.customerRepository.findOneBy({ id, tenantId })
   }
 
   async createCustomer(dto: CreateCustomerDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>): Promise<CustomerEntity> {
-    const tenantId = context?.tenantId ?? 1
+    const { tenantId } = requireTenantContext(context)
     const existing = await this.findByPhone(dto.phone, { tenantId })
     if (existing)
       throw new BusinessException('Customer phone already exists in current tenant')
@@ -56,7 +58,7 @@ export class CustomerService extends BaseService<CustomerEntity> {
   }
 
   async updateCustomer(id: number, dto: UpdateCustomerDto, context?: Pick<IAuthUser, 'tenantId'>): Promise<void> {
-    const tenantId = context?.tenantId ?? 1
+    const { tenantId } = requireTenantContext(context)
     const current = await this.customerRepository.findOneBy({ id, tenantId })
     if (!current)
       throw new BusinessException('Customer not found')
@@ -69,7 +71,7 @@ export class CustomerService extends BaseService<CustomerEntity> {
   }
 
   async deleteCustomer(id: number, context?: Pick<IAuthUser, 'tenantId'>): Promise<void> {
-    const tenantId = context?.tenantId ?? 1
+    const { tenantId } = requireTenantContext(context)
     const current = await this.customerRepository.findOneBy({ id, tenantId })
     if (!current)
       throw new BusinessException('Customer not found')
@@ -77,7 +79,8 @@ export class CustomerService extends BaseService<CustomerEntity> {
   }
 
   async findByPhone(phone: string, context?: Pick<IAuthUser, 'tenantId'>): Promise<CustomerEntity | null> {
-    return this.customerRepository.findOneBy({ phone, tenantId: context?.tenantId ?? 1 })
+    const { tenantId } = requireTenantContext(context)
+    return this.customerRepository.findOneBy({ phone, tenantId })
   }
 
   async findOrCreate(phone: string, name: string, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>): Promise<CustomerEntity> {

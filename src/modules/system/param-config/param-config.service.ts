@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm'
 
 import { Repository } from 'typeorm'
 
+import { requireTenantContext } from '~/common/utils/tenant-context.util'
 import { paginate } from '~/helper/paginate'
 import { Pagination } from '~/helper/paginate/pagination'
 import { ParamConfigEntity } from '~/modules/system/param-config/param-config.entity'
@@ -24,8 +25,9 @@ export class ParamConfigService {
     pageSize,
     name,
   }: ParamConfigQueryDto, context?: Pick<IAuthUser, 'tenantId'>): Promise<Pagination<ParamConfigEntity>> {
+    const { tenantId } = requireTenantContext(context)
     const queryBuilder = this.paramConfigRepository.createQueryBuilder('config')
-      .where('config.tenantId = :tenantId', { tenantId: context?.tenantId ?? 1 })
+      .where('config.tenantId = :tenantId', { tenantId })
 
     if (name) {
       queryBuilder.andWhere('config.name LIKE :name', {
@@ -47,33 +49,38 @@ export class ParamConfigService {
    * 新增
    */
   async create(dto: ParamConfigDto, context?: Pick<IAuthUser, 'tenantId'>): Promise<void> {
-    await this.paramConfigRepository.insert({ ...dto, tenantId: context?.tenantId ?? 1 })
+    const { tenantId } = requireTenantContext(context)
+    await this.paramConfigRepository.insert({ ...dto, tenantId })
   }
 
   /**
    * 更新
    */
   async update(id: number, dto: Partial<ParamConfigDto>, context?: Pick<IAuthUser, 'tenantId'>): Promise<void> {
-    await this.paramConfigRepository.update({ id, tenantId: context?.tenantId ?? 1 }, dto)
+    const { tenantId } = requireTenantContext(context)
+    await this.paramConfigRepository.update({ id, tenantId }, dto)
   }
 
   /**
    * 删除
    */
   async delete(id: number, context?: Pick<IAuthUser, 'tenantId'>): Promise<void> {
-    await this.paramConfigRepository.delete({ id, tenantId: context?.tenantId ?? 1 })
+    const { tenantId } = requireTenantContext(context)
+    await this.paramConfigRepository.delete({ id, tenantId })
   }
 
   /**
    * 查询单个
    */
   async findOne(id: number, context?: Pick<IAuthUser, 'tenantId'>): Promise<ParamConfigEntity> {
-    return this.paramConfigRepository.findOneBy({ id, tenantId: context?.tenantId ?? 1 })
+    const { tenantId } = requireTenantContext(context)
+    return this.paramConfigRepository.findOneBy({ id, tenantId })
   }
 
   async findValueByKey(key: string, context?: Pick<IAuthUser, 'tenantId'>): Promise<string | null> {
+    const { tenantId } = requireTenantContext(context)
     const result = await this.paramConfigRepository.findOne({
-      where: { key, tenantId: context?.tenantId ?? 1 },
+      where: { key, tenantId },
       select: ['value'],
     })
     if (result)

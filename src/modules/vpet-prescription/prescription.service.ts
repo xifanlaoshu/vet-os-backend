@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Brackets, Repository } from 'typeorm'
 import { BusinessException } from '~/common/exceptions/biz.exception'
+import { requireTenantAreaContext, requireTenantContext } from '~/common/utils/tenant-context.util'
 import { BaseService } from '~/helper/crud/base.service'
 import { paginate } from '~/helper/paginate'
 import { DoctorEntity } from '../vpet-appointment/entities/doctor.entity'
@@ -48,8 +49,7 @@ export class PrescriptionService extends BaseService<PrescriptionEntity> {
   }
 
   async createRx(dto: CreatePrescriptionDto, options: { currentUserId?: number, tenantId?: number, areaId?: number } = {}): Promise<PrescriptionEntity | null> {
-    const tenantId = options.tenantId ?? 1
-    const areaId = options.areaId ?? 1
+    const { tenantId, areaId } = requireTenantAreaContext(options)
     const visit = await this.visitRepository.findOne({
       where: { id: dto.visitId, tenantId, areaId },
       relations: ['customer', 'pet'],
@@ -126,11 +126,12 @@ export class PrescriptionService extends BaseService<PrescriptionEntity> {
 
   async queryList(dto: QueryPrescriptionDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
     const { page = 1, pageSize = 10, visitId, doctorId, status } = dto
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     const qb = this.rxRepository.createQueryBuilder('rx')
       .leftJoinAndSelect('rx.doctor', 'doctor')
       .leftJoinAndSelect('rx.pharmacist', 'pharmacist')
-      .andWhere('rx.tenantId = :tenantId', { tenantId: context?.tenantId ?? 1 })
-      .andWhere('rx.areaId = :areaId', { areaId: context?.areaId ?? 1 })
+      .andWhere('rx.tenantId = :tenantId', { tenantId })
+      .andWhere('rx.areaId = :areaId', { areaId })
 
     if (visitId)
       qb.andWhere('rx.visitId = :visitId', { visitId })
@@ -144,19 +145,21 @@ export class PrescriptionService extends BaseService<PrescriptionEntity> {
   }
 
   async submitForReview(id: number, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>): Promise<void> {
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     await this.rxRepository.update({
       id,
-      tenantId: context?.tenantId ?? 1,
-      areaId: context?.areaId ?? 1,
+      tenantId,
+      areaId,
     }, { status: 2 })
   }
 
   async reviewRx(id: number, dto: ReviewPrescriptionDto, options: { currentUserId?: number, tenantId?: number, areaId?: number } = {}): Promise<void> {
     const pharmacistId = await this.resolveCurrentStaffDoctorId(options.currentUserId) ?? dto.pharmacistId
+    const { tenantId, areaId } = requireTenantAreaContext(options)
     await this.rxRepository.update({
       id,
-      tenantId: options.tenantId ?? 1,
-      areaId: options.areaId ?? 1,
+      tenantId,
+      areaId,
     }, {
       status: dto.status,
       pharmacistId,
@@ -165,8 +168,7 @@ export class PrescriptionService extends BaseService<PrescriptionEntity> {
   }
 
   async dispenseRx(id: number, dto: DispensePrescriptionDto, options: { currentUserId?: number, tenantId?: number, areaId?: number } = {}): Promise<PrescriptionEntity | null> {
-    const tenantId = options.tenantId ?? 1
-    const areaId = options.areaId ?? 1
+    const { tenantId, areaId } = requireTenantAreaContext(options)
     const rx = await this.getDetail(id, { tenantId, areaId })
     if (!rx)
       return null
@@ -218,8 +220,9 @@ export class PrescriptionService extends BaseService<PrescriptionEntity> {
   }
 
   async getByVisit(visitId: number, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>): Promise<PrescriptionEntity[]> {
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     return this.rxRepository.find({
-      where: { visitId, tenantId: context?.tenantId ?? 1, areaId: context?.areaId ?? 1 },
+      where: { visitId, tenantId, areaId },
       relations: ['details', 'doctor', 'pharmacist'],
       order: { createdAt: 'DESC' },
     })
@@ -236,17 +239,19 @@ export class PrescriptionService extends BaseService<PrescriptionEntity> {
   }
 
   async getDetail(id: number, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>): Promise<PrescriptionEntity | null> {
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     return this.rxRepository.findOne({
-      where: { id, tenantId: context?.tenantId ?? 1, areaId: context?.areaId ?? 1 },
+      where: { id, tenantId, areaId },
       relations: ['details', 'doctor', 'pharmacist'],
     })
   }
 
   async listTemplates(dto: QueryPrescriptionTemplateDto, context?: Pick<IAuthUser, 'tenantId'>) {
     const { page = 1, pageSize = 10, keyword, category, speciesScope, status } = dto
+    const { tenantId } = requireTenantContext(context)
     const qb = this.templateRepository.createQueryBuilder('t')
       .leftJoinAndSelect('t.items', 'items')
-      .andWhere('t.tenantId = :tenantId', { tenantId: context?.tenantId ?? 1 })
+      .andWhere('t.tenantId = :tenantId', { tenantId })
 
     if (keyword) {
       qb.andWhere(new Brackets((subQb) => {
@@ -268,8 +273,9 @@ export class PrescriptionService extends BaseService<PrescriptionEntity> {
   }
 
   async getTemplate(id: number, context?: Pick<IAuthUser, 'tenantId'>) {
+    const { tenantId } = requireTenantContext(context)
     const template = await this.templateRepository.findOne({
-      where: { id, tenantId: context?.tenantId ?? 1 },
+      where: { id, tenantId },
       relations: ['items'],
       order: { items: { sortNo: 'ASC' } },
     })
@@ -279,7 +285,7 @@ export class PrescriptionService extends BaseService<PrescriptionEntity> {
   }
 
   async createTemplate(dto: CreatePrescriptionTemplateDto, context?: Pick<IAuthUser, 'tenantId'>) {
-    const tenantId = context?.tenantId ?? 1
+    const { tenantId } = requireTenantContext(context)
     const items = await this.buildTemplateItems(dto.items, { tenantId })
     const template = this.templateRepository.create({
       tenantId,
@@ -295,7 +301,7 @@ export class PrescriptionService extends BaseService<PrescriptionEntity> {
   }
 
   async updateTemplate(id: number, dto: UpdatePrescriptionTemplateDto, context?: Pick<IAuthUser, 'tenantId'>) {
-    const tenantId = context?.tenantId ?? 1
+    const { tenantId } = requireTenantContext(context)
     const template = await this.templateRepository.findOne({
       where: { id, tenantId },
       relations: ['items'],
@@ -325,18 +331,20 @@ export class PrescriptionService extends BaseService<PrescriptionEntity> {
   }
 
   async deleteTemplate(id: number, context?: Pick<IAuthUser, 'tenantId'>) {
-    await this.templateRepository.delete({ id, tenantId: context?.tenantId ?? 1 })
+    const { tenantId } = requireTenantContext(context)
+    await this.templateRepository.delete({ id, tenantId })
   }
 
   private async buildTemplateItems(items: CreatePrescriptionTemplateDto['items'], context?: Pick<IAuthUser, 'tenantId'>) {
     if (!items?.length)
       throw new BusinessException('Prescription template must include at least one item')
+    const { tenantId } = requireTenantContext(context)
 
     return Promise.all(items.map(async (item, index) => {
-      const resolved = await this.resolvePrescriptionItem(item, context)
+      const resolved = await this.resolvePrescriptionItem(item, { tenantId })
 
       return this.templateItemRepository.create({
-        tenantId: context?.tenantId ?? 1,
+        tenantId,
         itemKind: resolved.itemKind,
         itemId: resolved.itemId,
         itemName: resolved.itemName,
@@ -367,12 +375,13 @@ export class PrescriptionService extends BaseService<PrescriptionEntity> {
     chargeItemId?: number
     drugName?: string
   }, context?: Pick<IAuthUser, 'tenantId'>) {
+    const { tenantId } = requireTenantContext(context)
     const itemKind = Number(detail.itemKind ?? (detail.chargeItemId ? 2 : 1))
     if (itemKind === 2) {
       const chargeItemId = detail.chargeItemId ?? detail.itemId
       if (!chargeItemId)
         throw new BusinessException('Charge item id is required for service prescription details')
-      const item = await this.chargeItemRepository.findOneBy({ id: chargeItemId, tenantId: context?.tenantId ?? 1 })
+      const item = await this.chargeItemRepository.findOneBy({ id: chargeItemId, tenantId })
       if (!item)
         throw new BusinessException(`Charge item not found: ${chargeItemId}`)
       return {
@@ -390,7 +399,7 @@ export class PrescriptionService extends BaseService<PrescriptionEntity> {
     const drugId = detail.drugId ?? detail.itemId
     if (!drugId)
       throw new BusinessException('Drug id is required for prescription details')
-    const drug = await this.drugRepository.findOneBy({ id: drugId, tenantId: context?.tenantId ?? 1 })
+    const drug = await this.drugRepository.findOneBy({ id: drugId, tenantId })
     if (!drug)
       throw new BusinessException(`Drug not found: ${drugId}`)
     return {
@@ -410,14 +419,15 @@ export class PrescriptionService extends BaseService<PrescriptionEntity> {
   }
 
   private async generateRxNo(context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     const date = this.getTodaySequenceDate()
     const prefix = `RX${date}`
     const latestPrescription = await this.rxRepository
       .createQueryBuilder('rx')
       .select(['rx.rxNo'])
       .where('rx.rxNo LIKE :prefix', { prefix: `${prefix}%` })
-      .andWhere('rx.tenantId = :tenantId', { tenantId: context?.tenantId ?? 1 })
-      .andWhere('rx.areaId = :areaId', { areaId: context?.areaId ?? 1 })
+      .andWhere('rx.tenantId = :tenantId', { tenantId })
+      .andWhere('rx.areaId = :areaId', { areaId })
       .orderBy('rx.rxNo', 'DESC')
       .getOne()
 
@@ -428,11 +438,12 @@ export class PrescriptionService extends BaseService<PrescriptionEntity> {
   }
 
   private async generateBatchNo(visitId: number, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     const count = await this.rxRepository.count({
       where: {
         visitId,
-        tenantId: context?.tenantId ?? 1,
-        areaId: context?.areaId ?? 1,
+        tenantId,
+        areaId,
       },
     })
     return `B${String(count + 1).padStart(2, '0')}`

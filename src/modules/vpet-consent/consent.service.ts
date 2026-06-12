@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Brackets, Repository } from 'typeorm'
 import { BusinessException } from '~/common/exceptions/biz.exception'
+import { requireTenantAreaContext, requireTenantContext } from '~/common/utils/tenant-context.util'
 import { paginate } from '~/helper/paginate'
 import { DoctorEntity } from '../vpet-appointment/entities/doctor.entity'
 import { CustomerEntity } from '../vpet-customer/entities/customer.entity'
@@ -30,8 +31,9 @@ export class ConsentService {
 
   async listTemplates(dto: QueryConsentTemplateDto, context?: Pick<IAuthUser, 'tenantId'>) {
     const { page = 1, pageSize = 10, category, keyword, isActive } = dto
+    const { tenantId } = requireTenantContext(context)
     const qb = this.templateRepository.createQueryBuilder('tpl')
-      .where('tpl.tenantId = :tenantId', { tenantId: context?.tenantId ?? 1 })
+      .where('tpl.tenantId = :tenantId', { tenantId })
 
     if (category)
       qb.andWhere('tpl.category = :category', { category })
@@ -51,14 +53,15 @@ export class ConsentService {
   }
 
   async activeTemplates(context?: Pick<IAuthUser, 'tenantId'>) {
+    const { tenantId } = requireTenantContext(context)
     return this.templateRepository.find({
-      where: { isActive: 1, tenantId: context?.tenantId ?? 1 },
+      where: { isActive: 1, tenantId },
       order: { category: 'ASC', name: 'ASC' },
     })
   }
 
   async createTemplate(dto: CreateConsentTemplateDto, context?: Pick<IAuthUser, 'tenantId'>) {
-    const tenantId = context?.tenantId ?? 1
+    const { tenantId } = requireTenantContext(context)
     const existing = await this.templateRepository.findOneBy({ code: dto.code, tenantId })
     if (existing)
       throw new BusinessException('Consent template code already exists')
@@ -76,7 +79,7 @@ export class ConsentService {
   }
 
   async updateTemplate(id: number, dto: UpdateConsentTemplateDto, context?: Pick<IAuthUser, 'tenantId'>) {
-    const tenantId = context?.tenantId ?? 1
+    const { tenantId } = requireTenantContext(context)
     const current = await this.templateRepository.findOneBy({ id, tenantId })
     if (!current)
       throw new BusinessException('Consent template not found')
@@ -112,7 +115,7 @@ export class ConsentService {
   }
 
   async disableTemplate(id: number, context?: Pick<IAuthUser, 'tenantId'>) {
-    const tenantId = context?.tenantId ?? 1
+    const { tenantId } = requireTenantContext(context)
     const current = await this.templateRepository.findOneBy({ id, tenantId })
     if (!current)
       throw new BusinessException('Consent template not found')
@@ -121,8 +124,7 @@ export class ConsentService {
 
   async listRecords(dto: QueryConsentRecordDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
     const { page = 1, pageSize = 10, visitId, customerId, petId, category, status, keyword } = dto
-    const tenantId = context?.tenantId ?? 1
-    const areaId = context?.areaId ?? 1
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     const qb = this.recordRepository.createQueryBuilder('record')
       .leftJoinAndSelect('record.customer', 'customer')
       .leftJoinAndSelect('record.pet', 'pet')
@@ -157,15 +159,15 @@ export class ConsentService {
   }
 
   async getRecord(id: number, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     return this.recordRepository.findOne({
-      where: { id, tenantId: context?.tenantId ?? 1, areaId: context?.areaId ?? 1 },
+      where: { id, tenantId, areaId },
       relations: ['customer', 'pet', 'doctor', 'visit', 'template'],
     })
   }
 
   async createRecord(dto: CreateConsentRecordDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
-    const tenantId = context?.tenantId ?? 1
-    const areaId = context?.areaId ?? 1
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     const template = await this.templateRepository.findOneBy({ id: dto.templateId, tenantId })
     if (!template || template.isActive !== 1)
       throw new BusinessException('Consent template not found or inactive')
@@ -198,7 +200,7 @@ export class ConsentService {
     const record = this.recordRepository.create({
       tenantId,
       areaId,
-      recordNo: await this.generateRecordNo(),
+      recordNo: await this.generateRecordNo({ tenantId, areaId }),
       templateId: template.id,
       visitId: visit?.id ?? null,
       customerId: customer.id,
@@ -228,8 +230,7 @@ export class ConsentService {
   }
 
   async signRecord(id: number, dto: SignConsentRecordDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
-    const tenantId = context?.tenantId ?? 1
-    const areaId = context?.areaId ?? 1
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     const record = await this.recordRepository.findOneBy({ id, tenantId, areaId })
     if (!record)
       throw new BusinessException('Consent record not found')
@@ -247,8 +248,7 @@ export class ConsentService {
   }
 
   async voidRecord(id: number, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
-    const tenantId = context?.tenantId ?? 1
-    const areaId = context?.areaId ?? 1
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     const record = await this.recordRepository.findOneBy({ id, tenantId, areaId })
     if (!record)
       throw new BusinessException('Consent record not found')
@@ -287,7 +287,8 @@ export class ConsentService {
       .replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_, key) => String(variables[key] ?? ''))
   }
 
-  private async generateRecordNo() {
+  private async generateRecordNo(context: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     const now = new Date()
     const date = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`
     const prefix = `IC${date}`
@@ -295,6 +296,8 @@ export class ConsentService {
       .createQueryBuilder('record')
       .select(['record.recordNo'])
       .where('record.recordNo LIKE :prefix', { prefix: `${prefix}%` })
+      .andWhere('record.tenantId = :tenantId', { tenantId })
+      .andWhere('record.areaId = :areaId', { areaId })
       .orderBy('record.recordNo', 'DESC')
       .getOne()
     const currentSeq = latest?.recordNo ? Number(latest.recordNo.slice(prefix.length)) || 0 : 0

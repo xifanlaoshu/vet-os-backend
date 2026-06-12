@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
+import { requireTenantAreaContext } from '~/common/utils/tenant-context.util'
 import { paginate } from '~/helper/paginate'
 import { PetEntity } from '../vpet-pet/entities/pet.entity'
 import { PrescriptionEntity } from '../vpet-prescription/entities/prescription.entity'
@@ -94,8 +95,7 @@ export class AiService {
   }
 
   async reviewPrescription(id: number, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
-    const tenantId = context?.tenantId ?? 1
-    const areaId = context?.areaId ?? 1
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     const prescription = await this.prescriptionRepository.findOne({
       where: { id, tenantId, areaId },
       relations: ['details'],
@@ -159,9 +159,10 @@ export class AiService {
 
   async logList(dto: QueryAiLogDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
     const { page = 1, pageSize = 10, taskType, bizType, bizId } = dto
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     const qb = this.aiLogRepository.createQueryBuilder('log')
-      .where('log.tenantId = :tenantId', { tenantId: context?.tenantId ?? 1 })
-      .andWhere('log.areaId = :areaId', { areaId: context?.areaId ?? 1 })
+      .where('log.tenantId = :tenantId', { tenantId })
+      .andWhere('log.areaId = :areaId', { areaId })
     if (taskType)
       qb.andWhere('log.taskType = :taskType', { taskType })
     if (bizType)
@@ -182,9 +183,10 @@ export class AiService {
     riskLevel: number,
     context?: Pick<IAuthUser, 'tenantId' | 'areaId'>,
   ) {
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     await this.aiLogRepository.save(this.aiLogRepository.create({
-      tenantId: context?.tenantId ?? 1,
-      areaId: context?.areaId ?? 1,
+      tenantId,
+      areaId,
       taskType,
       bizType: bizType ?? null,
       bizId: bizId ?? null,

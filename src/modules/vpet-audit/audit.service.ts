@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import { DataSource } from 'typeorm'
+import { requireTenantAreaContext } from '~/common/utils/tenant-context.util'
 import { createPaginationObject } from '~/helper/paginate/create-pagination'
 import { QueryAuditEventDto } from './dto/audit.dto'
 
@@ -27,8 +28,7 @@ export class VpetAuditService {
   async listEvents(dto: QueryAuditEventDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
     const page = dto.page ?? 1
     const pageSize = Math.min(dto.pageSize ?? 20, 100)
-    const tenantId = context?.tenantId ?? 1
-    const areaId = context?.areaId ?? 1
+    const { tenantId, areaId } = requireTenantAreaContext(context)
 
     const baseSql = `
       SELECT

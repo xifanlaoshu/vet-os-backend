@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { DataSource, Repository } from 'typeorm'
 import { BusinessException } from '~/common/exceptions/biz.exception'
+import { requireTenantAreaContext } from '~/common/utils/tenant-context.util'
 import { paginate } from '~/helper/paginate'
 import { MemberCardLogEntity } from '../vpet-member/entities/member-card-log.entity'
 import { MemberCardEntity } from '../vpet-member/entities/member-card.entity'
@@ -30,8 +31,7 @@ export class BillingService {
   ) {}
 
   async createBill(dto: CreateBillingDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>): Promise<any> {
-    const tenantId = context?.tenantId ?? 1
-    const areaId = context?.areaId ?? 1
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     const visit = await this.visitRepository.findOne({
       where: { id: dto.visitId, tenantId, areaId },
       relations: ['customer', 'pet'],
@@ -46,7 +46,7 @@ export class BillingService {
       throw new BusinessException('Billing customer does not match visit customer')
     }
 
-    const billNo = await this.generateBillNo()
+    const billNo = await this.generateBillNo({ tenantId, areaId })
     let totalAmount = 0
 
     const details = dto.details.map((detail) => {
@@ -93,8 +93,7 @@ export class BillingService {
   }
 
   async syncVisitPrescriptionBilling(visitId: number, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>): Promise<BillingEntity[]> {
-    const tenantId = context?.tenantId ?? 1
-    const areaId = context?.areaId ?? 1
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     return this.dataSource.transaction(async (manager) => {
       const visitRepository = manager.getRepository(VisitEntity)
       const billingRepository = manager.getRepository(BillingEntity)
@@ -145,7 +144,7 @@ export class BillingService {
       let targetBill = bills.filter(item => [1, 2].includes(Number(item.paymentStatus))).at(-1)
       if (!targetBill) {
         targetBill = await billingRepository.save(billingRepository.create({
-          billNo: await this.generateBillNo(),
+          billNo: await this.generateBillNo({ tenantId, areaId }),
           tenantId,
           areaId,
           visitId,
@@ -203,8 +202,7 @@ export class BillingService {
   }
 
   async processPayment(id: number, dto: PaymentDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>): Promise<any> {
-    const tenantId = context?.tenantId ?? 1
-    const areaId = context?.areaId ?? 1
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     return this.dataSource.transaction(async (manager) => {
       const billingRepository = manager.getRepository(BillingEntity)
       const paymentRepository = manager.getRepository(BillingPaymentEntity)
@@ -287,8 +285,7 @@ export class BillingService {
   }
 
   async processRefund(id: number, dto: RefundDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>): Promise<any> {
-    const tenantId = context?.tenantId ?? 1
-    const areaId = context?.areaId ?? 1
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     return this.dataSource.transaction(async (manager) => {
       const billingRepository = manager.getRepository(BillingEntity)
       const paymentRepository = manager.getRepository(BillingPaymentEntity)
@@ -397,9 +394,10 @@ export class BillingService {
 
   async list(dto: QueryBillingDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
     const { page = 1, pageSize = 10, customerId, visitId, paymentStatus } = dto
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     const qb = this.billingRepository.createQueryBuilder('b')
-      .andWhere('b.tenantId = :tenantId', { tenantId: context?.tenantId ?? 1 })
-      .andWhere('b.areaId = :areaId', { areaId: context?.areaId ?? 1 })
+      .andWhere('b.tenantId = :tenantId', { tenantId })
+      .andWhere('b.areaId = :areaId', { areaId })
 
     if (customerId)
       qb.andWhere('b.customerId = :customerId', { customerId })
@@ -413,21 +411,24 @@ export class BillingService {
   }
 
   async getById(id: number, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>): Promise<any> {
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     return this.billingRepository.findOne({
-      where: { id, tenantId: context?.tenantId ?? 1, areaId: context?.areaId ?? 1 },
+      where: { id, tenantId, areaId },
       relations: ['details', 'payments'],
     })
   }
 
   async getByVisit(visitId: number, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>): Promise<BillingEntity[]> {
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     return this.billingRepository.find({
-      where: { visitId, tenantId: context?.tenantId ?? 1, areaId: context?.areaId ?? 1 },
+      where: { visitId, tenantId, areaId },
       relations: ['details', 'payments'],
       order: { createdAt: 'DESC' },
     })
   }
 
   async getTodayStats(context?: Pick<IAuthUser, 'tenantId' | 'areaId'>): Promise<any> {
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     const today = new Date()
     today.setHours(0, 0, 0, 0)
 
@@ -436,8 +437,8 @@ export class BillingService {
       .select('COUNT(DISTINCT p.billing_id)', 'billCount')
       .addSelect('COALESCE(SUM(CASE WHEN p.direction = 1 THEN p.amount ELSE -p.amount END), 0)', 'totalRevenue')
       .where('p.paidAt >= :today', { today })
-      .andWhere('p.tenantId = :tenantId', { tenantId: context?.tenantId ?? 1 })
-      .andWhere('p.areaId = :areaId', { areaId: context?.areaId ?? 1 })
+      .andWhere('p.tenantId = :tenantId', { tenantId })
+      .andWhere('p.areaId = :areaId', { areaId })
       .andWhere('p.status = 1')
       .getRawOne()
 
@@ -445,8 +446,8 @@ export class BillingService {
       .createQueryBuilder('b')
       .select('COALESCE(SUM(b.discount), 0)', 'totalDiscount')
       .where('b.paidAt >= :today', { today })
-      .andWhere('b.tenantId = :tenantId', { tenantId: context?.tenantId ?? 1 })
-      .andWhere('b.areaId = :areaId', { areaId: context?.areaId ?? 1 })
+      .andWhere('b.tenantId = :tenantId', { tenantId })
+      .andWhere('b.areaId = :areaId', { areaId })
       .andWhere('b.paymentStatus IN (:...statuses)', { statuses: [2, 3] })
       .getRawOne()
 
@@ -571,13 +572,16 @@ export class BillingService {
     await billingRepository.update(billId, { totalAmount })
   }
 
-  private async generateBillNo() {
+  private async generateBillNo(context: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     const date = this.getTodaySequenceDate()
     const prefix = `BILL${date}`
     const latestBill = await this.billingRepository
       .createQueryBuilder('b')
       .select(['b.billNo'])
       .where('b.billNo LIKE :prefix', { prefix: `${prefix}%` })
+      .andWhere('b.tenantId = :tenantId', { tenantId })
+      .andWhere('b.areaId = :areaId', { areaId })
       .orderBy('b.billNo', 'DESC')
       .getOne()
 

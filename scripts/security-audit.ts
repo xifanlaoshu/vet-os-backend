@@ -36,7 +36,6 @@ for (const file of sourceFiles) {
   const absPath = file
   const content = readFileSync(absPath, 'utf8')
   const lines = content.split(/\r?\n/)
-
   lines.forEach((lineText, index) => {
     if (lineText.trim().startsWith('//'))
       return
@@ -48,6 +47,17 @@ for (const file of sourceFiles) {
         line: index + 1,
         rule,
         message,
+      })
+    }
+    if (
+      absPath.startsWith(join(root, 'src'))
+      && /\w+\??\.(?:tenantId|areaId)\s*(?:\?\?|\|\|)\s*1/.test(lineText)
+    ) {
+      findings.push({
+        file: relative(root, absPath),
+        line: index + 1,
+        rule: 'no-tenant-context-default',
+        message: 'Do not default tenantId/areaId to 1 in scoped business services; require explicit tenant context.',
       })
     }
   })

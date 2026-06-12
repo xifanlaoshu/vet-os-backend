@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Brackets, FindOptionsWhere, Repository } from 'typeorm'
 import { BusinessException } from '~/common/exceptions/biz.exception'
+import { requireTenantAreaContext, requireTenantContext } from '~/common/utils/tenant-context.util'
 import { paginate } from '~/helper/paginate'
 import { UserEntity } from '../user/user.entity'
 import { PetEntity } from '../vpet-pet/entities/pet.entity'
@@ -38,9 +39,8 @@ export class AppointmentService {
     context?: Pick<IAuthUser, 'tenantId' | 'areaId'>,
   ) {
     const { page = 1, pageSize = 10, status, doctorId, date, keyword } = params
-    const tenantId = context?.tenantId ?? 1
-    const areaId = context?.areaId ?? 1
-    const scopedDoctorId = await this.resolveScopedDoctorId(params.scope, currentUserId)
+    const { tenantId, areaId } = requireTenantAreaContext(context)
+    const scopedDoctorId = await this.resolveScopedDoctorId(params.scope, currentUserId, tenantId)
     if (params.scope === 'currentStaff' && !scopedDoctorId)
       return { items: [], meta: { totalItems: 0, itemCount: 0, itemsPerPage: pageSize, totalPages: 0, currentPage: page } }
     const qb = this.appointmentRepository.createQueryBuilder('a')
@@ -75,8 +75,7 @@ export class AppointmentService {
   }
 
   async create(dto: CreateAppointmentDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>): Promise<AppointmentEntity> {
-    const tenantId = context?.tenantId ?? 1
-    const areaId = context?.areaId ?? 1
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     await this.validateCustomerPetRelation(dto.customerId, dto.petId, tenantId)
     await this.validateDoctor(dto.doctorId, tenantId)
     await this.validateDoctorSchedule(dto.doctorId, dto.appointmentTime, tenantId, areaId)
@@ -85,8 +84,7 @@ export class AppointmentService {
   }
 
   async update(id: number, dto: UpdateAppointmentDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>): Promise<void> {
-    const tenantId = context?.tenantId ?? 1
-    const areaId = context?.areaId ?? 1
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     if (
       dto.customerId !== undefined
       || dto.petId !== undefined
@@ -115,12 +113,11 @@ export class AppointmentService {
   }
 
   async checkin(id: number, options: { scope?: string, currentUserId?: number, tenantId?: number, areaId?: number } = {}) {
-    const tenantId = options.tenantId ?? 1
-    const areaId = options.areaId ?? 1
+    const { tenantId, areaId } = requireTenantAreaContext(options)
     const appointment = await this.appointmentRepository.findOneBy({ id, tenantId, areaId })
     if (!appointment)
       throw new BusinessException('Appointment not found')
-    const scopedDoctorId = await this.resolveScopedDoctorId(options.scope, options.currentUserId)
+    const scopedDoctorId = await this.resolveScopedDoctorId(options.scope, options.currentUserId, tenantId)
     if (options.scope === 'currentStaff') {
       if (!scopedDoctorId)
         throw new BusinessException('Current user is not linked to medical staff')
@@ -130,7 +127,7 @@ export class AppointmentService {
     if (appointment.status === 4)
       throw new BusinessException('Canceled appointment cannot check in')
 
-    const existingVisit = await this.visitService.findByAppointmentId(id)
+    const existingVisit = await this.visitService.findByAppointmentId(id, { tenantId, areaId })
     if (existingVisit) {
       if (appointment.status !== 2) {
         await this.appointmentRepository.update({ id, tenantId, areaId }, {
@@ -163,16 +160,17 @@ export class AppointmentService {
   }
 
   async cancel(id: number, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>): Promise<void> {
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     await this.appointmentRepository.update({
       id,
-      tenantId: context?.tenantId ?? 1,
-      areaId: context?.areaId ?? 1,
+      tenantId,
+      areaId,
     }, { status: 4 })
   }
 
   async doctorList(dto: QueryDoctorDto, context?: Pick<IAuthUser, 'tenantId'>) {
     const { page = 1, pageSize = 10, keyword, department, position, status, bookable, name, phone } = dto
-    const tenantId = context?.tenantId ?? 1
+    const { tenantId } = requireTenantContext(context)
     const qb = this.doctorRepository.createQueryBuilder('d')
       .andWhere('d.tenantId = :tenantId', { tenantId })
     if (keyword) {
@@ -195,24 +193,26 @@ export class AppointmentService {
   }
 
   async createDoctor(dto: CreateDoctorDto, context?: Pick<IAuthUser, 'tenantId'>): Promise<DoctorEntity> {
-    const tenantId = context?.tenantId ?? 1
+    const { tenantId } = requireTenantContext(context)
     await this.validateDoctorUser(dto.userId)
     const doctor = this.doctorRepository.create({ ...dto, tenantId })
     return this.doctorRepository.save(doctor)
   }
 
   async updateDoctor(id: number, dto: UpdateDoctorDto, context?: Pick<IAuthUser, 'tenantId'>): Promise<void> {
-    const tenantId = context?.tenantId ?? 1
+    const { tenantId } = requireTenantContext(context)
     await this.validateDoctorUser(dto.userId)
     await this.doctorRepository.update({ id, tenantId }, dto)
   }
 
   async deleteDoctor(id: number, context?: Pick<IAuthUser, 'tenantId'>): Promise<void> {
-    await this.doctorRepository.delete({ id, tenantId: context?.tenantId ?? 1 })
+    const { tenantId } = requireTenantContext(context)
+    await this.doctorRepository.delete({ id, tenantId })
   }
 
   async getDoctors(bookableOnly = false, context?: Pick<IAuthUser, 'tenantId'>): Promise<DoctorEntity[]> {
-    const where: FindOptionsWhere<DoctorEntity> = { status: 1, tenantId: context?.tenantId ?? 1 }
+    const { tenantId } = requireTenantContext(context)
+    const where: FindOptionsWhere<DoctorEntity> = { status: 1, tenantId }
     if (bookableOnly)
       where.bookable = 1
     return this.doctorRepository.find({
@@ -223,7 +223,7 @@ export class AppointmentService {
 
   async shiftList(dto: QueryShiftDto, context?: Pick<IAuthUser, 'tenantId'>) {
     const { page = 1, pageSize = 10, keyword, code, name, status } = dto
-    const tenantId = context?.tenantId ?? 1
+    const { tenantId } = requireTenantContext(context)
     const qb = this.shiftRepository.createQueryBuilder('s')
       .andWhere('s.tenantId = :tenantId', { tenantId })
     if (keyword) {
@@ -240,14 +240,15 @@ export class AppointmentService {
   }
 
   async getActiveShifts(context?: Pick<IAuthUser, 'tenantId'>) {
+    const { tenantId } = requireTenantContext(context)
     return this.shiftRepository.find({
-      where: { status: 1, tenantId: context?.tenantId ?? 1 },
+      where: { status: 1, tenantId },
       order: { startTime: 'ASC', code: 'ASC' },
     })
   }
 
   async createShift(dto: CreateShiftDto, context?: Pick<IAuthUser, 'tenantId'>) {
-    const tenantId = context?.tenantId ?? 1
+    const { tenantId } = requireTenantContext(context)
     await this.ensureShiftCodeAvailable(dto.code, undefined, tenantId)
     return this.shiftRepository.save(this.shiftRepository.create({
       ...dto,
@@ -258,7 +259,7 @@ export class AppointmentService {
   }
 
   async updateShift(id: number, dto: UpdateShiftDto, context?: Pick<IAuthUser, 'tenantId'>) {
-    const tenantId = context?.tenantId ?? 1
+    const { tenantId } = requireTenantContext(context)
     const current = await this.shiftRepository.findOneBy({ id, tenantId })
     if (!current)
       throw new BusinessException('Shift not found')
@@ -268,7 +269,7 @@ export class AppointmentService {
   }
 
   async deleteShift(id: number, context?: Pick<IAuthUser, 'tenantId'>) {
-    const tenantId = context?.tenantId ?? 1
+    const { tenantId } = requireTenantContext(context)
     const used = await this.staffScheduleRepository.count({ where: { shiftId: id, tenantId } })
     if (used > 0)
       throw new BusinessException('Shift is used by schedules and cannot be deleted')
@@ -276,8 +277,7 @@ export class AppointmentService {
   }
 
   async monthSchedules(dto: QueryStaffScheduleDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
-    const tenantId = context?.tenantId ?? 1
-    const areaId = context?.areaId ?? 1
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     const { start, end } = this.resolveMonthRange(dto.month)
     const [doctors, shifts, schedules] = await Promise.all([
       this.getDoctors(false, { tenantId }),
@@ -298,8 +298,7 @@ export class AppointmentService {
   }
 
   async saveStaffSchedule(dto: SaveStaffScheduleDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
-    const tenantId = context?.tenantId ?? 1
-    const areaId = context?.areaId ?? 1
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     const doctor = await this.doctorRepository.findOneBy({ id: dto.doctorId, status: 1, tenantId })
     if (!doctor)
       throw new BusinessException('Medical staff not found')
@@ -339,7 +338,7 @@ export class AppointmentService {
     return 1
   }
 
-  private async validateCustomerPetRelation(customerId: number, petId: number, tenantId = 1) {
+  private async validateCustomerPetRelation(customerId: number, petId: number, tenantId: number) {
     const pet = await this.petRepository.findOneBy({ id: petId, tenantId })
     if (!pet)
       throw new BusinessException('Pet not found')
@@ -348,7 +347,7 @@ export class AppointmentService {
     }
   }
 
-  private async validateDoctor(doctorId?: number, tenantId = 1) {
+  private async validateDoctor(doctorId: number | undefined, tenantId: number) {
     if (!doctorId)
       return
     const doctor = await this.doctorRepository.findOneBy({ id: doctorId, status: 1, tenantId })
@@ -358,7 +357,7 @@ export class AppointmentService {
       throw new BusinessException('Medical staff is not bookable')
   }
 
-  private async validateDoctorSchedule(doctorId?: number, appointmentTime?: string, tenantId = 1, areaId = 1) {
+  private async validateDoctorSchedule(doctorId: number | undefined, appointmentTime: string | undefined, tenantId: number, areaId: number) {
     if (!doctorId || !appointmentTime)
       return
     const { date, time } = this.parseAppointmentDateTime(appointmentTime)
@@ -413,18 +412,18 @@ export class AppointmentService {
       throw new BusinessException('System user not found')
   }
 
-  private async resolveScopedDoctorId(scope?: string, currentUserId?: number) {
+  private async resolveScopedDoctorId(scope: string | undefined, currentUserId: number | undefined, tenantId: number) {
     if (scope !== 'currentStaff')
       return undefined
     if (!currentUserId)
       return null
     const doctor = await this.doctorRepository.findOne({
-      where: { userId: currentUserId, status: 1 },
+      where: { userId: currentUserId, status: 1, tenantId },
     })
     return doctor?.id ?? null
   }
 
-  private async ensureShiftCodeAvailable(code?: string, excludeId?: number, tenantId = 1) {
+  private async ensureShiftCodeAvailable(code: string | undefined, excludeId: number | undefined, tenantId: number) {
     if (!code)
       return
     const existing = await this.shiftRepository.findOneBy({ code, tenantId })

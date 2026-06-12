@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { DataSource, Repository } from 'typeorm'
 import { BusinessException } from '~/common/exceptions/biz.exception'
+import { requireTenantAreaContext } from '~/common/utils/tenant-context.util'
 import { paginate } from '~/helper/paginate'
 import { DrugEntity } from '../vpet-pharmacy/entities/drug.entity'
 import { ApproveTransferDto, CreateStoreDto, CreateTransferDto, QueryStoreDto, SetStoreStockDto } from './dto/store.dto'
@@ -35,8 +36,7 @@ export class StoreService {
 
   async listStores(dto: QueryStoreDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
     const { page = 1, pageSize = 10, keyword } = dto
-    const tenantId = context?.tenantId ?? 1
-    const areaId = context?.areaId ?? 1
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     const qb = this.storeRepository.createQueryBuilder('store')
       .where('store.tenantId = :tenantId', { tenantId })
       .andWhere('store.areaId = :areaId', { areaId })
@@ -48,25 +48,26 @@ export class StoreService {
   }
 
   async createStore(dto: CreateStoreDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     return this.storeRepository.save(this.storeRepository.create({
       ...dto,
-      tenantId: context?.tenantId ?? 1,
-      areaId: context?.areaId ?? 1,
+      tenantId,
+      areaId,
       status: 1,
     }))
   }
 
   async listStock(storeId: number, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     return this.stockRepository.find({
-      where: { storeId, tenantId: context?.tenantId ?? 1, areaId: context?.areaId ?? 1 },
+      where: { storeId, tenantId, areaId },
       relations: ['drug'],
       order: { updatedAt: 'DESC' },
     })
   }
 
   async setStock(storeId: number, dto: SetStoreStockDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
-    const tenantId = context?.tenantId ?? 1
-    const areaId = context?.areaId ?? 1
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     const [store, drug] = await Promise.all([
       this.storeRepository.findOneBy({ id: storeId, tenantId, areaId }),
       this.drugRepository.findOneBy({ id: dto.drugId, tenantId }),
@@ -89,19 +90,19 @@ export class StoreService {
 
   async listTransfers(dto: QueryStoreDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
     const { page = 1, pageSize = 10 } = dto
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     const qb = this.transferRepository.createQueryBuilder('transfer')
       .leftJoinAndSelect('transfer.sourceStore', 'sourceStore')
       .leftJoinAndSelect('transfer.targetStore', 'targetStore')
       .leftJoinAndSelect('transfer.items', 'items')
-      .where('transfer.tenantId = :tenantId', { tenantId: context?.tenantId ?? 1 })
-      .andWhere('transfer.areaId = :areaId', { areaId: context?.areaId ?? 1 })
+      .where('transfer.tenantId = :tenantId', { tenantId })
+      .andWhere('transfer.areaId = :areaId', { areaId })
     qb.orderBy('transfer.createdAt', 'DESC')
     return paginate(qb, { page, pageSize })
   }
 
   async createTransfer(dto: CreateTransferDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
-    const tenantId = context?.tenantId ?? 1
-    const areaId = context?.areaId ?? 1
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     if (dto.sourceStoreId === dto.targetStoreId) {
       throw new BusinessException('Source and target store must be different')
     }
@@ -143,8 +144,7 @@ export class StoreService {
   }
 
   async approveTransfer(id: number, dto: ApproveTransferDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
-    const tenantId = context?.tenantId ?? 1
-    const areaId = context?.areaId ?? 1
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     await this.transferRepository.update({ id, tenantId, areaId }, {
       status: 2,
       approvedBy: dto.approvedBy ?? null,
@@ -157,8 +157,7 @@ export class StoreService {
   }
 
   async completeTransfer(id: number, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
-    const tenantId = context?.tenantId ?? 1
-    const areaId = context?.areaId ?? 1
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     return this.dataSource.transaction(async (manager) => {
       const transferRepository = manager.getRepository(DrugTransferEntity)
       const transferItemRepository = manager.getRepository(DrugTransferItemEntity)

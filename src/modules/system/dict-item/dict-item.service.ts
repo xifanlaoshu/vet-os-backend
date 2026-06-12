@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm'
 
 import { Like, Repository } from 'typeorm'
 
+import { requireTenantContext } from '~/common/utils/tenant-context.util'
 import { paginate } from '~/helper/paginate'
 import { Pagination } from '~/helper/paginate/pagination'
 import { DictItemEntity } from '~/modules/system/dict-item/dict-item.entity'
@@ -26,8 +27,9 @@ export class DictItemService {
     value,
     typeId,
   }: DictItemQueryDto, context?: Pick<IAuthUser, 'tenantId'>): Promise<Pagination<DictItemEntity>> {
+    const { tenantId } = requireTenantContext(context)
     const queryBuilder = this.dictItemRepository.createQueryBuilder('dict_item').orderBy({ orderNo: 'ASC' }).where({
-      tenantId: context?.tenantId ?? 1,
+      tenantId,
       ...(label && { label: Like(`%${label}%`) }),
       ...(value && { value: Like(`%${value}%`) }),
       type: {
@@ -50,8 +52,9 @@ export class DictItemService {
    */
   async create(dto: DictItemDto, context?: Pick<IAuthUser, 'tenantId'>): Promise<void> {
     const { typeId, ...rest } = dto
+    const { tenantId } = requireTenantContext(context)
     await this.dictItemRepository.insert({
-      tenantId: context?.tenantId ?? 1,
+      tenantId,
       ...rest,
       type: {
         id: typeId,
@@ -64,7 +67,8 @@ export class DictItemService {
    */
   async update(id: number, dto: Partial<DictItemDto>, context?: Pick<IAuthUser, 'tenantId'>): Promise<void> {
     const { typeId, ...rest } = dto
-    await this.dictItemRepository.update({ id, tenantId: context?.tenantId ?? 1 }, {
+    const { tenantId } = requireTenantContext(context)
+    await this.dictItemRepository.update({ id, tenantId }, {
       ...rest,
       type: {
         id: typeId,
@@ -76,13 +80,15 @@ export class DictItemService {
    * 删除
    */
   async delete(id: number, context?: Pick<IAuthUser, 'tenantId'>): Promise<void> {
-    await this.dictItemRepository.delete({ id, tenantId: context?.tenantId ?? 1 })
+    const { tenantId } = requireTenantContext(context)
+    await this.dictItemRepository.delete({ id, tenantId })
   }
 
   /**
    * 查询单个
    */
   async findOne(id: number, context?: Pick<IAuthUser, 'tenantId'>): Promise<DictItemEntity> {
-    return this.dictItemRepository.findOneBy({ id, tenantId: context?.tenantId ?? 1 })
+    const { tenantId } = requireTenantContext(context)
+    return this.dictItemRepository.findOneBy({ id, tenantId })
   }
 }

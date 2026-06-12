@@ -7,6 +7,7 @@ import { ApiSecurityAuth } from '~/common/decorators/swagger.decorator'
 
 import { Pagination } from '~/helper/paginate/pagination'
 
+import { AuthUser } from '~/modules/auth/decorators/auth-user.decorator'
 import { definePermission, Perm } from '~/modules/auth/decorators/permission.decorator'
 
 import { StorageDeleteDto, StoragePageDto } from './storage.dto'
@@ -28,14 +29,14 @@ export class StorageController {
   @ApiOperation({ summary: '获取本地存储列表' })
   @ApiResult({ type: [StorageInfo], isPage: true })
   @Perm(permissions.LIST)
-  async list(@Query() dto: StoragePageDto): Promise<Pagination<StorageInfo>> {
-    return this.storageService.list(dto)
+  async list(@Query() dto: StoragePageDto, @AuthUser() user: IAuthUser): Promise<Pagination<StorageInfo>> {
+    return this.storageService.list(dto, user)
   }
 
   @ApiOperation({ summary: '删除文件' })
   @Post('delete')
   @Perm(permissions.DELETE)
-  async delete(@Body() dto: StorageDeleteDto): Promise<void> {
-    await this.storageService.delete(dto.ids)
+  async delete(@Body() dto: StorageDeleteDto, @AuthUser() user: IAuthUser): Promise<void> {
+    await this.storageService.delete(dto.ids, user)
   }
 }

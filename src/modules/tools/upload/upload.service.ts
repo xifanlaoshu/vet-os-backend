@@ -5,6 +5,7 @@ import dayjs from 'dayjs'
 import { isNil } from 'lodash'
 import { Repository } from 'typeorm'
 
+import { requireTenantAreaContext } from '~/common/utils/tenant-context.util'
 import { Storage } from '~/modules/tools/storage/storage.entity'
 
 import {
@@ -51,9 +52,10 @@ export class UploadService {
   /**
    * 保存文件上传记录
    */
-  async saveFile(file: MultipartFile, userId: number): Promise<string> {
+  async saveFile(file: MultipartFile, user: IAuthUser): Promise<string> {
     if (isNil(file))
       throw new NotFoundException('Have not any file to upload!')
+    const { tenantId, areaId } = requireTenantAreaContext(user)
 
     const fileName = file.filename
     const extName = getExtname(fileName)
@@ -83,7 +85,9 @@ export class UploadService {
       path,
       type,
       size,
-      userId,
+      userId: user.uid,
+      tenantId,
+      areaId,
     })
 
     return path

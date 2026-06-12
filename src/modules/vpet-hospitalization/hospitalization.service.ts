@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Brackets, Repository } from 'typeorm'
 import { BusinessException } from '~/common/exceptions/biz.exception'
+import { requireTenantAreaContext } from '~/common/utils/tenant-context.util'
 import { paginate } from '~/helper/paginate'
 import { DoctorEntity } from '../vpet-appointment/entities/doctor.entity'
 import { CustomerEntity } from '../vpet-customer/entities/customer.entity'
@@ -39,8 +40,7 @@ export class HospitalizationService {
 
   async list(dto: QueryHospitalizationDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
     const { page = 1, pageSize = 10, status, doctorId, keyword } = dto
-    const tenantId = context?.tenantId ?? 1
-    const areaId = context?.areaId ?? 1
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     const qb = this.hospitalizationRepository.createQueryBuilder('h')
       .leftJoinAndSelect('h.pet', 'pet')
       .leftJoinAndSelect('h.customer', 'customer')
@@ -67,8 +67,7 @@ export class HospitalizationService {
   }
 
   async create(dto: CreateHospitalizationDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
-    const tenantId = context?.tenantId ?? 1
-    const areaId = context?.areaId ?? 1
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     const visit = await this.visitRepository.findOne({
       where: { id: dto.visitId, tenantId, areaId },
       relations: ['customer', 'pet'],
@@ -95,7 +94,7 @@ export class HospitalizationService {
     const record = this.hospitalizationRepository.create({
       tenantId,
       areaId,
-      hospNo: await this.generateHospNo(),
+      hospNo: await this.generateHospNo({ tenantId, areaId }),
       visitId: dto.visitId,
       customerId: customer.id,
       petId: pet.id,
@@ -132,15 +131,15 @@ export class HospitalizationService {
   }
 
   async getDetail(id: number, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     return this.hospitalizationRepository.findOne({
-      where: { id, tenantId: context?.tenantId ?? 1, areaId: context?.areaId ?? 1 },
+      where: { id, tenantId, areaId },
       relations: ['pet', 'customer', 'doctor', 'nursingPlans', 'nursingPlans.executions'],
     })
   }
 
   async createPlan(hospId: number, dto: CreateNursingPlanDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
-    const tenantId = context?.tenantId ?? 1
-    const areaId = context?.areaId ?? 1
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     const hosp = await this.hospitalizationRepository.findOneBy({ id: hospId, tenantId, areaId })
     if (!hosp)
       throw new BusinessException('Hospitalization record not found')
@@ -164,16 +163,16 @@ export class HospitalizationService {
   }
 
   async listPlans(hospId: number, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     return this.nursingPlanRepository.find({
-      where: { hospId, tenantId: context?.tenantId ?? 1, areaId: context?.areaId ?? 1 },
+      where: { hospId, tenantId, areaId },
       relations: ['doctor', 'executions'],
       order: { scheduledTime: 'ASC', id: 'ASC' },
     })
   }
 
   async executePlan(planId: number, dto: ExecuteNursingPlanDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
-    const tenantId = context?.tenantId ?? 1
-    const areaId = context?.areaId ?? 1
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     const plan = await this.nursingPlanRepository.findOneBy({ id: planId, tenantId, areaId })
     if (!plan)
       throw new BusinessException('Nursing plan not found')
@@ -204,8 +203,7 @@ export class HospitalizationService {
   }
 
   async discharge(id: number, dto: DischargeHospitalizationDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
-    const tenantId = context?.tenantId ?? 1
-    const areaId = context?.areaId ?? 1
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     const hosp = await this.hospitalizationRepository.findOneBy({ id, tenantId, areaId })
     if (!hosp)
       throw new BusinessException('Hospitalization record not found')
@@ -219,13 +217,16 @@ export class HospitalizationService {
     return this.getDetail(id, { tenantId, areaId })
   }
 
-  private async generateHospNo() {
+  private async generateHospNo(context: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
+    const { tenantId, areaId } = requireTenantAreaContext(context)
     const date = this.getTodaySequenceDate()
     const prefix = `HOSP${date}`
     const latestHosp = await this.hospitalizationRepository
       .createQueryBuilder('h')
       .select(['h.hospNo'])
       .where('h.hospNo LIKE :prefix', { prefix: `${prefix}%` })
+      .andWhere('h.tenantId = :tenantId', { tenantId })
+      .andWhere('h.areaId = :areaId', { areaId })
       .orderBy('h.hospNo', 'DESC')
       .getOne()
 
