@@ -1,27 +1,36 @@
 import { ApiProperty } from '@nestjs/swagger'
 
 export class StorageInfo {
-  @ApiProperty({ description: '文件ID' })
+  @ApiProperty({ description: 'file id' })
   id: number
 
-  @ApiProperty({ description: '文件名' })
+  @ApiProperty({ description: 'file name' })
   name: string
 
-  @ApiProperty({ description: '文件扩展名' })
+  @ApiProperty({ description: 'extension name' })
   extName: string
 
-  @ApiProperty({ description: '文件路径' })
+  @ApiProperty({ description: 'authorized access path' })
   path: string
 
-  @ApiProperty({ description: '文件类型' })
+  @ApiProperty({ description: 'business type' })
+  bizType: string
+
+  @ApiProperty({ description: 'business id' })
+  bizId: number
+
+  @ApiProperty({ description: 'scan status' })
+  scanStatus: number
+
+  @ApiProperty({ description: 'file type' })
   type: string
 
-  @ApiProperty({ description: '大小' })
+  @ApiProperty({ description: 'file size' })
   size: string
 
-  @ApiProperty({ description: '上传时间' })
+  @ApiProperty({ description: 'created at' })
   createdAt: string
 
-  @ApiProperty({ description: '上传者' })
+  @ApiProperty({ description: 'uploader username' })
   username: string
 }

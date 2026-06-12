@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto'
 import { MultipartFile } from '@fastify/multipart'
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
@@ -11,8 +12,8 @@ import { Storage } from '~/modules/tools/storage/storage.entity'
 import {
   fileRename,
   getExtname,
-  getFilePath,
   getFileType,
+  getProtectedUploadPath,
   getSize,
   saveLocalFile,
 } from '~/utils/file.util'
@@ -74,20 +75,25 @@ export class UploadService {
     const type = getFileType(extName)
     const name = fileRename(fileName)
     const currentDate = dayjs().format('YYYY-MM-DD')
-    const path = getFilePath(name, currentDate, type)
+    const accessToken = randomBytes(32).toString('base64url')
+    const diskPath = getProtectedUploadPath(tenantId, areaId, name, currentDate, type)
+    const path = `/api/storage/file/${accessToken}`
 
-    saveLocalFile(buffer, name, currentDate, type)
+    saveLocalFile(buffer, name, currentDate, type, tenantId, areaId)
 
     await this.storageRepository.save({
       name,
       fileName,
       extName,
       path,
+      diskPath,
+      accessToken,
       type,
       size,
       userId: user.uid,
       tenantId,
       areaId,
+      scanStatus: 2,
     })
 
     return path

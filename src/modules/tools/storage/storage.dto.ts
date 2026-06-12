@@ -1,67 +1,87 @@
 import { ApiProperty } from '@nestjs/swagger'
-import { ArrayNotEmpty, IsArray, IsOptional, IsString } from 'class-validator'
+import { ArrayNotEmpty, IsArray, IsInt, IsOptional, IsString } from 'class-validator'
 
 import { PagerDto } from '~/common/dto/pager.dto'
 
 export class StoragePageDto extends PagerDto {
-  @ApiProperty({ description: '文件名' })
+  @ApiProperty({ description: 'file name' })
   @IsOptional()
   @IsString()
   name: string
 
-  @ApiProperty({ description: '文件后缀' })
+  @ApiProperty({ description: 'extension name' })
   @IsString()
   @IsOptional()
   extName: string
 
-  @ApiProperty({ description: '文件类型' })
+  @ApiProperty({ description: 'file type' })
   @IsString()
   @IsOptional()
   type: string
 
-  @ApiProperty({ description: '大小' })
+  @ApiProperty({ description: 'file size' })
   @IsString()
   @IsOptional()
   size: string
 
-  @ApiProperty({ description: '上传时间' })
+  @ApiProperty({ description: 'upload time range' })
   @IsOptional()
   time: string[]
 
-  @ApiProperty({ description: '上传者' })
+  @ApiProperty({ description: 'uploader username' })
   @IsString()
   @IsOptional()
   username: string
+
+  @ApiProperty({ description: 'business type' })
+  @IsString()
+  @IsOptional()
+  bizType?: string
+
+  @ApiProperty({ description: 'business id' })
+  @IsInt()
+  @IsOptional()
+  bizId?: number
 }
 
 export class StorageCreateDto {
-  @ApiProperty({ description: '文件名' })
+  @ApiProperty({ description: 'file name' })
   @IsString()
   name: string
 
-  @ApiProperty({ description: '真实文件名' })
+  @ApiProperty({ description: 'original file name' })
   @IsString()
   fileName: string
 
-  @ApiProperty({ description: '文件扩展名' })
+  @ApiProperty({ description: 'extension name' })
   @IsString()
   extName: string
 
-  @ApiProperty({ description: '文件路径' })
+  @ApiProperty({ description: 'authorized access path' })
   @IsString()
   path: string
 
-  @ApiProperty({ description: '文件路径' })
+  @ApiProperty({ description: 'file type' })
   @IsString()
   type: string
 
-  @ApiProperty({ description: '文件大小' })
+  @ApiProperty({ description: 'file size' })
   @IsString()
   size: string
+
+  @ApiProperty({ description: 'business type' })
+  @IsString()
+  @IsOptional()
+  bizType?: string
+
+  @ApiProperty({ description: 'business id' })
+  @IsInt()
+  @IsOptional()
+  bizId?: number
 }
 
 export class StorageDeleteDto {
-  @ApiProperty({ description: '需要删除的文件ID列表', type: [Number] })
+  @ApiProperty({ description: 'file ids to delete', type: [Number] })
   @IsArray()
   @ArrayNotEmpty()
   ids: number[]

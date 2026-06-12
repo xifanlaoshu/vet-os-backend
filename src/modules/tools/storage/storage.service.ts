@@ -1,3 +1,4 @@
+import { stat } from 'node:fs/promises'
 import { BadRequestException, Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Between, In, Like, Repository } from 'typeorm'
@@ -8,7 +9,7 @@ import { PaginationTypeEnum } from '~/helper/paginate/interface'
 import { Pagination } from '~/helper/paginate/pagination'
 import { Storage } from '~/modules/tools/storage/storage.entity'
 import { UserEntity } from '~/modules/user/user.entity'
-import { deleteFile } from '~/utils'
+import { deleteFile, resolveProtectedUploadPath } from '~/utils'
 
 import { StorageCreateDto, StoragePageDto } from './storage.dto'
 import { StorageInfo } from './storage.modal'
@@ -29,6 +30,7 @@ export class StorageService {
       userId: user.uid,
       tenantId,
       areaId,
+      scanStatus: 2,
     })
   }
 
@@ -45,8 +47,25 @@ export class StorageService {
     await this.storageRepository.delete({ id: In(fileIds), tenantId, areaId })
 
     items.forEach((el) => {
-      deleteFile(el.path)
+      deleteFile(el.diskPath || el.path)
     })
+  }
+
+  async getAuthorizedFileByToken(accessToken: string): Promise<{ storage: Storage, filePath: string, mimeType: string }> {
+    const storage = await this.storageRepository.findOneBy({ accessToken, scanStatus: 2 })
+    if (!storage?.diskPath)
+      throw new BadRequestException('File not found')
+
+    const filePath = resolveProtectedUploadPath(storage.diskPath)
+    const fileStat = await stat(filePath).catch(() => null)
+    if (!fileStat?.isFile())
+      throw new BadRequestException('File not found')
+
+    return {
+      storage,
+      filePath,
+      mimeType: this.resolveMimeType(storage.extName),
+    }
   }
 
   async list({
@@ -58,6 +77,8 @@ export class StorageService {
     extName,
     time,
     username,
+    bizType,
+    bizId,
   }: StoragePageDto, context: Pick<IAuthUser, 'tenantId' | 'areaId'>): Promise<Pagination<StorageInfo>> {
     const { tenantId, areaId } = requireTenantAreaContext(context)
     const queryBuilder = this.storageRepository
@@ -72,6 +93,8 @@ export class StorageService {
         ...(username && {
           userId: await (await this.userRepository.findOneBy({ username }))?.id,
         }),
+        ...(bizType && { bizType }),
+        ...(bizId && { bizId }),
         tenantId,
         areaId,
       })
@@ -90,6 +113,9 @@ export class StorageService {
           name: e.storage_name,
           extName: e.storage_ext_name,
           path: e.storage_path,
+          bizType: e.storage_biz_type,
+          bizId: e.storage_biz_id,
+          scanStatus: e.storage_scan_status,
           type: e.storage_type,
           size: e.storage_size,
           createdAt: e.storage_created_at,
@@ -107,5 +133,20 @@ export class StorageService {
   async count(context: Pick<IAuthUser, 'tenantId' | 'areaId'>): Promise<number> {
     const { tenantId, areaId } = requireTenantAreaContext(context)
     return this.storageRepository.count({ where: { tenantId, areaId } })
+  }
+
+  private resolveMimeType(extName?: string | null) {
+    const normalized = String(extName || '').toLowerCase()
+    const mapping: Record<string, string> = {
+      png: 'image/png',
+      gif: 'image/gif',
+      jpg: 'image/jpeg',
+      jpeg: 'image/jpeg',
+      webp: 'image/webp',
+      mp4: 'video/mp4',
+      mov: 'video/quicktime',
+      pdf: 'application/pdf',
+    }
+    return mapping[normalized] || 'application/octet-stream'
   }
 }

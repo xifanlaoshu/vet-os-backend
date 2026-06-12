@@ -1,12 +1,15 @@
-import { Body, Controller, Get, Post, Query } from '@nestjs/common'
+import { createReadStream } from 'node:fs'
 
+import { Body, Controller, Get, Param, Post, Query, Res } from '@nestjs/common'
 import { ApiOperation, ApiTags } from '@nestjs/swagger'
+import { FastifyReply } from 'fastify'
 
 import { ApiResult } from '~/common/decorators/api-result.decorator'
 import { ApiSecurityAuth } from '~/common/decorators/swagger.decorator'
 
 import { Pagination } from '~/helper/paginate/pagination'
 
+import { AllowAnon } from '~/modules/auth/decorators/allow-anon.decorator'
 import { AuthUser } from '~/modules/auth/decorators/auth-user.decorator'
 import { definePermission, Perm } from '~/modules/auth/decorators/permission.decorator'
 
@@ -31,6 +34,18 @@ export class StorageController {
   @Perm(permissions.LIST)
   async list(@Query() dto: StoragePageDto, @AuthUser() user: IAuthUser): Promise<Pagination<StorageInfo>> {
     return this.storageService.list(dto, user)
+  }
+
+  @Get('file/:token')
+  @AllowAnon()
+  @ApiOperation({ summary: 'Get protected uploaded file by opaque token' })
+  async file(@Param('token') token: string, @Res() reply: FastifyReply) {
+    const { storage, filePath, mimeType } = await this.storageService.getAuthorizedFileByToken(token)
+    reply.header('Content-Type', mimeType)
+    reply.header('Cache-Control', 'private, max-age=300')
+    reply.header('X-Content-Type-Options', 'nosniff')
+    reply.header('Content-Disposition', `inline; filename="${encodeURIComponent(storage.fileName || storage.name)}"`)
+    return reply.send(createReadStream(filePath))
   }
 
   @ApiOperation({ summary: '删除文件' })
