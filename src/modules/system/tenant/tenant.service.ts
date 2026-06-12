@@ -221,7 +221,10 @@ export class TenantService {
     return this.getUserAreaGrants(userId)
   }
 
-  async getUserAreaOptions(userId: number): Promise<TenantAreaOption[]> {
+  async getUserAreaOptions(userId: number, platformAdmin = false): Promise<TenantAreaOption[]> {
+    if (platformAdmin)
+      return this.getAllActiveAreaOptions()
+
     const rows = await this.userAreaRepository
       .createQueryBuilder('ua')
       .innerJoin(TenantEntity, 'tenant', 'tenant.id = ua.tenant_id AND tenant.status = 1')
@@ -265,8 +268,8 @@ export class TenantService {
     }]
   }
 
-  async resolveDefaultContext(userId: number) {
-    const options = await this.getUserAreaOptions(userId)
+  async resolveDefaultContext(userId: number, platformAdmin = false) {
+    const options = await this.getUserAreaOptions(userId, platformAdmin)
     const selected = options.find(item => item.defaultArea) ?? options[0]
 
     if (!selected)
@@ -284,8 +287,8 @@ export class TenantService {
     }
   }
 
-  async assertUserArea(userId: number, tenantId: number, areaId: number) {
-    const options = await this.getUserAreaOptions(userId)
+  async assertUserArea(userId: number, tenantId: number, areaId: number, platformAdmin = false) {
+    const options = await this.getUserAreaOptions(userId, platformAdmin)
     const found = options.some(item => item.tenantId === tenantId && item.areaId === areaId)
 
     if (!found)
@@ -311,13 +314,13 @@ export class TenantService {
   }
 
   async resolveRequestContext(user: IAuthUser, requestedAreaId?: number | string | string[]) {
-    const defaultContext = await this.resolveDefaultContext(user.uid)
+    const defaultContext = await this.resolveDefaultContext(user.uid, user.platformAdmin)
     const tenantId = user.tenantId ?? defaultContext.tenantId
     const parsedAreaId = Number(Array.isArray(requestedAreaId) ? requestedAreaId[0] : requestedAreaId)
     const areaId = Number.isFinite(parsedAreaId) && parsedAreaId > 0
       ? parsedAreaId
       : (user.areaId ?? defaultContext.areaId)
-    const options = await this.assertUserArea(user.uid, tenantId, areaId)
+    const options = await this.assertUserArea(user.uid, tenantId, areaId, user.platformAdmin)
     const selected = options.find(item => item.tenantId === tenantId && item.areaId === areaId)
 
     return {
@@ -334,5 +337,32 @@ export class TenantService {
         .map(item => item.areaId),
       areaOptions: options,
     }
+  }
+
+  private async getAllActiveAreaOptions(): Promise<TenantAreaOption[]> {
+    const rows = await this.areaRepository
+      .createQueryBuilder('area')
+      .innerJoin(TenantEntity, 'tenant', 'tenant.id = area.tenant_id AND tenant.status = 1')
+      .select([
+        'area.tenant_id AS tenant_id',
+        'tenant.name AS tenant_name',
+        'area.id AS area_id',
+        'area.name AS area_name',
+        'area.default_area AS default_area',
+      ])
+      .where('area.status = 1')
+      .orderBy('area.tenant_id', 'ASC')
+      .addOrderBy('area.default_area', 'DESC')
+      .addOrderBy('area.sort_no', 'ASC')
+      .addOrderBy('area.id', 'ASC')
+      .getRawMany()
+
+    return rows.map(row => ({
+      tenantId: Number(row.tenant_id),
+      tenantName: row.tenant_name,
+      areaId: Number(row.area_id),
+      areaName: row.area_name,
+      defaultArea: Boolean(Number(row.default_area)),
+    }))
   }
 }

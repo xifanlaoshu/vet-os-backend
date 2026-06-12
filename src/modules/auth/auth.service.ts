@@ -160,7 +160,7 @@ export class AuthService {
   }
 
   async getContext(user: IAuthUser) {
-    const context = await this.tenantService.resolveDefaultContext(user.uid)
+    const context = await this.tenantService.resolveDefaultContext(user.uid, user.platformAdmin)
     const currentArea = context.areaOptions.find(
       item => item.tenantId === user.tenantId && item.areaId === user.areaId,
     )
@@ -176,12 +176,12 @@ export class AuthService {
   }
 
   async switchArea(user: IAuthUser, areaId: number) {
-    const tenantId = user.tenantId ?? (await this.tenantService.resolveDefaultContext(user.uid)).tenantId
+    const tenantId = user.tenantId ?? (await this.tenantService.resolveDefaultContext(user.uid, user.platformAdmin)).tenantId
     return this.selectContext(user, tenantId, areaId)
   }
 
   async selectContext(user: IAuthUser, tenantId: number, areaId: number) {
-    const options = await this.tenantService.assertUserArea(user.uid, tenantId, areaId)
+    const options = await this.tenantService.assertUserArea(user.uid, tenantId, areaId, user.platformAdmin)
     const selected = options.find(item => item.tenantId === tenantId && item.areaId === areaId)
     const roleIds = await this.roleService.getRoleIdsByUser(user.uid)
     const roles = await this.roleService.getRoleValues(roleIds)
