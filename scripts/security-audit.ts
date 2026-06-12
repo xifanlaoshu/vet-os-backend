@@ -56,9 +56,9 @@ auditTrustedClientIpResolution()
 
 const rules = [
   {
-    rule: 'no-console-log',
-    pattern: /\bconsole\.log\s*\(/,
-    message: 'Do not use console.log in backend code; use Logger with sanitized messages.',
+    rule: 'no-console-in-runtime',
+    pattern: /\bconsole\.\w+\s*\(/,
+    message: 'Do not use console.* in backend runtime code; use Logger with sanitized messages.',
   },
   {
     rule: 'no-token-value-log',
@@ -90,6 +90,7 @@ const dataEgressSeen = new Set<string>()
 
 for (const file of sourceFiles) {
   const absPath = file
+  const relPath = normalizePath(relative(root, absPath))
   const content = readFileSync(absPath, 'utf8')
   const lines = content.split(/\r?\n/)
   auditControllerAccessMetadata(absPath, lines)
@@ -102,6 +103,8 @@ for (const file of sourceFiles) {
       return auditCommentSwallowedCode(absPath, lineText, index + 1)
     for (const { rule, pattern, message } of rules) {
       if (!pattern.test(lineText))
+        continue
+      if (rule === 'no-console-in-runtime' && relPath === 'src/repl.ts')
         continue
       if (
         rule === 'no-plain-refresh-token-write'

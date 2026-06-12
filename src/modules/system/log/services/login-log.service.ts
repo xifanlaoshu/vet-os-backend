@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common'
+import { Injectable, Logger } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 
 import { Between, LessThan, Like, Repository } from 'typeorm'
@@ -29,6 +29,8 @@ async function parseLoginLog(e: any, parser: UAParser): Promise<LoginLogInfo> {
 
 @Injectable()
 export class LoginLogService {
+  private readonly logger = new Logger(LoginLogService.name)
+
   constructor(
     @InjectRepository(LoginLogEntity)
     private loginLogRepository: Repository<LoginLogEntity>,
@@ -47,7 +49,7 @@ export class LoginLogService {
       })
     }
     catch (e) {
-      console.error(e)
+      this.logger.warn(`Failed to write login log: ${e instanceof Error ? e.message : 'unknown error'}`)
     }
   }
 

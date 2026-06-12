@@ -97,11 +97,11 @@ export class AllExceptionsFilter implements ExceptionFilter {
 
   registerCatchAllExceptionsHook() {
     process.on('unhandledRejection', (reason) => {
-      console.error('unhandledRejection: ', reason)
+      this.logger.error('unhandledRejection', reason instanceof Error ? reason.stack : String(reason))
     })
 
     process.on('uncaughtException', (err) => {
-      console.error('uncaughtException: ', err)
+      this.logger.error('uncaughtException', err.stack)
     })
   }
 }
