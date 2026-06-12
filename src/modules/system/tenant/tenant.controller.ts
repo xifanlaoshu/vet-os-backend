@@ -29,7 +29,7 @@ export class TenantController {
   @ApiOperation({ summary: 'Get current account tenant and area context' })
   @AllowAnon()
   async context(@AuthUser() user: IAuthUser) {
-    return this.tenantService.resolveDefaultContext(user.uid)
+    return this.tenantService.resolveDefaultContext(user.uid, user.platformAdmin)
   }
 
   @Get()

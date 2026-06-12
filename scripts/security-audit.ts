@@ -51,6 +51,7 @@ const findings: Finding[] = []
 auditProductionEnvFile()
 auditPermissionMatrix()
 auditTenantContextGuard()
+auditTenantAreaLifecycleFilters()
 auditStorageTokenExpiration()
 auditTrustedClientIpResolution()
 auditSanitizedExceptionLogging()
@@ -305,6 +306,59 @@ function auditTenantContextGuard() {
       message: 'Access tokens must not default contextSelected to true; users must explicitly select tenant and area.',
     })
   })
+}
+
+function auditTenantAreaLifecycleFilters() {
+  const tenantServicePath = join(root, 'src', 'modules', 'system', 'tenant', 'tenant.service.ts')
+  const tenantControllerPath = join(root, 'src', 'modules', 'system', 'tenant', 'tenant.controller.ts')
+  if (!existsSync(tenantServicePath) || !existsSync(tenantControllerPath))
+    return
+
+  const serviceContent = readFileSync(tenantServicePath, 'utf8')
+  const controllerContent = readFileSync(tenantControllerPath, 'utf8')
+
+  const requiredServicePatterns = [
+    {
+      pattern: /tenant\.id\s*=\s*ua\.tenant_id\s+AND\s+tenant\.status\s*=\s*1/,
+      message: 'User tenant-area context options must filter disabled tenants.',
+    },
+    {
+      pattern: /area\.id\s*=\s*ua\.area_id\s+AND\s+area\.tenant_id\s*=\s*ua\.tenant_id\s+AND\s+area\.status\s*=\s*1/,
+      message: 'User tenant-area context options must filter disabled areas.',
+    },
+    {
+      pattern: /tenant\.id\s*=\s*area\.(?:tenant_id|tenantId)\s+AND\s+tenant\.status\s*=\s*1/,
+      message: 'Platform-admin and area option queries must filter disabled tenants.',
+    },
+    {
+      pattern: /innerJoinAndMapOne\(\s*['"`]area\.tenant['"`]\s*,\s*TenantEntity\s*,\s*['"`]tenant['"`]\s*,\s*['"`]tenant\.id\s*=\s*area\.tenantId\s+AND\s+tenant\.status\s*=\s*1['"`]\s*\)/,
+      message: 'Tenant area selectors must use an inner join to exclude areas under disabled tenants.',
+    },
+    {
+      pattern: /\.where\(\s*['"`]area\.status\s*=\s*1['"`]\s*\)/,
+      message: 'Platform-admin and area option queries must filter disabled areas.',
+    },
+  ]
+
+  requiredServicePatterns.forEach(({ pattern, message }) => {
+    if (pattern.test(serviceContent))
+      return
+    findings.push({
+      file: 'src/modules/system/tenant/tenant.service.ts',
+      line: 1,
+      rule: 'tenant-area-lifecycle-filter-required',
+      message,
+    })
+  })
+
+  if (!/resolveDefaultContext\(\s*user\.uid\s*,\s*user\.platformAdmin\s*\)/.test(controllerContent)) {
+    findings.push({
+      file: 'src/modules/system/tenant/tenant.controller.ts',
+      line: 1,
+      rule: 'tenant-context-platform-admin-required',
+      message: 'Tenant context bootstrap must pass platformAdmin so platform administrators can resolve all active areas safely.',
+    })
+  }
 }
 
 function auditStorageTokenExpiration() {

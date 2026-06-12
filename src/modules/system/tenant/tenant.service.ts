@@ -95,7 +95,7 @@ export class TenantService {
     const { tenantId, keyword, status } = dto
     const qb = this.areaRepository
       .createQueryBuilder('area')
-      .leftJoinAndMapOne('area.tenant', TenantEntity, 'tenant', 'tenant.id = area.tenantId')
+      .innerJoinAndMapOne('area.tenant', TenantEntity, 'tenant', 'tenant.id = area.tenantId AND tenant.status = 1')
 
     if (tenantId)
       qb.andWhere('area.tenantId = :tenantId', { tenantId })
@@ -117,7 +117,7 @@ export class TenantService {
   async areaOptions(tenantId?: number) {
     const qb = this.areaRepository
       .createQueryBuilder('area')
-      .leftJoinAndMapOne('area.tenant', TenantEntity, 'tenant', 'tenant.id = area.tenantId')
+      .innerJoinAndMapOne('area.tenant', TenantEntity, 'tenant', 'tenant.id = area.tenantId AND tenant.status = 1')
       .where('area.status = 1')
 
     if (tenantId)
@@ -205,7 +205,13 @@ export class TenantService {
     }))
 
     for (const item of normalized) {
-      const area = await this.areaRepository.findOneBy({ id: item.areaId, tenantId: item.tenantId, status: 1 })
+      const area = await this.areaRepository
+        .createQueryBuilder('area')
+        .innerJoin(TenantEntity, 'tenant', 'tenant.id = area.tenant_id AND tenant.status = 1')
+        .where('area.id = :areaId', { areaId: item.areaId })
+        .andWhere('area.tenant_id = :tenantId', { tenantId: item.tenantId })
+        .andWhere('area.status = 1')
+        .getOne()
       if (!area)
         throw new BadRequestException('授权院区不存在或已停用')
     }
