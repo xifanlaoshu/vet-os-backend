@@ -82,7 +82,7 @@ export class UploadService {
     const diskPath = getProtectedUploadPath(tenantId, areaId, name, currentDate, type)
     const path = `/api/storage/file/${accessToken}`
 
-    saveLocalFile(buffer, name, currentDate, type, tenantId, areaId)
+    await saveLocalFile(buffer, name, currentDate, type, tenantId, areaId)
 
     const storage = await this.storageRepository.save({
       name,

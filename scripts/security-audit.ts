@@ -55,6 +55,7 @@ auditTenantContextGuard()
 auditTenantAreaLifecycleFilters()
 auditPublicAuthEndpointHardening()
 auditStorageTokenExpiration()
+auditProtectedUploadPersistenceAwait()
 auditTrustedClientIpResolution()
 auditSanitizedExceptionLogging()
 auditExternalHttpTimeouts()
@@ -492,14 +493,34 @@ function auditStorageTokenExpiration() {
     })
   }
 
-  if (!/tokenExpiresAt[\s\S]{0,120}Date\.now\(\)/.test(storageService)) {
+  if (!/!storage\?\.tokenExpiresAt\s*\|\|\s*storage\.tokenExpiresAt\.getTime\(\)\s*<=\s*Date\.now\(\)/.test(storageService)) {
     findings.push({
       file: 'src/modules/tools/storage/storage.service.ts',
       line: 1,
       rule: 'missing-storage-token-expiration-check',
-      message: 'Anonymous storage token access must reject expired links.',
+      message: 'Anonymous storage token access must reject missing or expired tokenExpiresAt values.',
     })
   }
+}
+
+function auditProtectedUploadPersistenceAwait() {
+  const uploadServicePath = join(root, 'src', 'modules', 'tools', 'upload', 'upload.service.ts')
+  if (!existsSync(uploadServicePath))
+    return
+
+  const lines = readFileSync(uploadServicePath, 'utf8').split(/\r?\n/)
+  lines.forEach((lineText, index) => {
+    if (!/saveLocalFile\(/.test(lineText))
+      return
+    if (/await\s+saveLocalFile\(/.test(lineText))
+      return
+    findings.push({
+      file: 'src/modules/tools/upload/upload.service.ts',
+      line: index + 1,
+      rule: 'protected-upload-write-must-be-awaited',
+      message: 'Protected uploads must await local file persistence before saving metadata or returning file access information.',
+    })
+  })
 }
 
 function auditTrustedClientIpResolution() {

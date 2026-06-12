@@ -57,7 +57,7 @@ export class StorageService {
 
   async getAuthorizedFileByToken(accessToken: string): Promise<{ storage: Storage, filePath: string, mimeType: string }> {
     const storage = await this.storageRepository.findOneBy({ accessToken, scanStatus: 2 })
-    if (storage?.tokenExpiresAt && storage.tokenExpiresAt.getTime() <= Date.now())
+    if (!storage?.tokenExpiresAt || storage.tokenExpiresAt.getTime() <= Date.now())
       throw new BadRequestException('File link expired')
     return this.resolveAuthorizedStorageFile(storage)
   }

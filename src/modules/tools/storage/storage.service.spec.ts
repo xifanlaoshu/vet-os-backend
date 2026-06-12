@@ -76,7 +76,7 @@ describe('storageService security boundaries', () => {
     await expect(service.getAuthorizedFileByToken('expired-token')).rejects.toBeInstanceOf(BadRequestException)
   })
 
-  it('keeps legacy anonymous tokens without expiration readable', async () => {
+  it('rejects anonymous file tokens without an expiration', async () => {
     const repository = {
       findOneBy: jest.fn().mockResolvedValue({
         id: 10,
@@ -90,10 +90,7 @@ describe('storageService security boundaries', () => {
     }
     const service = createService(repository)
 
-    await expect(service.getAuthorizedFileByToken('legacy-token')).resolves.toMatchObject({
-      filePath: 'D:/protected/tenant/2/area/3/file.png',
-      mimeType: 'image/png',
-    })
+    await expect(service.getAuthorizedFileByToken('legacy-token')).rejects.toBeInstanceOf(BadRequestException)
   })
 
   it('refreshes anonymous file tokens only within the current tenant and area', async () => {
