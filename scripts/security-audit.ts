@@ -52,6 +52,7 @@ auditProductionEnvFile()
 auditPermissionMatrix()
 auditTenantContextGuard()
 auditStorageTokenExpiration()
+auditTrustedClientIpResolution()
 
 const rules = [
   {
@@ -338,6 +339,34 @@ function auditStorageTokenExpiration() {
       line: 1,
       rule: 'missing-storage-token-expiration-check',
       message: 'Anonymous storage token access must reject expired links.',
+    })
+  }
+}
+
+function auditTrustedClientIpResolution() {
+  const ipUtilPath = join(root, 'src', 'utils', 'ip.util.ts')
+  if (!existsSync(ipUtilPath))
+    return
+
+  const content = readFileSync(ipUtilPath, 'utf8')
+  const reqIpIndex = content.indexOf('req?.ip')
+  const forwardedIndex = content.indexOf('x-forwarded-for')
+
+  if (reqIpIndex < 0) {
+    findings.push({
+      file: 'src/utils/ip.util.ts',
+      line: 1,
+      rule: 'missing-trusted-framework-ip',
+      message: 'Client IP resolution must use the framework-resolved req.ip so trusted proxy settings are respected.',
+    })
+  }
+
+  if (forwardedIndex >= 0 && reqIpIndex >= 0 && forwardedIndex < reqIpIndex) {
+    findings.push({
+      file: 'src/utils/ip.util.ts',
+      line: 1,
+      rule: 'spoofable-forwarded-header-before-trusted-ip',
+      message: 'Do not prefer X-Forwarded-For over req.ip; login throttling and audit logs must not trust spoofable headers directly.',
     })
   }
 }
