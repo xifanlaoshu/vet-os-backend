@@ -25,6 +25,7 @@
     "prod:debug": "cross-env NODE_ENV=production nest start --debug --watch",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
+    "security:audit": "tsx scripts/security-audit.ts",
     "test": "jest",
     "test:watch": "jest --watch",
     "doc": "compodoc -p tsconfig.json -s",

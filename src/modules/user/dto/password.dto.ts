@@ -1,39 +1,38 @@
 import { ApiProperty } from '@nestjs/swagger'
 import { IsString, Matches, MaxLength, MinLength } from 'class-validator'
 
+const PASSWORD_POLICY = /^\S*(?=\S{12}$)(?=\S*\d)(?=\S*[A-Z])\S*$/i
+const PASSWORD_POLICY_MESSAGE = 'Password must be 12-64 characters and contain letters and numbers'
+
 export class PasswordUpdateDto {
-  @ApiProperty({ description: '旧密码' })
+  @ApiProperty({ description: 'Old password' })
   @IsString()
-  @Matches(/^[\s\S]+$/)
-  @MinLength(6)
-  @MaxLength(20)
+  @MinLength(12)
+  @MaxLength(64)
   oldPassword: string
 
-  @ApiProperty({ description: '新密码' })
-  @Matches(/^\S*(?=\S{6})(?=\S*\d)(?=\S*[A-Z])\S*$/i, {
-    message: '密码必须包含数字、字母，长度为6-16',
+  @ApiProperty({ description: 'New password' })
+  @IsString()
+  @Matches(PASSWORD_POLICY, {
+    message: PASSWORD_POLICY_MESSAGE,
   })
   newPassword: string
 }
 
 export class UserPasswordDto {
-  // @ApiProperty({ description: '管理员/用户ID' })
-  // @IsEntityExist(UserEntity, { message: '用户不存在' })
-  // @IsInt()
-  // id: number
-
-  @ApiProperty({ description: '更改后的密码' })
-  @Matches(/^\S*(?=\S{6})(?=\S*\d)(?=\S*[A-Z])\S*$/i, {
-    message: '密码格式不正确',
+  @ApiProperty({ description: 'New password' })
+  @IsString()
+  @Matches(PASSWORD_POLICY, {
+    message: PASSWORD_POLICY_MESSAGE,
   })
   password: string
 }
 
 export class UserExistDto {
-  @ApiProperty({ description: '登录账号' })
+  @ApiProperty({ description: 'Login account' })
   @IsString()
-  @Matches(/^[\w-]{4,16}$/)
-  @MinLength(6)
+  @Matches(/^[\w-]{4,20}$/)
+  @MinLength(4)
   @MaxLength(20)
   username: string
 }

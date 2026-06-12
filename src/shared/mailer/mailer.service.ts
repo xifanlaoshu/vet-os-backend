@@ -1,6 +1,6 @@
-import { Inject, Injectable } from '@nestjs/common'
-
 import { MailerService as NestMailerService } from '@nestjs-modules/mailer'
+
+import { Inject, Injectable, Logger } from '@nestjs/common'
 import dayjs from 'dayjs'
 
 import Redis from 'ioredis'
@@ -13,6 +13,8 @@ import { randomValue } from '~/utils'
 
 @Injectable()
 export class MailerService {
+  private readonly logger = new Logger(MailerService.name)
+
   constructor(
     @Inject(AppConfig.KEY) private appConfig: IAppConfig,
     @InjectRedis() private redis: Redis,
@@ -126,7 +128,7 @@ export class MailerService {
       })
     }
     catch (error) {
-      console.log(error)
+      this.logger.warn(`Verification code email failed: ${error instanceof Error ? error.message : 'unknown error'}`)
       throw new BusinessException(ErrorEnum.VERIFICATION_CODE_SEND_FAILED)
     }
 

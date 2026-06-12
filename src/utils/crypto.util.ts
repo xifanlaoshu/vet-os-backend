@@ -1,4 +1,4 @@
-import { scrypt, timingSafeEqual } from 'node:crypto'
+import { randomBytes, scrypt, timingSafeEqual } from 'node:crypto'
 import { promisify } from 'node:util'
 import CryptoJS from 'crypto-js'
 
@@ -34,6 +34,16 @@ export function md5(str: string) {
 const scryptAsync = promisify(scrypt)
 const PASSWORD_HASH_PREFIX = 'scrypt'
 const PASSWORD_HASH_KEY_LENGTH = 64
+const SECURE_RANDOM_ALPHABET = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
+const PASSWORD_POLICY = /^\S*(?=\S{12}$)(?=\S*\d)(?=\S*[A-Z])\S*$/i
+
+export function randomSecureValue(size = 32) {
+  const bytes = randomBytes(size)
+  let value = ''
+  for (let i = 0; i < size; i += 1)
+    value += SECURE_RANDOM_ALPHABET[bytes[i] % SECURE_RANDOM_ALPHABET.length]
+  return value
+}
 
 export function legacyMd5Password(password: string, salt: string) {
   return md5(`${password}${salt}`)
@@ -62,4 +72,8 @@ export async function verifyPassword(password: string, salt: string, stored: str
   const derivedKey = await scryptAsync(password, salt, PASSWORD_HASH_KEY_LENGTH) as Buffer
   const storedKey = Buffer.from(encoded, 'hex')
   return storedKey.length === derivedKey.length && timingSafeEqual(storedKey, derivedKey)
+}
+
+export function isStrongPassword(password: string) {
+  return PASSWORD_POLICY.test(password)
 }

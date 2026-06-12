@@ -1,4 +1,4 @@
-import { BadRequestException, Controller, Post, Req } from '@nestjs/common'
+import { BadRequestException, Controller, Logger, Post, Req } from '@nestjs/common'
 import { ApiBody, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger'
 import { FastifyRequest } from 'fastify'
 
@@ -18,6 +18,8 @@ export const permissions = definePermission('upload', {
 @ApiTags('Tools - 上传模块')
 @Controller('upload')
 export class UploadController {
+  private readonly logger = new Logger(UploadController.name)
+
   constructor(private uploadService: UploadService) {}
 
   @Post()
@@ -46,7 +48,7 @@ export class UploadController {
       }
     }
     catch (error) {
-      console.log(error)
+      this.logger.warn(`File upload rejected: ${error instanceof Error ? error.message : 'unknown error'}`)
       throw new BadRequestException('上传失败')
     }
   }

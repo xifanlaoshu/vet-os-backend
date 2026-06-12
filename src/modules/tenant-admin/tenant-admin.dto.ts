@@ -110,7 +110,7 @@ export class TenantAdminUserDto {
   username: string
 
   @IsOptional()
-  @Matches(/^\S*(?=\S{6})(?=\S*\d)(?=\S*[A-Z])\S*$/i, {
+  @Matches(/^\S*(?=\S{12}$)(?=\S*\d)(?=\S*[A-Z])\S*$/i, {
     message: '密码必须包含数字、字母，长度为 6-16 位',
   })
   password?: string

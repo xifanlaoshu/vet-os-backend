@@ -33,7 +33,7 @@ export class UserDto {
 
   @ApiProperty({ description: '登录密码', example: 'a123456' })
   @IsOptional()
-  @Matches(/^\S*(?=\S{6})(?=\S*\d)(?=\S*[A-Z])\S*$/i, {
+  @Matches(/^\S*(?=\S{12}$)(?=\S*\d)(?=\S*[A-Z])\S*$/i, {
     message: '密码必须包含数字、字母，长度为6-16',
   })
   password: string

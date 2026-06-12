@@ -17,7 +17,7 @@ import { AccountUpdateDto } from '~/modules/auth/dto/account.dto'
 import { RegisterDto } from '~/modules/auth/dto/auth.dto'
 import { QQService } from '~/shared/helper/qq.service'
 
-import { hashPassword, randomValue, verifyPassword } from '~/utils'
+import { hashPassword, isStrongPassword, randomSecureValue, verifyPassword } from '~/utils'
 
 import { AccessTokenEntity } from '../auth/entities/access-token.entity'
 import { DeptEntity } from '../system/dept/dept.entity'
@@ -161,16 +161,16 @@ export class UserService {
       throw new BusinessException(ErrorEnum.SYSTEM_USER_EXISTS)
 
     await this.entityManager.transaction(async (manager) => {
-      const salt = randomValue(32)
+      const salt = randomSecureValue(32)
 
       if (!password) {
         const initPassword = await this.paramConfigService.findValueByKey(
           SYS_USER_INITPASSWORD,
         )
-        password = await hashPassword(initPassword ?? '123456', salt)
+        password = await hashPassword(this.assertStrongInitialPassword(initPassword), salt)
       }
       else {
-        password = await hashPassword(password ?? '123456', salt)
+        password = await hashPassword(this.assertStrongInitialPassword(password), salt)
       }
       const u = manager.create(UserEntity, {
         username,
@@ -368,9 +368,9 @@ export class UserService {
       throw new BusinessException(ErrorEnum.SYSTEM_USER_EXISTS)
 
     await this.entityManager.transaction(async (manager) => {
-      const salt = randomValue(32)
+      const salt = randomSecureValue(32)
 
-      const password = await hashPassword(data.password ?? 'a123456', salt)
+      const password = await hashPassword(this.assertStrongInitialPassword(data.password), salt)
 
       const u = manager.create(UserEntity, {
         username,
@@ -383,5 +383,11 @@ export class UserService {
 
       return user
     })
+  }
+
+  private assertStrongInitialPassword(password?: string) {
+    if (!password || !isStrongPassword(password))
+      throw new BadRequestException('Initial password must be 12-64 characters and contain letters and numbers')
+    return password
   }
 }

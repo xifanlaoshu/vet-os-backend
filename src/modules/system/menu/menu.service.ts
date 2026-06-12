@@ -238,7 +238,6 @@ export class MenuService {
           return uid
         })
       const uids = await Promise.all(promiseArr)
-      console.log('refreshOnlineUserPerms')
       if (isNoticeUser)
         this.sseService.noticeClientToUpdateMenusByUserIds(uids)
     }

@@ -11,7 +11,7 @@ import { TenantAreaEntity } from '~/modules/system/tenant/tenant-area.entity'
 import { TenantEntity } from '~/modules/system/tenant/tenant.entity'
 import { UserAreaEntity } from '~/modules/system/tenant/user-area.entity'
 import { UserEntity } from '~/modules/user/user.entity'
-import { md5, randomValue } from '~/utils'
+import { hashPassword, isStrongPassword, randomSecureValue } from '~/utils'
 
 import {
   TenantAdminAreaDto,
@@ -165,14 +165,16 @@ export class TenantAdminService {
       throw new BadRequestException('用户名已存在')
 
     await this.entityManager.transaction(async (manager) => {
-      const salt = randomValue(32)
+      const salt = randomSecureValue(32)
       const initialPassword = dto.password
         ? dto.password
         : (await this.paramConfigService.findValueByKey(SYS_USER_INITPASSWORD)) ?? '123456'
+      this.assertStrongInitialPassword(initialPassword)
+      const password = await hashPassword(initialPassword, salt)
       const created = await manager.save(manager.create(UserEntity, {
         avatar: dto.avatar,
         username: dto.username,
-        password: md5(`${initialPassword}${salt}`),
+        password,
         psalt: salt,
         tenantId,
         nickname: dto.nickname,
@@ -203,7 +205,8 @@ export class TenantAdminService {
       }
       if (dto.password) {
         const current = await manager.findOneBy(UserEntity, { id })
-        updatePayload.password = md5(`${dto.password}${current.psalt}`)
+        this.assertStrongInitialPassword(dto.password)
+        updatePayload.password = await hashPassword(dto.password, current.psalt)
       }
 
       await manager.update(UserEntity, { id }, updatePayload)
@@ -333,5 +336,10 @@ export class TenantAdminService {
     users.forEach((item) => {
       ;(item as any).tenantAreas = map.get(item.id) || []
     })
+  }
+
+  private assertStrongInitialPassword(password?: string) {
+    if (!password || !isStrongPassword(password))
+      throw new BadRequestException('Initial password must be 12-64 characters and contain letters and numbers')
   }
 }
