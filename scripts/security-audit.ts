@@ -52,10 +52,12 @@ auditProductionEnvFile()
 auditHttpRuntimeSecurityBootstrap()
 auditPermissionMatrix()
 auditTenantContextGuard()
+auditJwtAuthGuardRegressionCoverage()
 auditTenantAreaLifecycleFilters()
 auditPublicAuthEndpointHardening()
 auditStorageTokenExpiration()
 auditProtectedUploadPersistenceAwait()
+auditVisitMediaFileSafety()
 auditTrustedClientIpResolution()
 auditSanitizedExceptionLogging()
 auditExternalHttpTimeouts()
@@ -366,6 +368,103 @@ function auditTenantContextGuard() {
   })
 }
 
+function auditJwtAuthGuardRegressionCoverage() {
+  const guardPath = join(root, 'src', 'modules', 'auth', 'guards', 'jwt-auth.guard.ts')
+  const specPath = join(root, 'src', 'modules', 'auth', 'guards', 'jwt-auth.guard.spec.ts')
+  if (!existsSync(guardPath))
+    return
+
+  if (!existsSync(specPath)) {
+    findings.push({
+      file: 'src/modules/auth/guards/jwt-auth.guard.spec.ts',
+      line: 1,
+      rule: 'missing-jwt-auth-guard-security-regression-tests',
+      message: 'JwtAuthGuard must have regression tests for blacklist, token staleness, password version, SSE uid, and tenant-area authorization boundaries.',
+    })
+    return
+  }
+
+  const guardContent = readFileSync(guardPath, 'utf8')
+  const specContent = readFileSync(specPath, 'utf8')
+  const requiredGuardPatterns = [
+    {
+      pattern: /genTokenBlacklistKey\(token\)/,
+      rule: 'jwt-guard-blacklist-check-required',
+      message: 'JwtAuthGuard must reject blacklisted access tokens before business context resolution.',
+    },
+    {
+      pattern: /tokenService\.checkAccessToken\(token\)/,
+      rule: 'jwt-guard-access-token-db-check-required',
+      message: 'JwtAuthGuard must validate the presented access token against server-side token state.',
+    },
+    {
+      pattern: /request\.headers\[['"`]x-area-id['"`]\]/,
+      rule: 'jwt-guard-area-header-resolution-required',
+      message: 'JwtAuthGuard must resolve tenant and area context from X-Area-Id.',
+    },
+    {
+      pattern: /getPasswordVersionByUid\(request\.user\.uid\)/,
+      rule: 'jwt-guard-password-version-check-required',
+      message: 'JwtAuthGuard must invalidate tokens after password-version changes.',
+    },
+    {
+      pattern: /!this\.appConfig\.multiDeviceLogin/,
+      rule: 'jwt-guard-single-device-check-required',
+      message: 'JwtAuthGuard must reject stale tokens when single-device login is enabled.',
+    },
+    {
+      pattern: /Number\(uid\)\s*!==\s*request\.user\.uid/,
+      rule: 'jwt-guard-sse-uid-check-required',
+      message: 'JwtAuthGuard must reject SSE route uid values that differ from the authenticated user.',
+    },
+  ]
+
+  requiredGuardPatterns.forEach(({ pattern, rule, message }) => {
+    if (pattern.test(guardContent))
+      return
+    findings.push({
+      file: 'src/modules/auth/guards/jwt-auth.guard.ts',
+      line: 1,
+      rule,
+      message,
+    })
+  })
+
+  const requiredSpecPatterns = [
+    {
+      pattern: /rejects blacklisted access tokens/i,
+      message: 'Missing JwtAuthGuard regression test for blacklisted token rejection.',
+    },
+    {
+      pattern: /rejects stale access tokens/i,
+      message: 'Missing JwtAuthGuard regression test for stale Redis current-token rejection.',
+    },
+    {
+      pattern: /password version changes/i,
+      message: 'Missing JwtAuthGuard regression test for password-version invalidation.',
+    },
+    {
+      pattern: /SSE requests whose route uid does not match/i,
+      message: 'Missing JwtAuthGuard regression test for SSE uid mismatch rejection.',
+    },
+    {
+      pattern: /unauthorized requested areas/i,
+      message: 'Missing JwtAuthGuard regression test for unauthorized X-Area-Id rejection.',
+    },
+  ]
+
+  requiredSpecPatterns.forEach(({ pattern, message }) => {
+    if (pattern.test(specContent))
+      return
+    findings.push({
+      file: 'src/modules/auth/guards/jwt-auth.guard.spec.ts',
+      line: 1,
+      rule: 'incomplete-jwt-auth-guard-security-regression-tests',
+      message,
+    })
+  })
+}
+
 function auditTenantAreaLifecycleFilters() {
   const tenantServicePath = join(root, 'src', 'modules', 'system', 'tenant', 'tenant.service.ts')
   const tenantControllerPath = join(root, 'src', 'modules', 'system', 'tenant', 'tenant.controller.ts')
@@ -545,6 +644,81 @@ function auditProtectedUploadPersistenceAwait() {
       line: index + 1,
       rule: 'protected-upload-write-must-be-awaited',
       message: 'Protected uploads must await local file persistence before saving metadata or returning file access information.',
+    })
+  })
+}
+
+function auditVisitMediaFileSafety() {
+  const servicePath = join(root, 'src', 'modules', 'vpet-visit', 'visit.service.ts')
+  const specPath = join(root, 'src', 'modules', 'vpet-visit', 'visit.service.spec.ts')
+  if (!existsSync(servicePath))
+    return
+
+  const serviceContent = readFileSync(servicePath, 'utf8')
+  const requiredServicePatterns = [
+    {
+      pattern: /validateVisitMediaUrl\(dto\.storageType,\s*dto\.url\)/,
+      rule: 'visit-media-url-validation-required',
+      message: 'Visit media file creation must validate local and OSS media URLs before saving.',
+    },
+    {
+      pattern: /\['javascript',\s*'data',\s*'file',\s*'vbscript'\]\.includes\(scheme\)/,
+      rule: 'visit-media-dangerous-protocol-block-required',
+      message: 'Visit media URL validation must reject script, data, file, and vbscript protocols.',
+    },
+    {
+      pattern: /!url\.startsWith\('\/api\/storage\/file\/'\)\s*&&\s*!url\.startsWith\('\/upload\/'\)/,
+      rule: 'visit-media-local-path-scope-required',
+      message: 'Local visit media URLs must be restricted to protected storage or upload paths.',
+    },
+    {
+      pattern: /allowedHosts\.has\(parsed\.host\)/,
+      rule: 'visit-media-oss-host-allowlist-required',
+      message: 'OSS visit media URLs must be restricted to configured trusted hosts.',
+    },
+    {
+      pattern: /validateVisitMediaMimeType\(dto\.fileType,\s*dto\.mimeType\)/,
+      rule: 'visit-media-mime-validation-required',
+      message: 'Visit media file creation must validate declared media type against MIME type.',
+    },
+  ]
+
+  requiredServicePatterns.forEach(({ pattern, rule, message }) => {
+    if (pattern.test(serviceContent))
+      return
+    findings.push({
+      file: 'src/modules/vpet-visit/visit.service.ts',
+      line: 1,
+      rule,
+      message,
+    })
+  })
+
+  if (!existsSync(specPath)) {
+    findings.push({
+      file: 'src/modules/vpet-visit/visit.service.spec.ts',
+      line: 1,
+      rule: 'missing-visit-media-safety-regression-tests',
+      message: 'Visit media URL and MIME validation must have regression tests for dangerous protocols, local paths, OSS host allowlist, and MIME mismatch.',
+    })
+    return
+  }
+
+  const specContent = readFileSync(specPath, 'utf8')
+  const requiredSpecPatterns = [
+    /protected local upload URLs/i,
+    /dangerous URL protocols/i,
+    /configured trusted hosts/i,
+    /MIME types that do not match/i,
+  ]
+  requiredSpecPatterns.forEach((pattern) => {
+    if (pattern.test(specContent))
+      return
+    findings.push({
+      file: 'src/modules/vpet-visit/visit.service.spec.ts',
+      line: 1,
+      rule: 'incomplete-visit-media-safety-regression-tests',
+      message: 'Visit media safety tests must cover protected local URLs, dangerous protocols, OSS trusted hosts, and MIME mismatches.',
     })
   })
 }
