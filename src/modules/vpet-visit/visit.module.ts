@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common'
 import { TypeOrmModule } from '@nestjs/typeorm'
 import { AppointmentEntity } from '../vpet-appointment/entities/appointment.entity'
 import { DoctorEntity } from '../vpet-appointment/entities/doctor.entity'
+import { OperationAuditLogEntity } from '../vpet-billing/entities/operation-audit-log.entity'
 import { CustomerEntity } from '../vpet-customer/entities/customer.entity'
 import { LabOrderEntity } from '../vpet-lab/entities/lab-order.entity'
 import { PetEntity } from '../vpet-pet/entities/pet.entity'
@@ -51,6 +52,7 @@ import { VisitService } from './visit.service'
       PetEntity,
       LabOrderEntity,
       PrescriptionEntity,
+      OperationAuditLogEntity,
       DoctorEntity,
     ]),
   ],

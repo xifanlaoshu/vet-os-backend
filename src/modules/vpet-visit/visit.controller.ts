@@ -241,6 +241,16 @@ export class VisitController {
     return this.visitService.listEmrAuditLogs(id, { scope, currentUserId: user?.uid, tenantId: user?.tenantId, areaId: user?.areaId })
   }
 
+  @Post(':id/print-audit')
+  @ApiOperation({ summary: 'Record medical record print audit' })
+  async recordPrintAudit(
+    @IdParam() id: number,
+    @Query('scope') scope: string | undefined,
+    @AuthUser() user: IAuthUser,
+  ) {
+    return this.visitService.recordPrintAudit(id, { scope, currentUserId: user?.uid, tenantId: user?.tenantId, areaId: user?.areaId })
+  }
+
   @Get(':id/signatures')
   @ApiOperation({ summary: 'EMR signatures' })
   async signatures(

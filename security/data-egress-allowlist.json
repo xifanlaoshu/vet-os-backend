@@ -25,6 +25,12 @@
       "path": "/storage/file/:token/refresh",
       "target": "StorageController.refreshFileToken",
       "reason": "Refreshes a short-lived protected upload preview link and requires tool:storage:sign plus tenantId and areaId authorization."
+    },
+    {
+      "method": "POST",
+      "path": "/vpet/visit/:id/print-audit",
+      "target": "VisitController.recordPrintAudit",
+      "reason": "Records an audited medical-record print event before browser printing; returns no medical payload and validates tenantId, areaId, and current-staff scope through VisitService."
     }
   ]
 }

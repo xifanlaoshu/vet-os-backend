@@ -8,6 +8,7 @@ import { BaseService } from '~/helper/crud/base.service'
 import { paginate } from '~/helper/paginate'
 import { AppointmentEntity } from '../vpet-appointment/entities/appointment.entity'
 import { DoctorEntity } from '../vpet-appointment/entities/doctor.entity'
+import { OperationAuditLogEntity } from '../vpet-billing/entities/operation-audit-log.entity'
 import { CustomerEntity } from '../vpet-customer/entities/customer.entity'
 import { LabOrderEntity } from '../vpet-lab/entities/lab-order.entity'
 import { PetEntity } from '../vpet-pet/entities/pet.entity'
@@ -103,6 +104,8 @@ export class VisitService extends BaseService<VisitEntity> {
     private labOrderRepository: Repository<LabOrderEntity>,
     @InjectRepository(PrescriptionEntity)
     private prescriptionRepository: Repository<PrescriptionEntity>,
+    @InjectRepository(OperationAuditLogEntity)
+    private operationAuditRepository: Repository<OperationAuditLogEntity>,
   ) {
     super(visitRepository)
   }
@@ -576,6 +579,34 @@ export class VisitService extends BaseService<VisitEntity> {
       relations: ['operator'],
       order: { createdAt: 'DESC', id: 'DESC' },
     })
+  }
+
+  async recordPrintAudit(id: number, options: CurrentStaffScopeOptions = {}) {
+    const visit = await this.findScopedVisit(id, options)
+    if (!visit) {
+      await this.findOne(id)
+      return null
+    }
+    await this.assertVisitBelongsToScopedDoctor(visit, options)
+
+    const operatorId = await this.resolveActorDoctorId(visit, options)
+    await this.operationAuditRepository.save(this.operationAuditRepository.create({
+      tenantId: visit.tenantId,
+      areaId: visit.areaId,
+      bizType: 'emr',
+      bizId: visit.id,
+      action: 'print',
+      beforeSnapshot: null,
+      afterSnapshot: {
+        visitId: visit.id,
+        visitNo: visit.visitNo,
+        printedAt: new Date().toISOString(),
+      },
+      reason: 'medical_record_print',
+      operatorId: operatorId ?? options.currentUserId ?? null,
+    }))
+
+    return { success: true }
   }
 
   async listUnlockRequests(params: { visitId?: number, status?: number }, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
