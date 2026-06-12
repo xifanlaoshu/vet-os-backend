@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "description": "Explicit allowlist for backend routes that can return files, download links, exports, or printable data packages.",
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/manage/download",
+      "target": "NetDiskManageController.download",
+      "reason": "Returns an OSS download link and requires the dedicated netdisk:manage:download permission."
+    },
+    {
+      "method": "GET",
+      "path": "/storage/file/:token",
+      "target": "StorageController.file",
+      "reason": "Returns a protected upload preview by opaque token only after scanStatus=2; token URLs are unguessable and short-cache only."
+    },
+    {
+      "method": "GET",
+      "path": "/storage/file/id/:id",
+      "target": "StorageController.authorizedFile",
+      "reason": "Returns a protected uploaded file by id and requires tool:storage:read plus tenantId and areaId authorization."
+    }
+  ]
+}

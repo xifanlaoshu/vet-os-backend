@@ -34,6 +34,15 @@ interface RawSqlAllowlist {
   }>
 }
 
+interface DataEgressAllowlist {
+  routes: Array<{
+    method: string
+    path: string
+    target: string
+    reason: string
+  }>
+}
+
 const root = cwd()
 const sourceFiles = listSourceFiles(join(root, 'src'))
 
@@ -62,7 +71,9 @@ const rules = [
 
 const throttleBypassAllowlist = readThrottleBypassAllowlist()
 const rawSqlAllowlist = readRawSqlAllowlist()
+const dataEgressAllowlist = readDataEgressAllowlist()
 const rawSqlSeen = new Set<string>()
+const dataEgressSeen = new Set<string>()
 
 for (const file of sourceFiles) {
   const absPath = file
@@ -72,6 +83,7 @@ for (const file of sourceFiles) {
   auditVpetScopedRepositoryAccess(absPath, lines)
   auditThrottleBypass(absPath, lines)
   auditRawSqlUsage(absPath, lines)
+  auditDataEgressRoutes(absPath, lines)
   lines.forEach((lineText, index) => {
     if (lineText.trim().startsWith('//'))
       return auditCommentSwallowedCode(absPath, lineText, index + 1)
@@ -100,6 +112,7 @@ for (const file of sourceFiles) {
 }
 
 auditRawSqlAllowlistStale()
+auditDataEgressAllowlistStale()
 
 function auditProductionEnvFile() {
   const envPath = join(root, '.env.production')
@@ -315,6 +328,35 @@ function readRawSqlAllowlist() {
   return allowlist
 }
 
+function readDataEgressAllowlist() {
+  const allowlistPath = join(root, 'security', 'data-egress-allowlist.json')
+  if (!existsSync(allowlistPath)) {
+    findings.push({
+      file: 'security/data-egress-allowlist.json',
+      line: 1,
+      rule: 'missing-data-egress-allowlist',
+      message: 'Routes that return files, download links, exports, or printable data packages must be documented in security/data-egress-allowlist.json.',
+    })
+    return new Set<string>()
+  }
+
+  const parsed = JSON.parse(readFileSync(allowlistPath, 'utf8')) as DataEgressAllowlist
+  const allowlist = new Set<string>()
+  parsed.routes.forEach((route, index) => {
+    if (!route.method || !route.path || !route.target || !route.reason?.trim()) {
+      findings.push({
+        file: 'security/data-egress-allowlist.json',
+        line: index + 1,
+        rule: 'data-egress-allowlist-incomplete',
+        message: 'Each data egress allowlist item must include method, path, target, and reason.',
+      })
+      return
+    }
+    allowlist.add(dataEgressKey(route))
+  })
+  return allowlist
+}
+
 function auditRawSqlUsage(absPath: string, lines: string[]) {
   const relPath = normalizePath(relative(root, absPath))
   if (relPath.startsWith('src/migrations/'))
@@ -338,6 +380,63 @@ function auditRawSqlUsage(absPath: string, lines: string[]) {
   })
 }
 
+function auditDataEgressRoutes(absPath: string, lines: string[]) {
+  if (!absPath.endsWith('.controller.ts'))
+    return
+
+  const controllerLine = lines.findIndex(line => /^\s*@Controller\b/.test(line))
+  const classLine = lines.findIndex(line => /^\s*export\s+class\s+/.test(line))
+  if (controllerLine < 0 || classLine < 0)
+    return
+
+  const controllerPath = readDecoratorPath(lines[controllerLine])
+  const controllerName = lines[classLine].match(/export\s+class\s+(\w+)/)?.[1] ?? 'UnknownController'
+  for (let i = classLine + 1; i < lines.length; i += 1) {
+    const route = readRouteDecoratorForAudit(lines[i])
+    if (!route)
+      continue
+
+    const methodLine = findNextControllerMethodLine(lines, i + 1)
+    if (methodLine < 0)
+      continue
+
+    const handler = lines[methodLine].match(/\b(?:async\s+)?(\w+)\s*\(/)?.[1] ?? 'anonymous'
+    const nextRouteLine = findNextRouteDecoratorLine(lines, methodLine + 1)
+    const bodyPreview = lines.slice(methodLine, nextRouteLine < 0 ? lines.length : nextRouteLine).join('\n')
+    if (!isDataEgressRoute(route.path, handler, bodyPreview))
+      continue
+
+    const routeInfo = {
+      method: route.method,
+      path: joinAuditApiPath(controllerPath, route.path),
+      target: `${controllerName}.${handler}`,
+    }
+    const key = dataEgressKey(routeInfo)
+    dataEgressSeen.add(key)
+    if (!dataEgressAllowlist.has(key)) {
+      findings.push({
+        file: relative(root, absPath),
+        line: i + 1,
+        rule: 'data-egress-route-not-allowlisted',
+        message: `Data egress route ${routeInfo.method} ${routeInfo.path} (${routeInfo.target}) must be documented in security/data-egress-allowlist.json with its permission and isolation reason.`,
+      })
+    }
+  }
+}
+
+function auditDataEgressAllowlistStale() {
+  for (const key of dataEgressAllowlist.keys()) {
+    if (dataEgressSeen.has(key))
+      continue
+    findings.push({
+      file: 'security/data-egress-allowlist.json',
+      line: 1,
+      rule: 'data-egress-allowlist-stale',
+      message: `Allowlisted data egress route is not present in controller source: ${key}.`,
+    })
+  }
+}
+
 function auditRawSqlAllowlistStale() {
   for (const key of rawSqlAllowlist.keys()) {
     if (rawSqlSeen.has(key))
@@ -349,6 +448,50 @@ function auditRawSqlAllowlistStale() {
       message: `Allowlisted raw SQL target is not present in runtime source: ${key}.`,
     })
   }
+}
+
+function isDataEgressRoute(routePath: string, handler: string, bodyPreview: string) {
+  if (/download|export|print/i.test(`${routePath} ${handler}`))
+    return true
+  return /\b(?:createReadStream|getDownloadLink|Content-Disposition)\b/.test(bodyPreview)
+}
+
+function readRouteDecoratorForAudit(lineText: string) {
+  const match = lineText.trim().match(/^@(Get|Post|Put|Patch|Delete|Sse)\b(?:\((.*)\))?/)
+  if (!match)
+    return null
+  return {
+    method: match[1].toUpperCase() === 'SSE' ? 'SSE' : match[1].toUpperCase(),
+    path: readDecoratorPath(lineText),
+  }
+}
+
+function readDecoratorPath(lineText: string) {
+  return lineText.match(/\(\s*['"`]([^'"`]*)['"`]/)?.[1] ?? ''
+}
+
+function findNextControllerMethodLine(lines: string[], start: number) {
+  for (let i = start; i < Math.min(lines.length, start + 16); i += 1) {
+    if (/^\s*(?:async\s+)?\w+\s*\(/.test(lines[i]))
+      return i
+  }
+  return -1
+}
+
+function findNextRouteDecoratorLine(lines: string[], start: number) {
+  for (let i = start; i < lines.length; i += 1) {
+    if (readRouteDecoratorForAudit(lines[i]))
+      return i
+  }
+  return -1
+}
+
+function joinAuditApiPath(controllerPath: string, routePath: string) {
+  return `/${[controllerPath, routePath].filter(Boolean).join('/')}`.replace(/\/+/g, '/')
+}
+
+function dataEgressKey(route: { method: string, path: string, target: string }) {
+  return `${route.method.toUpperCase()} ${route.path}#${route.target}`
 }
 
 function auditThrottleBypass(absPath: string, lines: string[]) {
