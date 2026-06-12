@@ -436,9 +436,6 @@ function auditRawSqlUsage(absPath: string, lines: string[]) {
 }
 
 function auditDataEgressRoutes(absPath: string, lines: string[]) {
-  if (!absPath.endsWith('.controller.ts'))
-    return
-
   const controllerLine = lines.findIndex(line => /^\s*@Controller\b/.test(line))
   const classLine = lines.findIndex(line => /^\s*export\s+class\s+/.test(line))
   if (controllerLine < 0 || classLine < 0)
@@ -676,9 +673,6 @@ function auditCommentSwallowedCode(absPath: string, lineText: string, line: numb
 }
 
 function auditControllerAccessMetadata(absPath: string, lines: string[]) {
-  if (!absPath.endsWith('.controller.ts'))
-    return
-
   const classLine = lines.findIndex(line => /^\s*export\s+class\s+/.test(line))
   const controllerLine = lines.findIndex(line => /^\s*@Controller\b/.test(line))
   if (classLine < 0 || controllerLine < 0)
