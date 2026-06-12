@@ -12,13 +12,13 @@
       "method": "GET",
       "path": "/storage/file/:token",
       "target": "StorageController.file",
-      "reason": "Returns a protected upload preview by opaque token only after scanStatus=2; token URLs are unguessable and short-cache only."
+      "reason": "Returns a protected upload preview by opaque token only after scanStatus=2; token URLs are unguessable, expiring, and served with no-store headers."
     },
     {
       "method": "GET",
       "path": "/storage/file/id/:id",
       "target": "StorageController.authorizedFile",
-      "reason": "Returns a protected uploaded file by id and requires tool:storage:read plus tenantId and areaId authorization."
+      "reason": "Returns a protected uploaded file by id and requires tool:storage:read plus tenantId and areaId authorization; responses use no-store headers."
     },
     {
       "method": "POST",

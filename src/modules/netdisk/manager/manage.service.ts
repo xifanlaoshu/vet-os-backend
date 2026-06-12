@@ -18,6 +18,7 @@ import { FileOpItem } from './manage.dto'
 
 @Injectable()
 export class NetDiskManageService {
+  private readonly privateDownloadTtlSeconds = 5 * 60
   private config: conf.Config
   private mac: auth.digest.Mac
   private bucketManager: rs.BucketManager
@@ -528,7 +529,7 @@ export class NetDiskManageService {
       return this.bucketManager.privateDownloadUrl(
         this.qiniuConfig.domain,
         key,
-        Date.now() / 1000 + 36000,
+        Date.now() / 1000 + this.privateDownloadTtlSeconds,
       )
     }
     throw new Error('qiniu config access type not support')

@@ -6,6 +6,7 @@ import { FastifyReply } from 'fastify'
 
 import { ApiResult } from '~/common/decorators/api-result.decorator'
 import { ApiSecurityAuth } from '~/common/decorators/swagger.decorator'
+import { setProtectedFileResponseHeaders } from '~/common/utils/file-response.util'
 
 import { Pagination } from '~/helper/paginate/pagination'
 
@@ -43,10 +44,7 @@ export class StorageController {
   @ApiOperation({ summary: 'Get protected uploaded file by opaque token' })
   async file(@Param('token') token: string, @Res() reply: FastifyReply) {
     const { storage, filePath, mimeType } = await this.storageService.getAuthorizedFileByToken(token)
-    reply.header('Content-Type', mimeType)
-    reply.header('Cache-Control', 'private, max-age=300')
-    reply.header('X-Content-Type-Options', 'nosniff')
-    reply.header('Content-Disposition', `inline; filename="${encodeURIComponent(storage.fileName || storage.name)}"`)
+    setProtectedFileResponseHeaders(reply, { mimeType, filename: storage.fileName || storage.name })
     return reply.send(createReadStream(filePath))
   }
 
@@ -55,10 +53,7 @@ export class StorageController {
   @ApiOperation({ summary: 'Get protected uploaded file by id with tenant and area authorization' })
   async authorizedFile(@Param('id') id: string, @AuthUser() user: IAuthUser, @Res() reply: FastifyReply) {
     const { storage, filePath, mimeType } = await this.storageService.getAuthorizedFileById(Number(id), user)
-    reply.header('Content-Type', mimeType)
-    reply.header('Cache-Control', 'private, max-age=300')
-    reply.header('X-Content-Type-Options', 'nosniff')
-    reply.header('Content-Disposition', `inline; filename="${encodeURIComponent(storage.fileName || storage.name)}"`)
+    setProtectedFileResponseHeaders(reply, { mimeType, filename: storage.fileName || storage.name })
     return reply.send(createReadStream(filePath))
   }
 

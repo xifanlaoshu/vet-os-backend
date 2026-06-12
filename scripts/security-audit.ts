@@ -57,6 +57,8 @@ auditSanitizedExceptionLogging()
 auditExternalHttpTimeouts()
 auditCaptchaLogMasking()
 auditRefreshTokenCleanupNullSafety()
+auditProtectedFileResponseHeaders()
+auditNetdiskPrivateDownloadTtl()
 
 const rules = [
   {
@@ -466,6 +468,56 @@ function auditRefreshTokenCleanupNullSafety() {
       rule: 'refresh-token-cleanup-null-safety',
       message: 'Refresh-token cleanup must check accessToken before dereferencing it so orphaned sessions can still be removed.',
     })
+  })
+}
+
+function auditProtectedFileResponseHeaders() {
+  const controllerPath = join(root, 'src', 'modules', 'tools', 'storage', 'storage.controller.ts')
+  if (!existsSync(controllerPath))
+    return
+
+  const content = readFileSync(controllerPath, 'utf8')
+  const fileStreamCount = (content.match(/createReadStream\(/g) ?? []).length
+  const protectedHeaderCount = (content.match(/setProtectedFileResponseHeaders\(/g) ?? []).length
+  if (fileStreamCount > 0 && protectedHeaderCount < fileStreamCount) {
+    findings.push({
+      file: 'src/modules/tools/storage/storage.controller.ts',
+      line: 1,
+      rule: 'protected-file-response-headers-required',
+      message: 'Protected file streaming routes must use setProtectedFileResponseHeaders() for no-store, nosniff, and safe Content-Disposition headers.',
+    })
+  }
+
+  if (/Cache-Control['"`]\s*,\s*['"`]private,\s*max-age/i.test(content)) {
+    findings.push({
+      file: 'src/modules/tools/storage/storage.controller.ts',
+      line: 1,
+      rule: 'protected-file-cache-not-allowed',
+      message: 'Protected medical files must not be cached; use no-store response headers.',
+    })
+  }
+}
+
+function auditNetdiskPrivateDownloadTtl() {
+  const servicePath = join(root, 'src', 'modules', 'netdisk', 'manager', 'manage.service.ts')
+  if (!existsSync(servicePath))
+    return
+
+  const lines = readFileSync(servicePath, 'utf8').split(/\r?\n/)
+  lines.forEach((lineText, index) => {
+    const ttlMatch = lineText.match(/privateDownloadTtlSeconds\s*=\s*(\d+)(?:\s*\*\s*(\d+))?/)
+    if (!ttlMatch)
+      return
+
+    const ttl = Number(ttlMatch[1]) * Number(ttlMatch[2] ?? 1)
+    if (ttl > 10 * 60) {
+      findings.push({
+        file: 'src/modules/netdisk/manager/manage.service.ts',
+        line: index + 1,
+        rule: 'netdisk-private-download-ttl-too-long',
+        message: 'Private netdisk download links must expire within 10 minutes.',
+      })
+    }
   })
 }
 
