@@ -17,6 +17,7 @@ import { md5 } from '~/utils'
 import { LoginLogService } from '../system/log/services/login-log.service'
 import { MenuService } from '../system/menu/menu.service'
 import { RoleService } from '../system/role/role.service'
+import { TenantService } from '../system/tenant/tenant.service'
 
 import { TokenService } from './services/token.service'
 
@@ -26,6 +27,7 @@ export class AuthService {
     @InjectRedis() private readonly redis: Redis,
     private menuService: MenuService,
     private roleService: RoleService,
+    private tenantService: TenantService,
     private userService: UserService,
     private loginLogService: LoginLogService,
     private tokenService: TokenService,
@@ -74,7 +76,7 @@ export class AuthService {
     const roles = await this.roleService.getRoleValues(roleIds)
 
     // 包含access_token和refresh_token
-    const token = await this.tokenService.generateAccessToken(user.id, roles)
+    const token = await this.tokenService.generateAccessToken(user.id, roles, { contextSelected: false } as any)
 
     await this.redis.set(genAuthTokenKey(user.id), token.accessToken, 'EX', this.securityConfig.jwtExprire)
 
@@ -140,9 +142,9 @@ export class AuthService {
     return this.menuService.getPermissions(uid)
   }
 
-  async getPermissionsCache(uid: number): Promise<string[]> {
+  async getPermissionsCache(uid: number): Promise<string[] | null> {
     const permissionString = await this.redis.get(genAuthPermKey(uid))
-    return permissionString ? JSON.parse(permissionString) : []
+    return permissionString ? JSON.parse(permissionString) : null
   }
 
   async setPermissionsCache(uid: number, permissions: string[]): Promise<void> {
@@ -155,5 +157,57 @@ export class AuthService {
 
   async getTokenByUid(uid: number): Promise<string> {
     return this.redis.get(genAuthTokenKey(uid))
+  }
+
+  async getContext(user: IAuthUser) {
+    const context = await this.tenantService.resolveDefaultContext(user.uid)
+    const currentArea = context.areaOptions.find(
+      item => item.tenantId === user.tenantId && item.areaId === user.areaId,
+    )
+
+    return {
+      ...context,
+      tenantId: user.tenantId ?? context.tenantId,
+      tenantName: user.tenantName ?? currentArea?.tenantName ?? context.tenantName,
+      areaId: user.areaId ?? context.areaId,
+      areaName: user.areaName ?? currentArea?.areaName ?? context.areaName,
+      contextSelected: Boolean(user.contextSelected),
+    }
+  }
+
+  async switchArea(user: IAuthUser, areaId: number) {
+    const tenantId = user.tenantId ?? (await this.tenantService.resolveDefaultContext(user.uid)).tenantId
+    return this.selectContext(user, tenantId, areaId)
+  }
+
+  async selectContext(user: IAuthUser, tenantId: number, areaId: number) {
+    const options = await this.tenantService.assertUserArea(user.uid, tenantId, areaId)
+    const selected = options.find(item => item.tenantId === tenantId && item.areaId === areaId)
+    const roleIds = await this.roleService.getRoleIdsByUser(user.uid)
+    const roles = await this.roleService.getRoleValues(roleIds)
+
+    const token = await this.tokenService.generateAccessToken(user.uid, roles, {
+      accountId: user.accountId ?? user.uid,
+      tenantId,
+      tenantName: selected?.tenantName,
+      areaId,
+      areaName: selected?.areaName,
+      accessibleAreaIds: options
+        .filter(item => item.tenantId === tenantId)
+        .map(item => item.areaId),
+      platformAdmin: user.platformAdmin,
+      contextSelected: true,
+    })
+
+    await this.redis.set(genAuthTokenKey(user.uid), token.accessToken, 'EX', this.securityConfig.jwtExprire)
+    return {
+      token: token.accessToken,
+      tenantId,
+      tenantName: selected?.tenantName,
+      areaId,
+      areaName: selected?.areaName,
+      areaOptions: options,
+      contextSelected: true,
+    }
   }
 }

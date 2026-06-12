@@ -7,6 +7,14 @@ declare global {
     /** 签发时间 */
     iat?: number
     roles?: string[]
+    accountId?: number
+    tenantId?: number
+    tenantName?: string
+    areaId?: number
+    areaName?: string
+    accessibleAreaIds?: number[]
+    platformAdmin?: boolean
+    contextSelected?: boolean
   }
 
   export interface IBaseResponse<T = any> {

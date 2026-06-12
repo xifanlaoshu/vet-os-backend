@@ -1,6 +1,7 @@
 import { ApiProperty, OmitType, PartialType, PickType } from '@nestjs/swagger'
 import {
   IsEmail,
+  IsInt,
   IsOptional,
   IsString,
   Matches,
@@ -55,6 +56,22 @@ export class ResetPasswordDto {
   @Matches(/^\S*(?=\S{6})(?=\S*\d)(?=\S*[A-Z])\S*$/i)
   @MinLength(6)
   password: string
+}
+
+export class SwitchAreaDto {
+  @ApiProperty({ description: '目标院区 ID' })
+  @IsInt()
+  areaId: number
+}
+
+export class SelectContextDto {
+  @ApiProperty({ description: '目标租户 ID' })
+  @IsInt()
+  tenantId: number
+
+  @ApiProperty({ description: '目标院区 ID' })
+  @IsInt()
+  areaId: number
 }
 
 export class MenuMeta extends PartialType(OmitType(MenuEntity, ['parentId', 'createdAt', 'updatedAt', 'id', 'roles', 'path', 'name'] as const)) {

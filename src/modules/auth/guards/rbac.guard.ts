@@ -12,6 +12,26 @@ import { AuthService } from '~/modules/auth/auth.service'
 
 import { ALLOW_ANON_KEY, PERMISSION_KEY, PUBLIC_KEY, Roles } from '../auth.constant'
 
+function normalizeRequestPath(request: FastifyRequest) {
+  const path = request.url.split('?')[0] || ''
+  return path.replace(/^\/api(?=\/)/, '')
+}
+
+function isAuthenticatedPublicReadRoute(request: FastifyRequest) {
+  if (request.method !== 'GET')
+    return false
+
+  const path = normalizeRequestPath(request)
+  return [
+    path === '/system/dict-type',
+    path === '/system/dict-type/select-options',
+    /^\/system\/dict-type\/\d+$/.test(path),
+    path === '/system/dict-item',
+    /^\/system\/dict-item\/\d+$/.test(path),
+    path === '/system/serve/stat',
+  ].some(Boolean)
+}
+
 @Injectable()
 export class RbacGuard implements CanActivate {
   constructor(
@@ -35,11 +55,11 @@ export class RbacGuard implements CanActivate {
       throw new BusinessException(ErrorEnum.INVALID_LOGIN)
 
     // allowAnon 是需要登录后可访问(无需权限), Public 则是无需登录也可访问.
-    const allowAnon = this.reflector.get<boolean>(
-      ALLOW_ANON_KEY,
+    const allowAnon = this.reflector.getAllAndOverride<boolean>(ALLOW_ANON_KEY, [
       context.getHandler(),
-    )
-    if (allowAnon)
+      context.getClass(),
+    ])
+    if (allowAnon || isAuthenticatedPublicReadRoute(request))
       return true
 
     const payloadPermission = this.reflector.getAllAndOverride<
@@ -54,7 +74,10 @@ export class RbacGuard implements CanActivate {
     if (user.roles.includes(Roles.ADMIN))
       return true
 
-    const allPermissions = await this.authService.getPermissionsCache(user.uid) ?? await this.authService.getPermissions(user.uid)
+    const cachedPermissions = await this.authService.getPermissionsCache(user.uid)
+    const allPermissions = cachedPermissions ?? await this.authService.getPermissions(user.uid)
+    if (!cachedPermissions)
+      await this.authService.setPermissionsCache(user.uid, allPermissions)
     // console.log(allPermissions)
     let canNext = false
 

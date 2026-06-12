@@ -19,6 +19,9 @@ import { RoleEntity } from '~/modules/system/role/role.entity'
 
 @Entity({ name: 'sys_user' })
 export class UserEntity extends CommonEntity {
+  @Column({ name: 'tenant_id', default: 1 })
+  tenantId: number
+
   @Column({ unique: true })
   username: string
 

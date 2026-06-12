@@ -13,7 +13,7 @@ import { PasswordUpdateDto } from '~/modules/user/dto/password.dto'
 import { AccountInfo } from '../../user/user.model'
 import { UserService } from '../../user/user.service'
 import { AuthService } from '../auth.service'
-import { AccountMenus, AccountUpdateDto } from '../dto/account.dto'
+import { AccountMenus, AccountUpdateDto, SelectContextDto, SwitchAreaDto } from '../dto/account.dto'
 import { JwtAuthGuard } from '../guards/jwt-auth.guard'
 
 @ApiTags('Account - 账户模块')
@@ -56,6 +56,27 @@ export class AccountController {
   @AllowAnon()
   async permissions(@AuthUser() user: IAuthUser): Promise<string[]> {
     return this.authService.getPermissions(user.uid)
+  }
+
+  @Get('context')
+  @ApiOperation({ summary: '获取当前租户与院区上下文' })
+  @AllowAnon()
+  async context(@AuthUser() user: IAuthUser) {
+    return this.authService.getContext(user)
+  }
+
+  @Post('switch-area')
+  @ApiOperation({ summary: '切换当前院区' })
+  @AllowAnon()
+  async switchArea(@AuthUser() user: IAuthUser, @Body() dto: SwitchAreaDto) {
+    return this.authService.switchArea(user, dto.areaId)
+  }
+
+  @Post('select-context')
+  @ApiOperation({ summary: '选择当前登录租户与院区' })
+  @AllowAnon()
+  async selectContext(@AuthUser() user: IAuthUser, @Body() dto: SelectContextDto) {
+    return this.authService.selectContext(user, dto.tenantId, dto.areaId)
   }
 
   @Put('update')

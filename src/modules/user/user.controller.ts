@@ -5,6 +5,8 @@ import { ApiResult } from '~/common/decorators/api-result.decorator'
 import { IdParam } from '~/common/decorators/id-param.decorator'
 import { ApiSecurityAuth } from '~/common/decorators/swagger.decorator'
 import { MenuService } from '~/modules/system/menu/menu.service'
+import { UserAreaGrantDto } from '~/modules/system/tenant/tenant.dto'
+import { TenantService } from '~/modules/system/tenant/tenant.service'
 
 import { definePermission, Perm } from '../auth/decorators/permission.decorator'
 
@@ -31,6 +33,7 @@ export class UserController {
   constructor(
     private userService: UserService,
     private menuService: MenuService,
+    private tenantService: TenantService,
   ) {}
 
   @Get()
@@ -77,5 +80,19 @@ export class UserController {
   @Perm(permissions.PASSWORD_UPDATE)
   async password(@IdParam() id: number, @Body() dto: UserPasswordDto): Promise<void> {
     await this.userService.forceUpdatePassword(id, dto.password)
+  }
+
+  @Get(':id/areas')
+  @ApiOperation({ summary: '查询用户可访问租户院区' })
+  @Perm(permissions.READ)
+  async userAreas(@IdParam() id: number) {
+    return this.tenantService.getUserAreaGrants(id)
+  }
+
+  @Put(':id/areas')
+  @ApiOperation({ summary: '保存用户可访问租户院区' })
+  @Perm(permissions.UPDATE)
+  async saveUserAreas(@IdParam() id: number, @Body() dto: UserAreaGrantDto) {
+    return this.tenantService.saveUserAreaGrants(id, dto)
   }
 }

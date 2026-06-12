@@ -53,3 +53,23 @@ export abstract class CompleteEntity extends CommonEntity {
   @VirtualColumn({ query: alias => `SELECT username FROM sys_user WHERE id = ${alias}.update_by` })
   updater: string
 }
+
+export abstract class TenantEntity extends CommonEntity {
+  @Column({ name: 'tenant_id', default: 1, comment: '租户 ID' })
+  tenantId: number
+}
+
+export abstract class TenantAreaEntity extends TenantEntity {
+  @Column({ name: 'area_id', default: 1, comment: '院区 ID' })
+  areaId: number
+}
+
+export abstract class TenantCompleteEntity extends CompleteEntity {
+  @Column({ name: 'tenant_id', default: 1, comment: '租户 ID' })
+  tenantId: number
+}
+
+export abstract class TenantAreaCompleteEntity extends TenantCompleteEntity {
+  @Column({ name: 'area_id', default: 1, comment: '院区 ID' })
+  areaId: number
+}

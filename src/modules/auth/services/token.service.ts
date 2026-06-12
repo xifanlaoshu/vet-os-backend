@@ -42,8 +42,10 @@ export class TokenService {
       const roleIds = await this.roleService.getRoleIdsByUser(user.id)
       const roleValues = await this.roleService.getRoleValues(roleIds)
 
+      const context = await this.verifyAccessToken(accessToken.value).catch(() => ({} as IAuthUser))
+
       // 如果没过期则生成新的access_token和refresh_token
-      const token = await this.generateAccessToken(user.id, roleValues)
+      const token = await this.generateAccessToken(user.id, roleValues, context)
 
       await accessToken.remove()
       return token
@@ -57,11 +59,19 @@ export class TokenService {
     return jwtSign
   }
 
-  async generateAccessToken(uid: number, roles: string[] = []) {
+  async generateAccessToken(uid: number, roles: string[] = [], context: Partial<IAuthUser> = {}) {
     const payload: IAuthUser = {
+      accountId: context.accountId ?? uid,
       uid,
       pv: 1,
       roles,
+      tenantId: context.tenantId,
+      tenantName: context.tenantName,
+      areaId: context.areaId,
+      areaName: context.areaName,
+      accessibleAreaIds: context.accessibleAreaIds ?? [],
+      platformAdmin: context.platformAdmin ?? roles.includes('admin'),
+      contextSelected: context.contextSelected ?? Boolean(context.tenantId && context.areaId),
     }
 
     const jwtSign = await this.jwtService.signAsync(payload)

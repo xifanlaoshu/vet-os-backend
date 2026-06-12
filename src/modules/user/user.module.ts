@@ -5,6 +5,7 @@ import { MenuModule } from '../system/menu/menu.module'
 import { ParamConfigModule } from '../system/param-config/param-config.module'
 
 import { RoleModule } from '../system/role/role.module'
+import { TenantModule } from '../system/tenant/tenant.module'
 
 import { UserController } from './user.controller'
 import { UserEntity } from './user.entity'
@@ -18,6 +19,7 @@ const providers = [UserService]
     RoleModule,
     MenuModule,
     ParamConfigModule,
+    TenantModule,
   ],
   controllers: [UserController],
   providers: [...providers],

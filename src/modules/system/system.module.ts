@@ -14,6 +14,7 @@ import { ParamConfigModule } from './param-config/param-config.module'
 import { RoleModule } from './role/role.module'
 import { ServeModule } from './serve/serve.module'
 import { TaskModule } from './task/task.module'
+import { TenantModule } from './tenant/tenant.module'
 
 const modules = [
   UserModule,
@@ -24,6 +25,7 @@ const modules = [
   DictItemModule,
   ParamConfigModule,
   LogModule,
+  TenantModule,
   TaskModule,
   OnlineModule,
   ServeModule,
