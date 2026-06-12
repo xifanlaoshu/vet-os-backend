@@ -18,6 +18,7 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
 import { AuthModule } from './modules/auth/auth.module'
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard'
 import { RbacGuard } from './modules/auth/guards/rbac.guard'
+import { TenantContextGuard } from './modules/auth/guards/tenant-context.guard'
 import { HealthModule } from './modules/health/health.module'
 import { NetdiskModule } from './modules/netdisk/netdisk.module'
 import { SseModule } from './modules/sse/sse.module'
@@ -121,6 +122,7 @@ import { SocketModule } from './socket/socket.module'
 
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RbacGuard },
+    { provide: APP_GUARD, useClass: TenantContextGuard },
     { provide: APP_GUARD, useClass: ThrottlerGuard },
 
   ],

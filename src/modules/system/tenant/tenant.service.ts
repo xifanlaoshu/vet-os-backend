@@ -302,6 +302,23 @@ export class TenantService {
     return options
   }
 
+  async assertContextWritable(context: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
+    const tenantId = Number(context.tenantId)
+    const areaId = Number(context.areaId)
+    if (!Number.isInteger(tenantId) || tenantId <= 0 || !Number.isInteger(areaId) || areaId <= 0)
+      throw new BadRequestException('Invalid tenant or area context')
+
+    const [tenant, area] = await Promise.all([
+      this.tenantRepository.findOneBy({ id: tenantId, status: 1 }),
+      this.areaRepository.findOneBy({ id: areaId, tenantId, status: 1 }),
+    ])
+
+    if (!tenant)
+      throw new BadRequestException('Current tenant is disabled or read-only')
+    if (!area)
+      throw new BadRequestException('Current area is disabled or read-only')
+  }
+
   private async ensureTenantExists(tenantId: number) {
     const tenant = await this.tenantRepository.findOneBy({ id: tenantId })
     if (!tenant)

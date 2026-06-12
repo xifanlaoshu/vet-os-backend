@@ -50,6 +50,7 @@ const findings: Finding[] = []
 
 auditProductionEnvFile()
 auditPermissionMatrix()
+auditTenantContextGuard()
 
 const rules = [
   {
@@ -255,6 +256,44 @@ function auditPermissionMatrix() {
       message: `Allowlisted public route is not present in the generated API matrix: ${key}.`,
     })
   }
+}
+
+function auditTenantContextGuard() {
+  const appModulePath = join(root, 'src', 'app.module.ts')
+  if (!existsSync(appModulePath)) {
+    findings.push({
+      file: 'src/app.module.ts',
+      line: 1,
+      rule: 'missing-app-module',
+      message: 'AppModule is required for global security guard registration.',
+    })
+    return
+  }
+
+  const appModule = readFileSync(appModulePath, 'utf8')
+  if (!appModule.includes('TenantContextGuard')) {
+    findings.push({
+      file: 'src/app.module.ts',
+      line: 1,
+      rule: 'missing-tenant-context-guard',
+      message: 'TenantContextGuard must be registered globally to block business access before tenant and area selection.',
+    })
+  }
+
+  const tokenServicePath = join(root, 'src', 'modules', 'auth', 'services', 'token.service.ts')
+  if (!existsSync(tokenServicePath))
+    return
+  const tokenServiceLines = readFileSync(tokenServicePath, 'utf8').split(/\r?\n/)
+  tokenServiceLines.forEach((lineText, index) => {
+    if (!/contextSelected\s*:\s*true/.test(lineText))
+      return
+    findings.push({
+      file: 'src/modules/auth/services/token.service.ts',
+      line: index + 1,
+      rule: 'no-default-context-selected-token',
+      message: 'Access tokens must not default contextSelected to true; users must explicitly select tenant and area.',
+    })
+  })
 }
 
 function readPublicRouteAllowlist() {
