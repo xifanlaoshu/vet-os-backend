@@ -45,7 +45,6 @@ export class OnlineService {
           dept: true,
         },
       },
-      cache: true,
     })
 
     if (!token)
@@ -76,7 +75,6 @@ export class OnlineService {
     const token = await AccessTokenEntity.findOne({
       where: { value },
       relations: ['user'],
-      cache: true,
     })
     await this.redis.del(genOnlineUserKey(token?.id))
     this.updateOnlineUserCount()
@@ -95,7 +93,6 @@ export class OnlineService {
     const token = await AccessTokenEntity.findOne({
       where: { value },
       relations: ['user'],
-      cache: true,
     })
     const keys = await this.redis.keys(genOnlineUserKey('*'))
     const users = await this.redis.mget(keys)
@@ -116,7 +113,6 @@ export class OnlineService {
     const token = await AccessTokenEntity.findOne({
       where: { id: tokenId },
       relations: ['user'],
-      cache: true,
     })
     if (!token)
       return

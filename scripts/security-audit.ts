@@ -67,6 +67,16 @@ const rules = [
     pattern: /password\s*:\s*md5\s*\(|\.password\s*=\s*md5\s*\(/,
     message: 'Do not store passwords with MD5; use hashPassword().',
   },
+  {
+    rule: 'no-plain-refresh-token-write',
+    pattern: /refreshToken\.value\s*=\s*(?!this\.hashRefreshToken\()/,
+    message: 'Do not store raw refresh tokens; store hashRefreshToken(refreshToken) only.',
+  },
+  {
+    rule: 'no-access-token-cache-validation',
+    pattern: /cache\s*:\s*true/,
+    message: 'Do not cache token validity checks; logout, kick, and refresh rotation must take effect immediately.',
+  },
 ]
 
 const throttleBypassAllowlist = readThrottleBypassAllowlist()
