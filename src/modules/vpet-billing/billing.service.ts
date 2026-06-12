@@ -192,7 +192,7 @@ export class BillingService {
         },
       })))
 
-      await this.recalculateBill(billingRepository, detailRepository, targetBill.id)
+      await this.recalculateBill(billingRepository, detailRepository, targetBill.id, { tenantId, areaId })
       return billingRepository.find({
         where: { visitId, tenantId, areaId },
         relations: ['details', 'payments'],
@@ -545,11 +545,15 @@ export class BillingService {
       card = await cardRepository.findOneBy({ id: dto.memberCardId, tenantId })
       if (!card)
         throw new BusinessException('Member card not found')
+      if (bill.customerId && Number(card.customerId) !== Number(bill.customerId))
+        throw new BusinessException('Member card does not belong to billing customer')
     }
     else {
       const customerId = dto.customerId ?? bill.customerId
       if (!customerId)
         throw new BusinessException('Customer id is required for member payment')
+      if (bill.customerId && Number(customerId) !== Number(bill.customerId))
+        throw new BusinessException('Member payment customer does not match billing customer')
       card = await cardRepository.findOneBy({ customerId, tenantId })
       if (!card)
         throw new BusinessException('Customer has no member card')
@@ -566,10 +570,12 @@ export class BillingService {
     billingRepository: Repository<BillingEntity>,
     detailRepository: Repository<BillDetailEntity>,
     billId: number,
+    context: Pick<IAuthUser, 'tenantId' | 'areaId'>,
   ) {
-    const details = await detailRepository.find({ where: { billingId: billId } })
+    const { tenantId, areaId } = requireTenantAreaContext(context)
+    const details = await detailRepository.find({ where: { billingId: billId, tenantId, areaId } })
     const totalAmount = details.reduce((sum, detail) => sum + Number(detail.amount ?? 0), 0)
-    await billingRepository.update(billId, { totalAmount })
+    await billingRepository.update({ id: billId, tenantId, areaId }, { totalAmount })
   }
 
   private async generateBillNo(context: Pick<IAuthUser, 'tenantId' | 'areaId'>) {

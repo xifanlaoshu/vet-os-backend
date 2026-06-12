@@ -58,6 +58,8 @@ auditPublicAuthEndpointHardening()
 auditStorageTokenExpiration()
 auditProtectedUploadPersistenceAwait()
 auditVisitMediaFileSafety()
+auditBillingMemberCardPaymentBoundaries()
+auditPrescriptionCurrentStaffTenantBoundary()
 auditTrustedClientIpResolution()
 auditSanitizedExceptionLogging()
 auditExternalHttpTimeouts()
@@ -719,6 +721,134 @@ function auditVisitMediaFileSafety() {
       line: 1,
       rule: 'incomplete-visit-media-safety-regression-tests',
       message: 'Visit media safety tests must cover protected local URLs, dangerous protocols, OSS trusted hosts, and MIME mismatches.',
+    })
+  })
+}
+
+function auditBillingMemberCardPaymentBoundaries() {
+  const servicePath = join(root, 'src', 'modules', 'vpet-billing', 'billing.service.ts')
+  const specPath = join(root, 'src', 'modules', 'vpet-billing', 'billing.service.spec.ts')
+  if (!existsSync(servicePath))
+    return
+
+  const serviceContent = readFileSync(servicePath, 'utf8')
+  const requiredServicePatterns = [
+    {
+      pattern: /Number\(card\.customerId\)\s*!==\s*Number\(bill\.customerId\)/,
+      rule: 'billing-member-card-owner-check-required',
+      message: 'Member-card payments must verify that an explicit card belongs to the billing customer.',
+    },
+    {
+      pattern: /Number\(customerId\)\s*!==\s*Number\(bill\.customerId\)/,
+      rule: 'billing-member-payment-customer-check-required',
+      message: 'Member-card payments must reject requested customerId values that differ from the billing customer.',
+    },
+    {
+      pattern: /detailRepository\.find\(\{\s*where:\s*\{\s*billingId:\s*billId,\s*tenantId,\s*areaId\s*\}\s*\}\)/,
+      rule: 'billing-recalculation-detail-scope-required',
+      message: 'Billing total recalculation must aggregate details only within the current tenant and area.',
+    },
+    {
+      pattern: /billingRepository\.update\(\{\s*id:\s*billId,\s*tenantId,\s*areaId\s*\},\s*\{\s*totalAmount\s*\}\)/,
+      rule: 'billing-recalculation-update-scope-required',
+      message: 'Billing total recalculation must update bills only within the current tenant and area.',
+    },
+  ]
+
+  requiredServicePatterns.forEach(({ pattern, rule, message }) => {
+    if (pattern.test(serviceContent))
+      return
+    findings.push({
+      file: 'src/modules/vpet-billing/billing.service.ts',
+      line: 1,
+      rule,
+      message,
+    })
+  })
+
+  if (!existsSync(specPath)) {
+    findings.push({
+      file: 'src/modules/vpet-billing/billing.service.spec.ts',
+      line: 1,
+      rule: 'missing-billing-member-card-boundary-tests',
+      message: 'Billing member-card payment boundaries must have regression tests for explicit card owner mismatch and requested customer mismatch.',
+    })
+    return
+  }
+
+  const specContent = readFileSync(specPath, 'utf8')
+  const requiredSpecPatterns = [
+    /card belongs to another customer/i,
+    /requested customer differs from the bill customer/i,
+    /only for the billing customer/i,
+    /current tenant and area/i,
+  ]
+  requiredSpecPatterns.forEach((pattern) => {
+    if (pattern.test(specContent))
+      return
+    findings.push({
+      file: 'src/modules/vpet-billing/billing.service.spec.ts',
+      line: 1,
+      rule: 'incomplete-billing-member-card-boundary-tests',
+      message: 'Billing member-card tests must cover card owner mismatch, requested customer mismatch, and successful billing-customer payment.',
+    })
+  })
+}
+
+function auditPrescriptionCurrentStaffTenantBoundary() {
+  const servicePath = join(root, 'src', 'modules', 'vpet-prescription', 'prescription.service.ts')
+  const specPath = join(root, 'src', 'modules', 'vpet-prescription', 'prescription.service.spec.ts')
+  if (!existsSync(servicePath))
+    return
+
+  const serviceContent = readFileSync(servicePath, 'utf8')
+  const requiredServicePatterns = [
+    {
+      pattern: /resolveCurrentStaffDoctorId\(options\.currentUserId,\s*tenantId\)/,
+      rule: 'prescription-current-staff-tenant-argument-required',
+      message: 'Prescription workflows must resolve current medical staff within the current tenant.',
+    },
+    {
+      pattern: /where:\s*\{\s*userId:\s*currentUserId,\s*tenantId,\s*status:\s*1\s*\}/,
+      rule: 'prescription-current-staff-tenant-filter-required',
+      message: 'Prescription current-staff lookup must filter by tenantId to prevent cross-tenant staff identity mapping.',
+    },
+  ]
+
+  requiredServicePatterns.forEach(({ pattern, rule, message }) => {
+    if (pattern.test(serviceContent))
+      return
+    findings.push({
+      file: 'src/modules/vpet-prescription/prescription.service.ts',
+      line: 1,
+      rule,
+      message,
+    })
+  })
+
+  if (!existsSync(specPath)) {
+    findings.push({
+      file: 'src/modules/vpet-prescription/prescription.service.spec.ts',
+      line: 1,
+      rule: 'missing-prescription-current-staff-tenant-tests',
+      message: 'Prescription current-staff tenant boundary must have regression tests for tenant-scoped staff lookup and review flow.',
+    })
+    return
+  }
+
+  const specContent = readFileSync(specPath, 'utf8')
+  const requiredSpecPatterns = [
+    /only within the current tenant/i,
+    /when reviewing prescriptions/i,
+  ]
+  requiredSpecPatterns.forEach((pattern) => {
+    if (pattern.test(specContent))
+      return
+    findings.push({
+      file: 'src/modules/vpet-prescription/prescription.service.spec.ts',
+      line: 1,
+      rule: 'incomplete-prescription-current-staff-tenant-tests',
+      message: 'Prescription current-staff tenant tests must cover direct lookup and at least one workflow that uses it.',
     })
   })
 }

@@ -56,7 +56,7 @@ export class PrescriptionService extends BaseService<PrescriptionEntity> {
     })
     if (!visit)
       throw new BusinessException('Visit not found')
-    const currentStaffDoctorId = await this.resolveCurrentStaffDoctorId(options.currentUserId)
+    const currentStaffDoctorId = await this.resolveCurrentStaffDoctorId(options.currentUserId, tenantId)
     const resolvedDoctorId = currentStaffDoctorId ?? dto.doctorId ?? visit.doctorId
     if (!resolvedDoctorId)
       throw new BusinessException('Doctor is required for prescription')
@@ -154,8 +154,8 @@ export class PrescriptionService extends BaseService<PrescriptionEntity> {
   }
 
   async reviewRx(id: number, dto: ReviewPrescriptionDto, options: { currentUserId?: number, tenantId?: number, areaId?: number } = {}): Promise<void> {
-    const pharmacistId = await this.resolveCurrentStaffDoctorId(options.currentUserId) ?? dto.pharmacistId
     const { tenantId, areaId } = requireTenantAreaContext(options)
+    const pharmacistId = await this.resolveCurrentStaffDoctorId(options.currentUserId, tenantId) ?? dto.pharmacistId
     await this.rxRepository.update({
       id,
       tenantId,
@@ -193,7 +193,7 @@ export class PrescriptionService extends BaseService<PrescriptionEntity> {
       }
     }
 
-    const pharmacistId = await this.resolveCurrentStaffDoctorId(options.currentUserId) ?? dto.pharmacistId ?? rx.pharmacistId ?? null
+    const pharmacistId = await this.resolveCurrentStaffDoctorId(options.currentUserId, tenantId) ?? dto.pharmacistId ?? rx.pharmacistId ?? null
     for (const detail of rx.details) {
       if (!this.isDrugDetail(detail))
         continue
@@ -463,11 +463,11 @@ export class PrescriptionService extends BaseService<PrescriptionEntity> {
     return `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`
   }
 
-  private async resolveCurrentStaffDoctorId(currentUserId?: number) {
+  private async resolveCurrentStaffDoctorId(currentUserId: number | undefined, tenantId: number) {
     if (!currentUserId)
       return null
     const doctor = await this.doctorRepository.findOne({
-      where: { userId: currentUserId, status: 1 },
+      where: { userId: currentUserId, tenantId, status: 1 },
     })
     return doctor?.id ?? null
   }
