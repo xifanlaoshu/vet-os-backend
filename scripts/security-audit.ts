@@ -51,6 +51,7 @@ const findings: Finding[] = []
 auditProductionEnvFile()
 auditPermissionMatrix()
 auditTenantContextGuard()
+auditStorageTokenExpiration()
 
 const rules = [
   {
@@ -294,6 +295,51 @@ function auditTenantContextGuard() {
       message: 'Access tokens must not default contextSelected to true; users must explicitly select tenant and area.',
     })
   })
+}
+
+function auditStorageTokenExpiration() {
+  const storageEntityPath = join(root, 'src', 'modules', 'tools', 'storage', 'storage.entity.ts')
+  const uploadServicePath = join(root, 'src', 'modules', 'tools', 'upload', 'upload.service.ts')
+  const storageServicePath = join(root, 'src', 'modules', 'tools', 'storage', 'storage.service.ts')
+
+  const requiredFiles = [
+    storageEntityPath,
+    uploadServicePath,
+    storageServicePath,
+  ]
+  if (requiredFiles.some(file => !existsSync(file)))
+    return
+
+  const storageEntity = readFileSync(storageEntityPath, 'utf8')
+  const uploadService = readFileSync(uploadServicePath, 'utf8')
+  const storageService = readFileSync(storageServicePath, 'utf8')
+
+  if (!storageEntity.includes('tokenExpiresAt')) {
+    findings.push({
+      file: 'src/modules/tools/storage/storage.entity.ts',
+      line: 1,
+      rule: 'missing-storage-token-expiration-field',
+      message: 'Anonymous storage tokens must have an expiration field.',
+    })
+  }
+
+  if (!/tokenExpiresAt\s*=\s*dayjs\(\)\.add\(/.test(uploadService) || !/tokenExpiresAt,/.test(uploadService)) {
+    findings.push({
+      file: 'src/modules/tools/upload/upload.service.ts',
+      line: 1,
+      rule: 'missing-storage-token-expiration-write',
+      message: 'Uploads must write tokenExpiresAt for anonymous storage links.',
+    })
+  }
+
+  if (!/tokenExpiresAt[\s\S]{0,120}Date\.now\(\)/.test(storageService)) {
+    findings.push({
+      file: 'src/modules/tools/storage/storage.service.ts',
+      line: 1,
+      rule: 'missing-storage-token-expiration-check',
+      message: 'Anonymous storage token access must reject expired links.',
+    })
+  }
 }
 
 function readPublicRouteAllowlist() {
