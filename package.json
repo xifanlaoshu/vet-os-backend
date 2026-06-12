@@ -26,6 +26,7 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "security:audit": "tsx scripts/security-audit.ts",
+    "security:matrix": "tsx scripts/generate-api-permission-matrix.ts",
     "test": "jest",
     "test:watch": "jest --watch",
     "doc": "compodoc -p tsconfig.json -s",

@@ -19,7 +19,7 @@ app.register(FastifyMultipart, {
 })
 
 app.register(FastifyCookie, {
-  secret: 'cookie-secret', // 这个 secret 不太重要，不存鉴权相关，无关紧要
+  secret: process.env.COOKIE_SECRET || 'dev-cookie-secret-change-me',
 })
 
 app.getInstance().addHook('onRequest', (request, reply, done) => {

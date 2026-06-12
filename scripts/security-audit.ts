@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { cwd } from 'node:process'
 
@@ -13,6 +13,9 @@ const root = cwd()
 const sourceFiles = listSourceFiles(join(root, 'src'))
 
 const findings: Finding[] = []
+
+auditProductionEnvFile()
+auditPermissionMatrix()
 
 const rules = [
   {
@@ -62,6 +65,95 @@ for (const file of sourceFiles) {
         message: 'Do not default tenantId/areaId to 1 in scoped business services; require explicit tenant context.',
       })
     }
+  })
+}
+
+function auditProductionEnvFile() {
+  const envPath = join(root, '.env.production')
+  if (!existsSync(envPath))
+    return
+
+  const lines = readFileSync(envPath, 'utf8').split(/\r?\n/)
+  const values = new Map<string, { value: string, line: number }>()
+
+  lines.forEach((lineText, index) => {
+    const trimmed = lineText.trim()
+    if (!trimmed || trimmed.startsWith('#'))
+      return
+    const [key, ...rest] = trimmed.split('=')
+    if (!key || !rest.length)
+      return
+    values.set(key.trim(), {
+      value: rest.join('=').split('#')[0].trim(),
+      line: index + 1,
+    })
+  })
+
+  const weakSecrets = new Set(['', 'changeme', 'change-me', 'secret', 'jwt-secret', 'default', 'admin!@#123', 'cookie-secret', 'dev-cookie-secret-change-me'])
+  for (const key of ['JWT_SECRET', 'REFRESH_TOKEN_SECRET', 'COOKIE_SECRET']) {
+    const item = values.get(key)
+    if (!item || item.value.length < 32 || weakSecrets.has(item.value.toLowerCase())) {
+      findings.push({
+        file: '.env.production',
+        line: item?.line ?? 1,
+        rule: 'production-weak-secret',
+        message: `${key} must be set to a strong non-default value in production configuration.`,
+      })
+    }
+  }
+
+  if (values.get('JWT_SECRET')?.value && values.get('JWT_SECRET')?.value === values.get('REFRESH_TOKEN_SECRET')?.value) {
+    findings.push({
+      file: '.env.production',
+      line: values.get('REFRESH_TOKEN_SECRET')?.line ?? 1,
+      rule: 'production-secret-reuse',
+      message: 'JWT_SECRET and REFRESH_TOKEN_SECRET must be different.',
+    })
+  }
+
+  const swaggerEnable = values.get('SWAGGER_ENABLE')
+  if (swaggerEnable?.value.toLowerCase() === 'true') {
+    findings.push({
+      file: '.env.production',
+      line: swaggerEnable.line,
+      rule: 'production-swagger-enabled',
+      message: 'SWAGGER_ENABLE must be false in production configuration.',
+    })
+  }
+
+  const jwtExpire = Number(values.get('JWT_EXPIRE')?.value)
+  if (Number.isFinite(jwtExpire) && jwtExpire > 30 * 60) {
+    findings.push({
+      file: '.env.production',
+      line: values.get('JWT_EXPIRE')?.line ?? 1,
+      rule: 'production-token-ttl-too-long',
+      message: 'JWT_EXPIRE must not exceed 1800 seconds in production configuration.',
+    })
+  }
+}
+
+function auditPermissionMatrix() {
+  const matrixPath = join(root, 'security', 'api-permission-matrix.md')
+  if (!existsSync(matrixPath)) {
+    findings.push({
+      file: 'security/api-permission-matrix.md',
+      line: 1,
+      rule: 'missing-api-permission-matrix',
+      message: 'Run pnpm security:matrix to generate the API permission matrix.',
+    })
+    return
+  }
+
+  const lines = readFileSync(matrixPath, 'utf8').split(/\r?\n/)
+  lines.forEach((lineText, index) => {
+    if (!lineText.includes('`MISSING`'))
+      return
+    findings.push({
+      file: 'security/api-permission-matrix.md',
+      line: index + 1,
+      rule: 'api-permission-matrix-missing-access',
+      message: 'API permission matrix contains a route with missing access metadata.',
+    })
   })
 }
 

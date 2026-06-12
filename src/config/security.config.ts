@@ -9,6 +9,7 @@ export const SecurityConfig = registerAs(securityRegToken, () => ({
   jwtExprire: envNumber('JWT_EXPIRE'),
   refreshSecret: env('REFRESH_TOKEN_SECRET'),
   refreshExpire: envNumber('REFRESH_TOKEN_EXPIRE'),
+  cookieSecret: env('COOKIE_SECRET', 'dev-cookie-secret-change-me'),
   loginFailLimit: envNumber('LOGIN_FAIL_LIMIT', 5),
   loginFailWindow: envNumber('LOGIN_FAIL_WINDOW', 15 * 60),
   loginLockSeconds: envNumber('LOGIN_LOCK_SECONDS', 15 * 60),
