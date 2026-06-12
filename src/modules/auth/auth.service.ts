@@ -122,7 +122,10 @@ export class AuthService {
   /**
    * 清除登录状态信息
    */
-  async clearLoginStatus(user: IAuthUser, accessToken: string): Promise<void> {
+  async clearLoginStatus(user: IAuthUser, accessToken?: string): Promise<void> {
+    if (!accessToken)
+      throw new BusinessException(ErrorEnum.INVALID_LOGIN)
+
     const exp = user.exp ? (user.exp - Date.now() / 1000).toFixed(0) : this.securityConfig.jwtExprire
     await this.redis.set(genTokenBlacklistKey(accessToken), accessToken, 'EX', exp)
     if (this.appConfig.multiDeviceLogin)

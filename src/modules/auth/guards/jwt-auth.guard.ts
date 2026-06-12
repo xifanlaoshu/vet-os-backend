@@ -60,10 +60,11 @@ export class JwtAuthGuard extends AuthGuard(AuthStrategy.JWT) {
     const isSse = request.headers.accept === 'text/event-stream'
 
     const token = this.jwtFromRequestFn(request)
-    if (await this.redis.get(genTokenBlacklistKey(token)))
+    if (token && await this.redis.get(genTokenBlacklistKey(token)))
       throw new BusinessException(ErrorEnum.INVALID_LOGIN)
 
-    request.accessToken = token
+    if (token)
+      request.accessToken = token
 
     let result: any = false
     try {

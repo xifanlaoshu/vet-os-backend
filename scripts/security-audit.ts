@@ -9,6 +9,15 @@ interface Finding {
   message: string
 }
 
+interface PublicRouteAllowlist {
+  routes: Array<{
+    method: string
+    path: string
+    access: 'AllowAnon' | 'Public'
+    reason: string
+  }>
+}
+
 const root = cwd()
 const sourceFiles = listSourceFiles(join(root, 'src'))
 
@@ -145,16 +154,88 @@ function auditPermissionMatrix() {
   }
 
   const lines = readFileSync(matrixPath, 'utf8').split(/\r?\n/)
+  const publicAllowlist = readPublicRouteAllowlist()
+  const matrixPublicRoutes = new Set<string>()
   lines.forEach((lineText, index) => {
-    if (!lineText.includes('`MISSING`'))
+    if (lineText.includes('`MISSING`')) {
+      findings.push({
+        file: 'security/api-permission-matrix.md',
+        line: index + 1,
+        rule: 'api-permission-matrix-missing-access',
+        message: 'API permission matrix contains a route with missing access metadata.',
+      })
+    }
+
+    const publicRoute = parsePublicRouteMatrixLine(lineText)
+    if (!publicRoute)
       return
-    findings.push({
-      file: 'security/api-permission-matrix.md',
-      line: index + 1,
-      rule: 'api-permission-matrix-missing-access',
-      message: 'API permission matrix contains a route with missing access metadata.',
-    })
+
+    const key = routeKey(publicRoute)
+    matrixPublicRoutes.add(key)
+    if (!publicAllowlist.has(key)) {
+      findings.push({
+        file: 'security/api-permission-matrix.md',
+        line: index + 1,
+        rule: 'public-route-not-allowlisted',
+        message: `${publicRoute.access} route ${publicRoute.method} ${publicRoute.path} must be documented in security/public-route-allowlist.json.`,
+      })
+    }
   })
+
+  for (const key of publicAllowlist.keys()) {
+    if (matrixPublicRoutes.has(key))
+      continue
+    findings.push({
+      file: 'security/public-route-allowlist.json',
+      line: 1,
+      rule: 'public-route-allowlist-stale',
+      message: `Allowlisted public route is not present in the generated API matrix: ${key}.`,
+    })
+  }
+}
+
+function readPublicRouteAllowlist() {
+  const allowlistPath = join(root, 'security', 'public-route-allowlist.json')
+  if (!existsSync(allowlistPath)) {
+    findings.push({
+      file: 'security/public-route-allowlist.json',
+      line: 1,
+      rule: 'missing-public-route-allowlist',
+      message: 'Public and AllowAnon routes must be explicitly documented in security/public-route-allowlist.json.',
+    })
+    return new Set<string>()
+  }
+
+  const parsed = JSON.parse(readFileSync(allowlistPath, 'utf8')) as PublicRouteAllowlist
+  const allowlist = new Set<string>()
+  parsed.routes.forEach((route, index) => {
+    if (!route.method || !route.path || !route.access || !route.reason?.trim()) {
+      findings.push({
+        file: 'security/public-route-allowlist.json',
+        line: index + 1,
+        rule: 'public-route-allowlist-incomplete',
+        message: 'Each public route allowlist item must include method, path, access, and reason.',
+      })
+      return
+    }
+    allowlist.add(routeKey(route))
+  })
+  return allowlist
+}
+
+function parsePublicRouteMatrixLine(lineText: string) {
+  const match = lineText.match(/^\|[^|]+\|\s*([^|]+)\|\s*`([^`]+)`\s*\|\s*`(AllowAnon|Public)`\s*\|/)
+  if (!match)
+    return null
+  return {
+    method: match[1].trim(),
+    path: match[2].trim(),
+    access: match[3].trim() as 'AllowAnon' | 'Public',
+  }
+}
+
+function routeKey(route: { method: string, path: string, access: string }) {
+  return `${route.access} ${route.method.toUpperCase()} ${route.path}`
 }
 
 function auditVpetScopedRepositoryAccess(absPath: string, lines: string[]) {

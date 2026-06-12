@@ -1,0 +1,138 @@
+{
+  "version": 1,
+  "description": "Explicit allowlist for routes that are Public or AllowAnon. AllowAnon still requires a valid JWT; Public does not.",
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/account/context",
+      "access": "AllowAnon",
+      "reason": "Authenticated users need tenant and area context before RBAC permissions can be evaluated."
+    },
+    {
+      "method": "GET",
+      "path": "/account/logout",
+      "access": "AllowAnon",
+      "reason": "Authenticated users must always be able to terminate the current session."
+    },
+    {
+      "method": "GET",
+      "path": "/account/menus",
+      "access": "AllowAnon",
+      "reason": "Authenticated users need their own menu tree to render the shell before page-level checks."
+    },
+    {
+      "method": "POST",
+      "path": "/account/password",
+      "access": "AllowAnon",
+      "reason": "Authenticated users must be able to change their own password without module permissions."
+    },
+    {
+      "method": "GET",
+      "path": "/account/permissions",
+      "access": "AllowAnon",
+      "reason": "Authenticated users need their own permission codes for client-side button visibility."
+    },
+    {
+      "method": "GET",
+      "path": "/account/profile",
+      "access": "AllowAnon",
+      "reason": "Authenticated users must be able to read their own account profile."
+    },
+    {
+      "method": "POST",
+      "path": "/account/select-context",
+      "access": "AllowAnon",
+      "reason": "Authenticated users select the current tenant and area immediately after login."
+    },
+    {
+      "method": "POST",
+      "path": "/account/switch-area",
+      "access": "AllowAnon",
+      "reason": "Authenticated users can switch among already authorized areas."
+    },
+    {
+      "method": "PUT",
+      "path": "/account/update",
+      "access": "AllowAnon",
+      "reason": "Authenticated users must be able to maintain their own profile."
+    },
+    {
+      "method": "GET",
+      "path": "/auth/captcha/img",
+      "access": "Public",
+      "reason": "Login captcha must be accessible before authentication."
+    },
+    {
+      "method": "POST",
+      "path": "/auth/email/send",
+      "access": "Public",
+      "reason": "Email verification flow requires sending a code before authentication; rate limits still apply."
+    },
+    {
+      "method": "POST",
+      "path": "/auth/login",
+      "access": "Public",
+      "reason": "Login endpoint must be accessible before authentication."
+    },
+    {
+      "method": "POST",
+      "path": "/auth/register",
+      "access": "Public",
+      "reason": "Runtime protected by ALLOW_PUBLIC_REGISTER; production configuration disables public registration."
+    },
+    {
+      "method": "GET",
+      "path": "/dict-item",
+      "access": "AllowAnon",
+      "reason": "Authenticated pages read dictionary items for labels and selectors before module permissions are loaded."
+    },
+    {
+      "method": "GET",
+      "path": "/dict-item/:id",
+      "access": "AllowAnon",
+      "reason": "Authenticated pages read dictionary item detail for common selectors."
+    },
+    {
+      "method": "GET",
+      "path": "/dict-type",
+      "access": "AllowAnon",
+      "reason": "Authenticated pages read dictionary types for shared selector metadata."
+    },
+    {
+      "method": "GET",
+      "path": "/dict-type/:id",
+      "access": "AllowAnon",
+      "reason": "Authenticated pages read dictionary type detail for common selectors."
+    },
+    {
+      "method": "GET",
+      "path": "/dict-type/select-options",
+      "access": "AllowAnon",
+      "reason": "Authenticated pages read dictionary select options globally."
+    },
+    {
+      "method": "GET",
+      "path": "/serve/stat",
+      "access": "AllowAnon",
+      "reason": "Authenticated application shell reads runtime status; sensitive admin operations remain permission protected."
+    },
+    {
+      "method": "SSE",
+      "path": "/sse/:uid",
+      "access": "AllowAnon",
+      "reason": "Authenticated SSE stream needs to establish notification channel before page permissions apply; uid must match token uid."
+    },
+    {
+      "method": "GET",
+      "path": "/storage/file/:token",
+      "access": "AllowAnon",
+      "reason": "Opaque media preview URL for protected uploads; file must have a valid unguessable token and scanStatus=2."
+    },
+    {
+      "method": "GET",
+      "path": "/tenants/context",
+      "access": "AllowAnon",
+      "reason": "Authenticated users need available tenant and area options during login context selection."
+    }
+  ]
+}

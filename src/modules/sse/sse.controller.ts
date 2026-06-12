@@ -50,9 +50,12 @@ export class SseController implements BeforeApplicationShutdown {
   ): Promise<Observable<MessageEvent>> {
     if (req.user?.uid !== uid)
       throw new BusinessException(ErrorEnum.NO_PERMISSION)
+    const accessToken = req.accessToken
+    if (!accessToken)
+      throw new BusinessException(ErrorEnum.INVALID_LOGIN)
 
     this.replyMap.set(uid, res)
-    this.onlineService.addOnlineUser(req.accessToken, ip, ua)
+    this.onlineService.addOnlineUser(accessToken, ip, ua)
 
     return new Observable((subscriber) => {
       const subscription = interval(12000).subscribe(() => {
@@ -64,7 +67,7 @@ export class SseController implements BeforeApplicationShutdown {
         subscription.unsubscribe()
         this.sseService.removeClient(uid, subscriber)
         this.replyMap.delete(uid)
-        this.onlineService.removeOnlineUser(req.accessToken)
+        this.onlineService.removeOnlineUser(accessToken)
       })
     })
   }

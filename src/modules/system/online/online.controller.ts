@@ -5,6 +5,8 @@ import { FastifyRequest } from 'fastify'
 
 import { ApiResult } from '~/common/decorators/api-result.decorator'
 import { ApiSecurityAuth } from '~/common/decorators/swagger.decorator'
+import { BusinessException } from '~/common/exceptions/biz.exception'
+import { ErrorEnum } from '~/constants/error-code.constant'
 
 import { AuthUser } from '~/modules/auth/decorators/auth-user.decorator'
 
@@ -28,6 +30,9 @@ export class OnlineController {
   @ApiResult({ type: [OnlineUserInfo] })
   @Perm(permissions.LIST)
   async list(@Req() req: FastifyRequest): Promise<OnlineUserInfo[]> {
+    if (!req.accessToken)
+      throw new BusinessException(ErrorEnum.INVALID_LOGIN)
+
     return this.onlineService.listOnlineUser(req.accessToken)
   }
 
