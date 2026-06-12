@@ -56,6 +56,7 @@ auditTrustedClientIpResolution()
 auditSanitizedExceptionLogging()
 auditExternalHttpTimeouts()
 auditCaptchaLogMasking()
+auditRefreshTokenCleanupNullSafety()
 
 const rules = [
   {
@@ -441,6 +442,29 @@ function auditCaptchaLogMasking() {
       line: index + 1,
       rule: 'captcha-log-raw-code-write',
       message: 'Do not save raw verification codes in captcha audit logs.',
+    })
+  })
+}
+
+function auditRefreshTokenCleanupNullSafety() {
+  const servicePath = join(root, 'src', 'modules', 'auth', 'services', 'token.service.ts')
+  if (!existsSync(servicePath))
+    return
+
+  const lines = readFileSync(servicePath, 'utf8').split(/\r?\n/)
+  lines.forEach((lineText, index) => {
+    if (!/refreshToken\.accessToken\.remove\(\)/.test(lineText))
+      return
+
+    const nearby = lines.slice(Math.max(0, index - 8), index + 1).join('\n')
+    if (/if\s*\(\s*refreshToken\.accessToken\s*\)/.test(nearby) || /if\s*\(\s*!refreshToken\?\.accessToken/.test(nearby))
+      return
+
+    findings.push({
+      file: 'src/modules/auth/services/token.service.ts',
+      line: index + 1,
+      rule: 'refresh-token-cleanup-null-safety',
+      message: 'Refresh-token cleanup must check accessToken before dereferencing it so orphaned sessions can still be removed.',
     })
   })
 }

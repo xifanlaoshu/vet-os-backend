@@ -197,9 +197,10 @@ export class TokenService {
       relations: ['accessToken'],
     })
     if (refreshToken) {
-      if (refreshToken.accessToken)
+      if (refreshToken.accessToken) {
         this.redis.del(genOnlineUserKey(refreshToken.accessToken.id))
-      await refreshToken.accessToken.remove()
+        await refreshToken.accessToken.remove()
+      }
       await refreshToken.remove()
     }
   }
