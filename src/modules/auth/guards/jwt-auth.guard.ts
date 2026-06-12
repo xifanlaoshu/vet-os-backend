@@ -27,9 +27,6 @@ interface RequestType {
   Params: {
     uid?: string
   }
-  Querystring: {
-    token?: string
-  }
 }
 
 @Injectable()
@@ -61,11 +58,6 @@ export class JwtAuthGuard extends AuthGuard(AuthStrategy.JWT) {
       checkIsDemoMode()
 
     const isSse = request.headers.accept === 'text/event-stream'
-    if (isSse && !request.headers.authorization?.startsWith('Bearer ')) {
-      const { token } = request.query
-      if (token)
-        request.headers.authorization = `Bearer ${token}`
-    }
 
     const token = this.jwtFromRequestFn(request)
     if (await this.redis.get(genTokenBlacklistKey(token)))

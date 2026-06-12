@@ -25,3 +25,11 @@ export function genOnlineUserKey(tokenId: string) {
 export function genTokenBlacklistKey(tokenId: string) {
   return `${RedisKeys.TOKEN_BLACKLIST_PREFIX}${String(tokenId)}` as const
 }
+
+export function genLoginFailKey(identifier: string | number) {
+  return `auth:login:fail:${String(identifier)}` as const
+}
+
+export function genLoginLockKey(identifier: string | number) {
+  return `auth:login:lock:${String(identifier)}` as const
+}

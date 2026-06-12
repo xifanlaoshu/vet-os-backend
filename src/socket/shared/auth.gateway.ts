@@ -70,9 +70,9 @@ export function createAuthGateway(options: AuthGatewayOptions): new (...args: an
 
     async handleConnection(client: Socket) {
       const token
-        = client.handshake.query.token
-        || client.handshake.headers.authorization
-        || client.handshake.headers.Authorization
+        = client.handshake.auth?.token
+          || client.handshake.headers.authorization
+          || client.handshake.headers.Authorization
       if (!token)
         return this.authFailed(client)
 

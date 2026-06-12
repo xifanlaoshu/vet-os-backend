@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common'
 
 import { ConfigModule, ConfigService } from '@nestjs/config'
+import { DiscoveryModule } from '@nestjs/core'
 import { JwtModule } from '@nestjs/jwt'
 import { PassportModule } from '@nestjs/passport'
 import { TypeOrmModule } from '@nestjs/typeorm'
@@ -22,6 +23,7 @@ import { EmailController } from './controllers/email.controller'
 import { AccessTokenEntity } from './entities/access-token.entity'
 import { RefreshTokenEntity } from './entities/refresh-token.entity'
 import { CaptchaService } from './services/captcha.service'
+import { PermissionMetadataAuditService } from './services/permission-metadata-audit.service'
 import { TokenService } from './services/token.service'
 import { JwtStrategy } from './strategies/jwt.strategy'
 import { LocalStrategy } from './strategies/local.strategy'
@@ -32,12 +34,13 @@ const controllers = [
   CaptchaController,
   EmailController,
 ]
-const providers = [AuthService, TokenService, CaptchaService]
+const providers = [AuthService, TokenService, CaptchaService, PermissionMetadataAuditService]
 const strategies = [LocalStrategy, JwtStrategy]
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([AccessTokenEntity, RefreshTokenEntity]),
+    DiscoveryModule,
     PassportModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
