@@ -45,7 +45,7 @@ export class UploadService {
 
   private readonly maxFileSize = 1024 * 1024 * 100
 
-  private readonly anonymousTokenTtlHours = 24
+  private readonly anonymousTokenTtlMinutes = 10
 
   constructor(
     @InjectRepository(Storage)
@@ -78,7 +78,7 @@ export class UploadService {
     const name = fileRename(fileName)
     const currentDate = dayjs().format('YYYY-MM-DD')
     const accessToken = randomBytes(32).toString('base64url')
-    const tokenExpiresAt = dayjs().add(this.anonymousTokenTtlHours, 'hour').toDate()
+    const tokenExpiresAt = dayjs().add(this.anonymousTokenTtlMinutes, 'minute').toDate()
     const diskPath = getProtectedUploadPath(tenantId, areaId, name, currentDate, type)
     const path = `/api/storage/file/${accessToken}`
 

@@ -18,7 +18,7 @@ import { StorageInfo } from './storage.modal'
 
 @Injectable()
 export class StorageService {
-  private readonly anonymousTokenTtlHours = 24
+  private readonly anonymousTokenTtlMinutes = 10
 
   constructor(
     @InjectRepository(Storage)
@@ -75,7 +75,7 @@ export class StorageService {
       throw new BadRequestException('File not found or no permission')
 
     const nextToken = randomBytes(32).toString('base64url')
-    const tokenExpiresAt = dayjs().add(this.anonymousTokenTtlHours, 'hour').toDate()
+    const tokenExpiresAt = dayjs().add(this.anonymousTokenTtlMinutes, 'minute').toDate()
     storage.accessToken = nextToken
     storage.tokenExpiresAt = tokenExpiresAt
     storage.path = `/api/storage/file/${nextToken}`

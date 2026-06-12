@@ -48,6 +48,8 @@ describe('uploadService file safety', () => {
       scanStatus: 2,
       tokenExpiresAt: expect.any(Date),
     }))
+    const savedPayload = repository.save.mock.calls[0][0]
+    expect(savedPayload.tokenExpiresAt.getTime()).toBeLessThanOrEqual(Date.now() + 10 * 60 * 1000)
   })
 
   it('rejects files whose content does not match the declared type', async () => {

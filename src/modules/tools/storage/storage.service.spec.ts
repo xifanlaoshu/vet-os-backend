@@ -126,6 +126,8 @@ describe('storageService security boundaries', () => {
       path: expect.stringMatching(/^\/api\/storage\/file\//),
       tokenExpiresAt: expect.any(Date),
     }))
+    const savedStorage = save.mock.calls[0][0]
+    expect(savedStorage.tokenExpiresAt.getTime()).toBeLessThanOrEqual(Date.now() + 10 * 60 * 1000)
     expect(result).toMatchObject({
       id: 10,
       path: expect.stringMatching(/^\/api\/storage\/file\//),

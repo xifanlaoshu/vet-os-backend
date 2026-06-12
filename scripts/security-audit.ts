@@ -492,6 +492,8 @@ function auditStorageTokenExpiration() {
       message: 'Uploads must write tokenExpiresAt for anonymous storage links.',
     })
   }
+  auditAnonymousTokenTtl(uploadServicePath, uploadService)
+  auditAnonymousTokenTtl(storageServicePath, storageService)
 
   if (!/!storage\?\.tokenExpiresAt\s*\|\|\s*storage\.tokenExpiresAt\.getTime\(\)\s*<=\s*Date\.now\(\)/.test(storageService)) {
     findings.push({
@@ -499,6 +501,30 @@ function auditStorageTokenExpiration() {
       line: 1,
       rule: 'missing-storage-token-expiration-check',
       message: 'Anonymous storage token access must reject missing or expired tokenExpiresAt values.',
+    })
+  }
+}
+
+function auditAnonymousTokenTtl(filePath: string, content: string) {
+  const relPath = normalizePath(relative(root, filePath))
+  const minutesMatch = content.match(/anonymousTokenTtlMinutes\s*=\s*(\d+)/)
+  if (!minutesMatch) {
+    findings.push({
+      file: relPath,
+      line: 1,
+      rule: 'anonymous-storage-token-minute-ttl-required',
+      message: 'Anonymous protected-file tokens must use a minutes-based TTL so public preview links stay short lived.',
+    })
+    return
+  }
+
+  const ttlMinutes = Number(minutesMatch[1])
+  if (ttlMinutes > 10) {
+    findings.push({
+      file: relPath,
+      line: 1,
+      rule: 'anonymous-storage-token-ttl-too-long',
+      message: 'Anonymous protected-file token TTL must not exceed 10 minutes.',
     })
   }
 }
