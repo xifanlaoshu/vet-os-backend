@@ -2,6 +2,7 @@ import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common'
 import { ApiOperation, ApiTags } from '@nestjs/swagger'
 import { IdParam } from '~/common/decorators/id-param.decorator'
 import { AuthUser } from '~/modules/auth/decorators/auth-user.decorator'
+import { Perm } from '~/modules/auth/decorators/permission.decorator'
 import {
   CreateHospitalizationDto,
   CreateNursingPlanDto,
@@ -12,6 +13,7 @@ import {
 import { HospitalizationService } from './hospitalization.service'
 
 @ApiTags('VPet - Hospitalization')
+@Perm('vpet:hosp:list')
 @Controller('vpet/hosp')
 export class HospitalizationController {
   constructor(private readonly hospitalizationService: HospitalizationService) {}

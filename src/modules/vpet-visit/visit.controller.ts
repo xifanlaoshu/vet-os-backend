@@ -3,6 +3,7 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger'
 import { ApiResult } from '~/common/decorators/api-result.decorator'
 import { IdParam } from '~/common/decorators/id-param.decorator'
 import { AuthUser } from '~/modules/auth/decorators/auth-user.decorator'
+import { Perm } from '~/modules/auth/decorators/permission.decorator'
 import {
   CreateChronicCaseDto,
   CreateChronicFollowupDto,
@@ -24,6 +25,7 @@ import { VisitEntity } from './entities/visit.entity'
 import { VisitService } from './visit.service'
 
 @ApiTags('VPet - 就诊管理')
+@Perm('vpet:consultation')
 @Controller('vpet/visit')
 export class VisitController {
   constructor(private readonly visitService: VisitService) {}

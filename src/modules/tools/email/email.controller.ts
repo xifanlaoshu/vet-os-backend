@@ -3,9 +3,14 @@ import { Body, Controller, Post } from '@nestjs/common'
 import { ApiOperation, ApiTags } from '@nestjs/swagger'
 
 import { ApiSecurityAuth } from '~/common/decorators/swagger.decorator'
+import { definePermission, Perm } from '~/modules/auth/decorators/permission.decorator'
 import { MailerService } from '~/shared/mailer/mailer.service'
 
 import { EmailSendDto } from './email.dto'
+
+export const permissions = definePermission('tool:email', {
+  SEND: 'send',
+} as const)
 
 @ApiTags('System - 邮箱模块')
 @ApiSecurityAuth()
@@ -15,6 +20,7 @@ export class EmailController {
 
   @ApiOperation({ summary: '发送邮件' })
   @Post('send')
+  @Perm(permissions.SEND)
   async send(@Body() dto: EmailSendDto): Promise<void> {
     const { to, subject, content } = dto
     await this.emailService.send(to, subject, content, 'html')

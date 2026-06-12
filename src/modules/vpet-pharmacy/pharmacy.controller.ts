@@ -3,11 +3,13 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger'
 import { ApiResult } from '~/common/decorators/api-result.decorator'
 import { IdParam } from '~/common/decorators/id-param.decorator'
 import { AuthUser } from '~/modules/auth/decorators/auth-user.decorator'
+import { Perm } from '~/modules/auth/decorators/permission.decorator'
 import { CreateChargeItemDto, CreateDrugDto, QueryChargeItemDto, QueryDrugDto, QueryStockTxnDto, StockInDto, UpdateChargeItemDto, UpdateDrugDto } from './dto/pharmacy.dto'
 import { DrugEntity } from './entities/drug.entity'
 import { PharmacyService } from './pharmacy.service'
 
 @ApiTags('VPet - Pharmacy')
+@Perm('vpet:pharmacy:list')
 @Controller('vpet/pharmacy')
 export class PharmacyController {
   constructor(private readonly pharmacyService: PharmacyService) {}

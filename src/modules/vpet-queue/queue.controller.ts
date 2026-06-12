@@ -2,6 +2,7 @@ import { Body, Controller, Get, Param, Post } from '@nestjs/common'
 import { ApiOperation, ApiTags } from '@nestjs/swagger'
 import { IdParam } from '~/common/decorators/id-param.decorator'
 import { AuthUser } from '~/modules/auth/decorators/auth-user.decorator'
+import { Perm } from '~/modules/auth/decorators/permission.decorator'
 import { QueueService } from './queue.service'
 
 class QueueCallDto {
@@ -10,6 +11,7 @@ class QueueCallDto {
 }
 
 @ApiTags('VPet - 排队叫号')
+@Perm('vpet:queue:list')
 @Controller('vpet/queue')
 export class QueueController {
   constructor(private readonly queueService: QueueService) {}

@@ -5,6 +5,9 @@ import { FastifyReply, FastifyRequest } from 'fastify'
 import { interval, Observable } from 'rxjs'
 
 import { ApiSecurityAuth } from '~/common/decorators/swagger.decorator'
+import { BusinessException } from '~/common/exceptions/biz.exception'
+import { ErrorEnum } from '~/constants/error-code.constant'
+import { AllowAnon } from '~/modules/auth/decorators/allow-anon.decorator'
 
 import { OnlineService } from '../system/online/online.service'
 import { MessageEvent, SseService } from './sse.service'
@@ -37,6 +40,7 @@ export class SseController implements BeforeApplicationShutdown {
 
   @ApiOperation({ summary: 'Server-sent events stream' })
   @Sse(':uid')
+  @AllowAnon()
   async sse(
     @Param('uid', ParseIntPipe) uid: number,
     @Req() req: FastifyRequest,
@@ -44,6 +48,9 @@ export class SseController implements BeforeApplicationShutdown {
     @Ip() ip: string,
     @Headers('user-agent') ua: string,
   ): Promise<Observable<MessageEvent>> {
+    if (req.user?.uid !== uid)
+      throw new BusinessException(ErrorEnum.NO_PERMISSION)
+
     this.replyMap.set(uid, res)
     this.onlineService.addOnlineUser(req.accessToken, ip, ua)
 

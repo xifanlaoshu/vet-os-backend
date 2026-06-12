@@ -3,6 +3,7 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger'
 import { ApiResult } from '~/common/decorators/api-result.decorator'
 import { IdParam } from '~/common/decorators/id-param.decorator'
 import { AuthUser } from '~/modules/auth/decorators/auth-user.decorator'
+import { Perm } from '~/modules/auth/decorators/permission.decorator'
 import {
   CreatePrescriptionDto,
   CreatePrescriptionTemplateDto,
@@ -16,6 +17,7 @@ import { PrescriptionEntity } from './entities/prescription.entity'
 import { PrescriptionService } from './prescription.service'
 
 @ApiTags('VPet - Prescription')
+@Perm('vpet:prescription:list')
 @Controller('vpet/prescription')
 export class PrescriptionController {
   constructor(private readonly rxService: PrescriptionService) {}

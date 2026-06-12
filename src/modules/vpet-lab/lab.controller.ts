@@ -2,10 +2,12 @@ import { Body, Controller, Delete, Get, Param, Post, Put, Query } from '@nestjs/
 import { ApiOperation, ApiTags } from '@nestjs/swagger'
 import { IdParam } from '~/common/decorators/id-param.decorator'
 import { AuthUser } from '~/modules/auth/decorators/auth-user.decorator'
+import { Perm } from '~/modules/auth/decorators/permission.decorator'
 import { CreateLabOrderDto, CreateLabTemplateDto, QueryLabOrderDto, SubmitLisOrderDto, UpdateLabReportDto, UpdateLabTemplateDto } from './dto/lab.dto'
 import { LabService } from './lab.service'
 
 @ApiTags('VPet - Lab')
+@Perm('vpet:lab:list')
 @Controller('vpet/lab')
 export class LabController {
   constructor(private readonly labService: LabService) {}

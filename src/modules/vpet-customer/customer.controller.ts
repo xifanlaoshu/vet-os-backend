@@ -3,11 +3,13 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger'
 import { ApiResult } from '~/common/decorators/api-result.decorator'
 import { IdParam } from '~/common/decorators/id-param.decorator'
 import { AuthUser } from '~/modules/auth/decorators/auth-user.decorator'
+import { Perm } from '~/modules/auth/decorators/permission.decorator'
 import { CustomerService } from './customer.service'
 import { CreateCustomerDto, QueryCustomerDto, UpdateCustomerDto } from './dto/customer.dto'
 import { CustomerEntity } from './entities/customer.entity'
 
 @ApiTags('VPet - 客户管理')
+@Perm('vpet:customer:list')
 @Controller('vpet/customer')
 export class CustomerController {
   constructor(private readonly customerService: CustomerService) {}

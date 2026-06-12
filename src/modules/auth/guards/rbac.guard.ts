@@ -1,15 +1,12 @@
 import {
   CanActivate,
   ExecutionContext,
-  Inject,
   Injectable,
-  Logger,
 } from '@nestjs/common'
 import { Reflector } from '@nestjs/core'
 import { FastifyRequest } from 'fastify'
 
 import { BusinessException } from '~/common/exceptions/biz.exception'
-import { AppConfig, IAppConfig } from '~/config'
 import { ErrorEnum } from '~/constants/error-code.constant'
 import { AuthService } from '~/modules/auth/auth.service'
 
@@ -37,15 +34,12 @@ function isAuthenticatedPublicReadRoute(request: FastifyRequest) {
 
 @Injectable()
 export class RbacGuard implements CanActivate {
-  private readonly logger = new Logger(RbacGuard.name)
-
   constructor(
     private reflector: Reflector,
     private authService: AuthService,
-    @Inject(AppConfig.KEY) private readonly appConfig: IAppConfig,
   ) {}
 
-  async canActivate(context: ExecutionContext): Promise<any> {
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     const isPublic = this.reflector.getAllAndOverride<boolean>(PUBLIC_KEY, [
       context.getHandler(),
       context.getClass(),
@@ -55,12 +49,11 @@ export class RbacGuard implements CanActivate {
       return true
 
     const request = context.switchToHttp().getRequest<FastifyRequest>()
-
     const { user } = request
     if (!user)
       throw new BusinessException(ErrorEnum.INVALID_LOGIN)
 
-    // allowAnon 是需要登录后可访问(无需权限), Public 则是无需登录也可访问.
+    // AllowAnon still requires a valid login. Public endpoints do not.
     const allowAnon = this.reflector.getAllAndOverride<boolean>(ALLOW_ANON_KEY, [
       context.getHandler(),
       context.getClass(),
@@ -68,20 +61,15 @@ export class RbacGuard implements CanActivate {
     if (allowAnon || isAuthenticatedPublicReadRoute(request))
       return true
 
-    const payloadPermission = this.reflector.getAllAndOverride<
-      string | string[]
-    >(PERMISSION_KEY, [context.getHandler(), context.getClass()])
+    const payloadPermission = this.reflector.getAllAndOverride<string | string[]>(
+      PERMISSION_KEY,
+      [context.getHandler(), context.getClass()],
+    )
 
-    // 控制器没有设置接口权限，则默认通过
-    if (!payloadPermission) {
-      if (this.appConfig.strictRbac)
-        throw new BusinessException(ErrorEnum.NO_PERMISSION)
+    // Public SaaS deployments must fail closed when access metadata is missing.
+    if (!payloadPermission)
+      throw new BusinessException(ErrorEnum.NO_PERMISSION)
 
-      this.logger.warn(`Route ${request.method} ${normalizeRequestPath(request)} has no @Perm/@AllowAnon metadata; allowed only because STRICT_RBAC=false`)
-      return true
-    }
-
-    // 管理员放开所有权限
     if (user.roles.includes(Roles.ADMIN))
       return true
 
@@ -89,17 +77,10 @@ export class RbacGuard implements CanActivate {
     const allPermissions = cachedPermissions ?? await this.authService.getPermissions(user.uid)
     if (!cachedPermissions)
       await this.authService.setPermissionsCache(user.uid, allPermissions)
-    // console.log(allPermissions)
-    let canNext = false
 
-    // handle permission strings
-    if (Array.isArray(payloadPermission)) {
-      // 只要有一个权限满足即可
-      canNext = payloadPermission.every(i => allPermissions.includes(i))
-    }
-
-    if (typeof payloadPermission === 'string')
-      canNext = allPermissions.includes(payloadPermission)
+    const canNext = Array.isArray(payloadPermission)
+      ? payloadPermission.every(i => allPermissions.includes(i))
+      : allPermissions.includes(payloadPermission)
 
     if (!canNext)
       throw new BusinessException(ErrorEnum.NO_PERMISSION)

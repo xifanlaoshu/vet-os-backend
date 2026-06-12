@@ -3,6 +3,7 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger'
 
 import { IdParam } from '~/common/decorators/id-param.decorator'
 import { ApiSecurityAuth } from '~/common/decorators/swagger.decorator'
+import { AllowAnon } from '~/modules/auth/decorators/allow-anon.decorator'
 import { AuthUser } from '~/modules/auth/decorators/auth-user.decorator'
 import { definePermission, Perm } from '~/modules/auth/decorators/permission.decorator'
 
@@ -26,6 +27,7 @@ export class TenantController {
 
   @Get('context')
   @ApiOperation({ summary: 'Get current account tenant and area context' })
+  @AllowAnon()
   async context(@AuthUser() user: IAuthUser) {
     return this.tenantService.resolveDefaultContext(user.uid)
   }

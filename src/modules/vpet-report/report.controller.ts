@@ -1,9 +1,11 @@
 import { Controller, Get, Query } from '@nestjs/common'
 import { ApiOperation, ApiTags } from '@nestjs/swagger'
 import { AuthUser } from '~/modules/auth/decorators/auth-user.decorator'
+import { Perm } from '~/modules/auth/decorators/permission.decorator'
 import { ReportService } from './report.service'
 
 @ApiTags('VPet - Report')
+@Perm('vpet:report:daily')
 @Controller('vpet/report')
 export class ReportController {
   constructor(private readonly reportService: ReportService) {}

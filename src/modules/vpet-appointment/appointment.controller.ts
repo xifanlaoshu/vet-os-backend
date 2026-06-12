@@ -2,12 +2,14 @@ import { Body, Controller, Delete, Get, Post, Put, Query } from '@nestjs/common'
 import { ApiOperation, ApiTags } from '@nestjs/swagger'
 import { IdParam } from '~/common/decorators/id-param.decorator'
 import { AuthUser } from '~/modules/auth/decorators/auth-user.decorator'
+import { Perm } from '~/modules/auth/decorators/permission.decorator'
 import { AppointmentService } from './appointment.service'
 import { CreateAppointmentDto, UpdateAppointmentDto } from './dto/appointment.dto'
 import { CreateDoctorDto, QueryDoctorDto, UpdateDoctorDto } from './dto/doctor.dto'
 import { CreateShiftDto, QueryShiftDto, QueryStaffScheduleDto, SaveStaffScheduleDto, UpdateShiftDto } from './dto/shift.dto'
 
 @ApiTags('VPet - 预约挂号')
+@Perm('vpet:appointment')
 @Controller('vpet/appointment')
 export class AppointmentController {
   constructor(private readonly apptService: AppointmentService) {}

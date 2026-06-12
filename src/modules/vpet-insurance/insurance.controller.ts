@@ -2,10 +2,12 @@ import { Body, Controller, Get, Post, Query } from '@nestjs/common'
 import { ApiOperation, ApiTags } from '@nestjs/swagger'
 import { IdParam } from '~/common/decorators/id-param.decorator'
 import { AuthUser } from '~/modules/auth/decorators/auth-user.decorator'
+import { Perm } from '~/modules/auth/decorators/permission.decorator'
 import { CreateInsuranceClaimDto, QueryInsuranceClaimDto, SettleInsuranceClaimDto } from './dto/insurance.dto'
 import { InsuranceService } from './insurance.service'
 
 @ApiTags('VPet - Insurance')
+@Perm('vpet:insurance:list')
 @Controller('vpet/insurance')
 export class InsuranceController {
   constructor(private readonly insuranceService: InsuranceService) {}

@@ -2,10 +2,12 @@ import { Body, Controller, Get, Post, Put, Query } from '@nestjs/common'
 import { ApiOperation, ApiTags } from '@nestjs/swagger'
 import { IdParam } from '~/common/decorators/id-param.decorator'
 import { AuthUser } from '~/modules/auth/decorators/auth-user.decorator'
+import { Perm } from '~/modules/auth/decorators/permission.decorator'
 import { CreateReminderDto, QueryReminderDto, UpdateReminderDto } from './dto/reminder.dto'
 import { ReminderService } from './reminder.service'
 
 @ApiTags('VPet - Reminder')
+@Perm('vpet:reminder:list')
 @Controller('vpet/reminder')
 export class ReminderController {
   constructor(private readonly reminderService: ReminderService) {}

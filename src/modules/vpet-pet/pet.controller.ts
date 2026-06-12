@@ -3,11 +3,13 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger'
 import { ApiResult } from '~/common/decorators/api-result.decorator'
 import { IdParam } from '~/common/decorators/id-param.decorator'
 import { AuthUser } from '~/modules/auth/decorators/auth-user.decorator'
+import { Perm } from '~/modules/auth/decorators/permission.decorator'
 import { CreatePetDto, QueryPetDto, UpdatePetDto } from './dto/pet.dto'
 import { PetEntity } from './entities/pet.entity'
 import { PetService } from './pet.service'
 
 @ApiTags('VPet - 宠物档案')
+@Perm('vpet:pet:list')
 @Controller('vpet/pet')
 export class PetController {
   constructor(private readonly petService: PetService) {}

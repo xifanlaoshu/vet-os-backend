@@ -2,10 +2,12 @@ import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common'
 import { ApiOperation, ApiTags } from '@nestjs/swagger'
 import { IdParam } from '~/common/decorators/id-param.decorator'
 import { AuthUser } from '~/modules/auth/decorators/auth-user.decorator'
+import { Perm } from '~/modules/auth/decorators/permission.decorator'
 import { ApproveTransferDto, CreateStoreDto, CreateTransferDto, QueryStoreDto, SetStoreStockDto } from './dto/store.dto'
 import { StoreService } from './store.service'
 
 @ApiTags('VPet - Store')
+@Perm('vpet:store:list')
 @Controller('vpet/store')
 export class StoreController {
   constructor(private readonly storeService: StoreService) {}

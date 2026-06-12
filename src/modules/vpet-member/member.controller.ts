@@ -2,6 +2,7 @@ import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common'
 import { ApiOperation, ApiTags } from '@nestjs/swagger'
 import { IdParam } from '~/common/decorators/id-param.decorator'
 import { AuthUser } from '~/modules/auth/decorators/auth-user.decorator'
+import { Perm } from '~/modules/auth/decorators/permission.decorator'
 import {
   DeductDto,
   OpenCardDto,
@@ -12,6 +13,7 @@ import {
 import { MemberService } from './member.service'
 
 @ApiTags('VPet - 会员管理')
+@Perm('vpet:member:list')
 @Controller('vpet/member')
 export class MemberController {
   constructor(private readonly memberService: MemberService) {}

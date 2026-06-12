@@ -2,10 +2,12 @@ import { Body, Controller, Delete, Get, Post, Put, Query } from '@nestjs/common'
 import { ApiOperation, ApiTags } from '@nestjs/swagger'
 import { IdParam } from '~/common/decorators/id-param.decorator'
 import { AuthUser } from '~/modules/auth/decorators/auth-user.decorator'
+import { Perm } from '~/modules/auth/decorators/permission.decorator'
 import { ConsentService } from './consent.service'
 import { CreateConsentRecordDto, CreateConsentTemplateDto, QueryConsentRecordDto, QueryConsentTemplateDto, SignConsentRecordDto, UpdateConsentTemplateDto } from './dto/consent.dto'
 
 @ApiTags('VPet - Informed Consent')
+@Perm('vpet:consent:list')
 @Controller('vpet/consent')
 export class ConsentController {
   constructor(private readonly consentService: ConsentService) {}
