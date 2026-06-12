@@ -1,5 +1,6 @@
 import { BadRequestException, Body, Controller, Headers, Inject, Post, UseGuards } from '@nestjs/common'
 import { ApiOperation, ApiTags } from '@nestjs/swagger'
+import { Throttle } from '@nestjs/throttler'
 import Redis from 'ioredis'
 
 import { ApiResult } from '~/common/decorators/api-result.decorator'
@@ -34,6 +35,7 @@ export class AuthController {
   @Post('login')
   @ApiOperation({ summary: '登录' })
   @ApiResult({ type: LoginToken })
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   async login(@Body() dto: LoginDto, @Ip()ip: string, @Headers('user-agent')ua: string): Promise<LoginToken> {
     await this.captchaService.checkImgCaptcha(dto.captchaId, dto.verifyCode)
     await this.assertLoginNotLocked(dto.username, ip)
@@ -54,6 +56,7 @@ export class AuthController {
   }
 
   @Post('register')
+  @Throttle({ default: { limit: 3, ttl: 3600000 } })
   @ApiOperation({ summary: '注册' })
   async register(@Body() dto: RegisterDto): Promise<void> {
     if (!this.appConfig.allowPublicRegister)
@@ -65,6 +68,7 @@ export class AuthController {
   @Post('refresh')
   @ApiOperation({ summary: '刷新访问令牌' })
   @ApiResult({ type: LoginToken })
+  @Throttle({ default: { limit: 20, ttl: 60000 } })
   async refresh(@Body() dto: RefreshTokenDto): Promise<LoginToken> {
     const token = await this.authService.refreshLoginToken(dto.refreshToken)
     return {

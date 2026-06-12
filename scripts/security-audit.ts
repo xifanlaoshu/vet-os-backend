@@ -52,6 +52,7 @@ auditProductionEnvFile()
 auditPermissionMatrix()
 auditTenantContextGuard()
 auditTenantAreaLifecycleFilters()
+auditPublicAuthEndpointHardening()
 auditStorageTokenExpiration()
 auditTrustedClientIpResolution()
 auditSanitizedExceptionLogging()
@@ -359,6 +360,45 @@ function auditTenantAreaLifecycleFilters() {
       message: 'Tenant context bootstrap must pass platformAdmin so platform administrators can resolve all active areas safely.',
     })
   }
+}
+
+function auditPublicAuthEndpointHardening() {
+  const authControllerPath = join(root, 'src', 'modules', 'auth', 'auth.controller.ts')
+  if (!existsSync(authControllerPath))
+    return
+
+  const lines = readFileSync(authControllerPath, 'utf8').split(/\r?\n/)
+  const content = lines.join('\n')
+
+  if (!/allowPublicRegister/.test(content) || !/if\s*\(\s*!this\.appConfig\.allowPublicRegister\s*\)/.test(content)) {
+    findings.push({
+      file: 'src/modules/auth/auth.controller.ts',
+      line: 1,
+      rule: 'public-register-config-gate-required',
+      message: 'Public registration must be gated by allowPublicRegister so production SaaS can disable self-service signup.',
+    })
+  }
+
+  const requiredThrottledRoutes = [
+    { decorator: '@Post(\'login\')', route: 'POST /auth/login' },
+    { decorator: '@Post(\'register\')', route: 'POST /auth/register' },
+    { decorator: '@Post(\'refresh\')', route: 'POST /auth/refresh' },
+  ]
+
+  requiredThrottledRoutes.forEach(({ decorator, route }) => {
+    const routeIndex = lines.findIndex(line => line.includes(decorator))
+    if (routeIndex < 0)
+      return
+    const decoratorBlock = lines.slice(routeIndex, Math.min(lines.length, routeIndex + 8)).join('\n')
+    if (decoratorBlock.includes('@Throttle'))
+      return
+    findings.push({
+      file: 'src/modules/auth/auth.controller.ts',
+      line: routeIndex + 1,
+      rule: 'public-auth-endpoint-throttle-required',
+      message: `${route} must declare a local @Throttle limit in addition to global throttling.`,
+    })
+  })
 }
 
 function auditStorageTokenExpiration() {
