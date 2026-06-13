@@ -59,6 +59,7 @@ auditTenantScopedUniqueConstraints()
 auditTenantScopedDepartmentBoundaries()
 auditPlatformOnlySystemUserManagement()
 auditPlatformOnlyTenantManagement()
+auditPlatformOnlyMenuManagement()
 auditPublicAuthEndpointHardening()
 auditStorageTokenExpiration()
 auditProtectedUploadPersistenceAwait()
@@ -1109,6 +1110,86 @@ function auditPlatformOnlyTenantManagement() {
       line: 1,
       rule: 'incomplete-tenant-management-platform-boundary-tests',
       message: 'Tenant platform-only management tests must cover non-platform denial, platform access, and current-context availability.',
+    })
+  })
+}
+
+function auditPlatformOnlyMenuManagement() {
+  const controllerFile = 'src/modules/system/menu/menu.controller.ts'
+  const controllerPath = join(root, ...controllerFile.split('/'))
+  if (!existsSync(controllerPath)) {
+    findings.push({
+      file: controllerFile,
+      line: 1,
+      rule: 'missing-system-menu-controller',
+      message: 'System menu management controller is required for platform-only boundary checks.',
+    })
+    return
+  }
+
+  const content = readFileSync(controllerPath, 'utf8')
+  const requiredPatterns = [
+    {
+      pattern: /ForbiddenException/,
+      rule: 'menu-management-platform-forbidden-required',
+      message: 'Menu platform management must reject non-platform administrators.',
+    },
+    {
+      pattern: /assertPlatformAdmin\(user\)/,
+      rule: 'menu-management-platform-check-required',
+      message: 'Menu mutation and backend permission enumeration handlers must assert platformAdmin.',
+    },
+    {
+      pattern: /user\?\.platformAdmin/,
+      rule: 'menu-management-platform-admin-flag-required',
+      message: 'Menu platform management must use the explicit platformAdmin token flag.',
+    },
+    {
+      pattern: /Menu platform management requires platform administrator privileges/,
+      rule: 'menu-management-platform-denial-message-required',
+      message: 'Menu platform management denial must be explicit for auditability.',
+    },
+    {
+      pattern: /@Get\(['"`]permissions['"`]\)[\s\S]*@Get\(['"`]:id['"`]\)/,
+      rule: 'menu-permissions-route-before-id-required',
+      message: 'The static /menus/permissions route must be declared before /menus/:id to avoid dynamic route shadowing.',
+    },
+  ]
+
+  requiredPatterns.forEach(({ pattern, rule, message }) => {
+    if (pattern.test(content))
+      return
+    findings.push({ file: controllerFile, line: 1, rule, message })
+  })
+
+  const specFile = 'src/modules/system/menu/menu.controller.spec.ts'
+  const specPath = join(root, ...specFile.split('/'))
+  if (!existsSync(specPath)) {
+    findings.push({
+      file: specFile,
+      line: 1,
+      rule: 'missing-menu-management-platform-boundary-tests',
+      message: 'Menu platform-only management must have regression tests.',
+    })
+    return
+  }
+
+  const specContent = readFileSync(specPath, 'utf8')
+  const requiredSpecPatterns = [
+    /keeps menu reads available/i,
+    /rejects menu creation for non-platform administrators/i,
+    /allows platform administrators to create global menus/i,
+    /rejects menu updates and deletions for non-platform administrators/i,
+    /rejects backend-defined permission enumeration for non-platform administrators/i,
+  ]
+  requiredSpecPatterns.forEach((pattern) => {
+    if (pattern.test(specContent))
+      return
+    findings.push({
+      file: specFile,
+      line: 1,
+      rule: 'incomplete-menu-management-platform-boundary-tests',
+      message: 'Menu platform-only tests must cover tenant read access, non-platform write denial, platform write access, and backend permission enumeration denial.',
     })
   })
 }

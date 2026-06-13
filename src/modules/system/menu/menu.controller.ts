@@ -3,6 +3,7 @@ import {
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   Post,
   Put,
@@ -16,6 +17,7 @@ import { IdParam } from '~/common/decorators/id-param.decorator'
 import { ApiSecurityAuth } from '~/common/decorators/swagger.decorator'
 import { CreatorPipe } from '~/common/pipes/creator.pipe'
 import { UpdaterPipe } from '~/common/pipes/updater.pipe'
+import { AuthUser } from '~/modules/auth/decorators/auth-user.decorator'
 import { definePermission, getDefinePermissions, Perm } from '~/modules/auth/decorators/permission.decorator'
 
 import { MenuDto, MenuQueryDto, MenuUpdateDto } from './menu.dto'
@@ -44,6 +46,14 @@ export class MenuController {
     return this.menuService.list(dto)
   }
 
+  @Get('permissions')
+  @ApiOperation({ summary: '获取后端定义的所有权限集' })
+  @Perm(permissions.LIST)
+  async getPermissions(@AuthUser() user: IAuthUser): Promise<string[]> {
+    this.assertPlatformAdmin(user)
+    return getDefinePermissions()
+  }
+
   @Get(':id')
   @ApiOperation({ summary: '获取菜单或权限信息' })
   @Perm(permissions.READ)
@@ -54,53 +64,46 @@ export class MenuController {
   @Post()
   @ApiOperation({ summary: '新增菜单或权限' })
   @Perm(permissions.CREATE)
-  async create(@Body(CreatorPipe) dto: MenuDto): Promise<void> {
-    // check
+  async create(@Body(CreatorPipe) dto: MenuDto, @AuthUser() user: IAuthUser): Promise<void> {
+    this.assertPlatformAdmin(user)
     await this.menuService.check(dto)
     if (!dto.parentId)
       dto.parentId = null
 
     await this.menuService.create(dto)
-    if (dto.type === 2) {
-      // 如果是权限发生更改，则刷新所有在线用户的权限
+    if (dto.type === 2)
       await this.menuService.refreshOnlineUserPerms()
-    }
   }
 
   @Put(':id')
   @ApiOperation({ summary: '更新菜单或权限' })
   @Perm(permissions.UPDATE)
-  async update(@IdParam() id: number, @Body(UpdaterPipe) dto: MenuUpdateDto): Promise<void> {
-    // check
+  async update(@IdParam() id: number, @Body(UpdaterPipe) dto: MenuUpdateDto, @AuthUser() user: IAuthUser): Promise<void> {
+    this.assertPlatformAdmin(user)
     await this.menuService.check(dto)
     if (dto.parentId === -1 || !dto.parentId)
       dto.parentId = null
 
     await this.menuService.update(id, dto)
-    if (dto.type === 2) {
-      // 如果是权限发生更改，则刷新所有在线用户的权限
+    if (dto.type === 2)
       await this.menuService.refreshOnlineUserPerms()
-    }
   }
 
   @Delete(':id')
   @ApiOperation({ summary: '删除菜单或权限' })
   @Perm(permissions.DELETE)
-  async delete(@IdParam() id: number): Promise<void> {
+  async delete(@IdParam() id: number, @AuthUser() user: IAuthUser): Promise<void> {
+    this.assertPlatformAdmin(user)
     if (await this.menuService.checkRoleByMenuId(id))
       throw new BadRequestException('该菜单存在关联角色，无法删除')
 
-    // 如果有子目录，一并删除
     const childMenus = await this.menuService.findChildMenus(id)
     await this.menuService.deleteMenuItem(flattenDeep([id, childMenus]))
-    // 刷新在线用户权限
     await this.menuService.refreshOnlineUserPerms()
   }
 
-  @Get('permissions')
-  @ApiOperation({ summary: '获取后端定义的所有权限集' })
-  @Perm(permissions.LIST)
-  async getPermissions(): Promise<string[]> {
-    return getDefinePermissions()
+  private assertPlatformAdmin(user: IAuthUser) {
+    if (!user?.platformAdmin)
+      throw new ForbiddenException('Menu platform management requires platform administrator privileges')
   }
 }
