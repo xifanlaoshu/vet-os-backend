@@ -63,6 +63,7 @@ auditBillingMemberCardPaymentBoundaries()
 auditPrescriptionCurrentStaffTenantBoundary()
 auditPrescriptionWorkflowStateBoundaries()
 auditVisitDerivedRecordConsistency()
+auditInsuranceWorkflowStateBoundaries()
 auditAppointmentWorkflowStateBoundaries()
 auditTrustedClientIpResolution()
 auditSanitizedExceptionLogging()
@@ -1111,6 +1112,78 @@ function auditVisitDerivedRecordConsistency() {
         message: `${target.domain} visit-derived record consistency tests must cover customer mismatch, pet mismatch, and linked billing mismatch where applicable.`,
       })
     }
+  })
+}
+
+function auditInsuranceWorkflowStateBoundaries() {
+  const serviceFile = 'src/modules/vpet-insurance/insurance.service.ts'
+  const specFile = 'src/modules/vpet-insurance/insurance.service.spec.ts'
+  const servicePath = join(root, ...serviceFile.split('/'))
+  const specPath = join(root, ...specFile.split('/'))
+  if (!existsSync(servicePath))
+    return
+
+  const serviceContent = readFileSync(servicePath, 'utf8')
+  const requiredServicePatterns = [
+    {
+      pattern: /Only draft insurance claims can be submitted/,
+      rule: 'insurance-submit-draft-only-required',
+      message: 'Insurance claims must only be submitted from draft status.',
+    },
+    {
+      pattern: /Only submitted insurance claims can be settled/,
+      rule: 'insurance-settle-submitted-only-required',
+      message: 'Insurance claims must only be settled after submission.',
+    },
+    {
+      pattern: /Approved amount cannot exceed claim amount/,
+      rule: 'insurance-approved-amount-cap-required',
+      message: 'Insurance settlement must not approve an amount greater than the original claim amount.',
+    },
+    {
+      pattern: /Insurance claim not found/,
+      rule: 'insurance-workflow-missing-claim-required',
+      message: 'Insurance workflow actions must reject missing or out-of-scope claims instead of silently updating nothing.',
+    },
+  ]
+
+  requiredServicePatterns.forEach(({ pattern, rule, message }) => {
+    if (pattern.test(serviceContent))
+      return
+    findings.push({
+      file: serviceFile,
+      line: 1,
+      rule,
+      message,
+    })
+  })
+
+  if (!existsSync(specPath)) {
+    findings.push({
+      file: specFile,
+      line: 1,
+      rule: 'missing-insurance-workflow-state-tests',
+      message: 'Insurance workflow state boundaries must have regression tests for submit, settle, approved amount caps, and scoped missing records.',
+    })
+    return
+  }
+
+  const specContent = readFileSync(specPath, 'utf8')
+  const requiredSpecPatterns = [
+    /not drafts/i,
+    /not submitted/i,
+    /exceed the claim amount/i,
+    /outside the current area/i,
+  ]
+  requiredSpecPatterns.forEach((pattern) => {
+    if (pattern.test(specContent))
+      return
+    findings.push({
+      file: specFile,
+      line: 1,
+      rule: 'incomplete-insurance-workflow-state-tests',
+      message: 'Insurance workflow tests must cover non-draft submit, non-submitted settle, approved amount cap, and scoped missing records.',
+    })
   })
 }
 

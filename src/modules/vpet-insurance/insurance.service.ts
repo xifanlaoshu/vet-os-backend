@@ -92,15 +92,27 @@ export class InsuranceService {
 
   async submit(id: number, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
     const { tenantId, areaId } = requireTenantAreaContext(context)
+    const claim = await this.claimRepository.findOneBy({ id, tenantId, areaId })
+    if (!claim)
+      throw new BusinessException('Insurance claim not found')
+    if (Number(claim.status) !== 1)
+      throw new BusinessException('Only draft insurance claims can be submitted')
     await this.claimRepository.update({ id, tenantId, areaId }, {
       status: 2,
-      submittedAt: new Date().toISOString(),
+      submittedAt: claim.submittedAt ?? new Date().toISOString(),
     })
     return this.claimRepository.findOneBy({ id, tenantId, areaId })
   }
 
   async settle(id: number, dto: SettleInsuranceClaimDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
     const { tenantId, areaId } = requireTenantAreaContext(context)
+    const claim = await this.claimRepository.findOneBy({ id, tenantId, areaId })
+    if (!claim)
+      throw new BusinessException('Insurance claim not found')
+    if (Number(claim.status) !== 2)
+      throw new BusinessException('Only submitted insurance claims can be settled')
+    if (Number(dto.approvedAmount) > Number(claim.claimAmount))
+      throw new BusinessException('Approved amount cannot exceed claim amount')
     await this.claimRepository.update({ id, tenantId, areaId }, {
       status: 3,
       approvedAmount: dto.approvedAmount,
