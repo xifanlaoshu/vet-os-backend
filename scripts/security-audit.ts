@@ -92,6 +92,7 @@ auditRefreshTokenCleanupNullSafety()
 auditProtectedFileResponseHeaders()
 auditNetdiskPrivateDownloadTtl()
 auditNetdiskTenantAreaIsolation()
+auditVpetUnifiedAuditSourceCoverage()
 
 const rules = [
   {
@@ -3224,6 +3225,73 @@ function auditNetdiskTenantAreaIsolation() {
       line: 1,
       rule: 'netdisk-upload-token-exact-key-required',
       message: 'Netdisk upload tokens must be created for the exact scoped object key returned to the client.',
+    })
+  }
+}
+
+function auditVpetUnifiedAuditSourceCoverage() {
+  const servicePath = join(root, 'src', 'modules', 'vpet-audit', 'audit.service.ts')
+  const specPath = join(root, 'src', 'modules', 'vpet-audit', 'audit.service.spec.ts')
+  if (!existsSync(servicePath)) {
+    findings.push({
+      file: 'src/modules/vpet-audit/audit.service.ts',
+      line: 1,
+      rule: 'vpet-unified-audit-service-missing',
+      message: 'VPet unified audit service must exist for public SaaS traceability.',
+    })
+    return
+  }
+
+  const serviceContent = readFileSync(servicePath, 'utf8')
+  const expectedSources = [
+    'vpet_operation_audit_log',
+    'vpet_emr_audit_log',
+    'vpet_drug_stock_txn',
+    'vpet_ai_log',
+    'vpet_member_card_log',
+    'vpet_consent_record',
+    'vpet_insurance_claim',
+  ]
+
+  expectedSources.forEach((source) => {
+    if (serviceContent.includes(source))
+      return
+    findings.push({
+      file: 'src/modules/vpet-audit/audit.service.ts',
+      line: 1,
+      rule: 'vpet-unified-audit-source-missing',
+      message: `Unified VPet audit events must include ${source} for cross-module traceability.`,
+    })
+  })
+
+  const tenantAreaBranches = serviceContent.match(/WHERE tenant_id = \? AND area_id = \?/g)?.length ?? 0
+  if (tenantAreaBranches < expectedSources.length) {
+    findings.push({
+      file: 'src/modules/vpet-audit/audit.service.ts',
+      line: 1,
+      rule: 'vpet-unified-audit-tenant-area-filter-missing',
+      message: 'Every unified VPet audit source branch must filter by tenant_id and area_id with parameter binding.',
+    })
+  }
+
+  if (!existsSync(specPath)) {
+    findings.push({
+      file: 'src/modules/vpet-audit/audit.service.spec.ts',
+      line: 1,
+      rule: 'vpet-unified-audit-regression-tests-missing',
+      message: 'Unified VPet audit source coverage must have regression tests for source inclusion and tenant-area isolation.',
+    })
+    return
+  }
+
+  const specContent = readFileSync(specPath, 'utf8')
+  const hasAllSourcesInSpec = expectedSources.every(source => specContent.includes(source))
+  if (!hasAllSourcesInSpec || !/BadRequestException/.test(specContent) || !/tenant-area context/i.test(specContent)) {
+    findings.push({
+      file: 'src/modules/vpet-audit/audit.service.spec.ts',
+      line: 1,
+      rule: 'vpet-unified-audit-regression-tests-incomplete',
+      message: 'Unified VPet audit tests must cover all source branches and missing tenant-area context rejection.',
     })
   }
 }
