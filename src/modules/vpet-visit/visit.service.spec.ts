@@ -139,4 +139,57 @@ describe('visitService action missing-record boundaries', () => {
       .rejects
       .toBeInstanceOf(BusinessException)
   })
+
+  it('rejects visit details outside the current area', async () => {
+    const service = createMissingVisitService()
+
+    await expect(service.findOneDetailed(8, { tenantId: 2, areaId: 3 }))
+      .rejects
+      .toBeInstanceOf(BusinessException)
+  })
+
+  it('rejects care followup lists outside the current area', async () => {
+    const service = createMissingVisitService()
+
+    await expect(service.listVisitCareFollowups(8, { tenantId: 2, areaId: 3 }))
+      .rejects
+      .toBeInstanceOf(BusinessException)
+  })
+
+  it('rejects media batch lists outside the current area', async () => {
+    const service = createMissingVisitService()
+
+    await expect(service.listVisitMediaBatches(8, { tenantId: 2, areaId: 3 }))
+      .rejects
+      .toBeInstanceOf(BusinessException)
+  })
+
+  it('rejects creating care followups outside the current area', async () => {
+    const service = createMissingVisitService()
+
+    await expect(service.createVisitCareFollowup(8, { careStage: 1 }, { tenantId: 2, areaId: 3 }))
+      .rejects
+      .toBeInstanceOf(BusinessException)
+  })
+
+  it('rejects creating media batches outside the current area', async () => {
+    const service = createMissingVisitService()
+
+    await expect(service.createVisitMediaBatch(8, { batchName: 'Images' }, { tenantId: 2, areaId: 3 }))
+      .rejects
+      .toBeInstanceOf(BusinessException)
+  })
+
+  it('rejects creating media files outside the current area', async () => {
+    const service = createMissingVisitService()
+
+    await expect(service.createVisitMediaFile(8, 1, {
+      fileType: 'image',
+      storageType: 'local',
+      url: '/api/storage/file/token-123',
+      mimeType: 'image/png',
+    }, { tenantId: 2, areaId: 3 }))
+      .rejects
+      .toBeInstanceOf(BusinessException)
+  })
 })

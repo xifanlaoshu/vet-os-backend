@@ -565,8 +565,7 @@ export class VisitService extends BaseService<VisitEntity> {
   async listEmrAuditLogs(visitId: number, options: CurrentStaffScopeOptions = {}) {
     const visit = await this.findScopedVisit(visitId, options)
     if (!visit) {
-      await this.findOne(visitId)
-      return []
+      throw new BusinessException('Visit not found')
     }
     await this.assertVisitBelongsToScopedDoctor(visit, options)
     return this.emrAuditRepository.find({
@@ -618,8 +617,7 @@ export class VisitService extends BaseService<VisitEntity> {
   async listSignatures(visitId: number, options: CurrentStaffScopeOptions = {}) {
     const visit = await this.findScopedVisit(visitId, options)
     if (!visit) {
-      await this.findOne(visitId)
-      return []
+      throw new BusinessException('Visit not found')
     }
     await this.assertVisitBelongsToScopedDoctor(visit, options)
     return this.eSignatureRepository.find({
@@ -784,10 +782,8 @@ export class VisitService extends BaseService<VisitEntity> {
         'mediaBatches.files',
       ],
     })
-    if (!item) {
-      await this.findOne(id)
-      return null
-    }
+    if (!item)
+      throw new BusinessException('Visit not found')
     await this.assertVisitBelongsToScopedDoctor(item, options)
 
     return this.mapVisitDetail(item)
@@ -796,8 +792,7 @@ export class VisitService extends BaseService<VisitEntity> {
   async listVisitCareFollowups(visitId: number, options: CurrentStaffScopeOptions = {}) {
     const visit = await this.findScopedVisit(visitId, options)
     if (!visit) {
-      await this.findOne(visitId)
-      return []
+      throw new BusinessException('Visit not found')
     }
     await this.assertVisitBelongsToScopedDoctor(visit, options)
 
@@ -820,10 +815,8 @@ export class VisitService extends BaseService<VisitEntity> {
 
   async createVisitCareFollowup(visitId: number, dto: CreateVisitCareFollowupDto, options: CurrentStaffScopeOptions = {}) {
     const visit = await this.findScopedVisit(visitId, options)
-    if (!visit) {
-      await this.findOne(visitId)
-      return []
-    }
+    if (!visit)
+      throw new BusinessException('Visit not found')
     await this.assertVisitBelongsToScopedDoctor(visit, options)
 
     const labOrderIds = this.normalizeIdList(dto.labOrderIds)
@@ -878,10 +871,8 @@ export class VisitService extends BaseService<VisitEntity> {
 
   async listVisitMediaBatches(visitId: number, options: CurrentStaffScopeOptions = {}) {
     const visit = await this.findScopedVisit(visitId, options)
-    if (!visit) {
-      await this.findOne(visitId)
-      return []
-    }
+    if (!visit)
+      throw new BusinessException('Visit not found')
     await this.assertVisitBelongsToScopedDoctor(visit, options)
 
     const rows = await this.mediaBatchRepository.find({
@@ -901,10 +892,8 @@ export class VisitService extends BaseService<VisitEntity> {
 
   async createVisitMediaBatch(visitId: number, dto: CreateVisitMediaBatchDto, options: CurrentStaffScopeOptions = {}) {
     const visit = await this.findScopedVisit(visitId, options)
-    if (!visit) {
-      await this.findOne(visitId)
-      return []
-    }
+    if (!visit)
+      throw new BusinessException('Visit not found')
     await this.assertVisitBelongsToScopedDoctor(visit, options)
 
     if (dto.relationType === 'care_followup') {
@@ -934,10 +923,8 @@ export class VisitService extends BaseService<VisitEntity> {
 
   async createVisitMediaFile(visitId: number, batchId: number, dto: CreateVisitMediaFileDto, options: CurrentStaffScopeOptions = {}) {
     const visit = await this.findScopedVisit(visitId, options)
-    if (!visit) {
-      await this.findOne(visitId)
-      return []
-    }
+    if (!visit)
+      throw new BusinessException('Visit not found')
     await this.assertVisitBelongsToScopedDoctor(visit, options)
 
     const batch = await this.mediaBatchRepository.findOneBy({ id: batchId, visitId, tenantId: visit.tenantId, areaId: visit.areaId })

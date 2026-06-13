@@ -1610,11 +1610,17 @@ function auditEmrActionMissingRecordBoundaries() {
 
   const serviceContent = readFileSync(servicePath, 'utf8')
   const requiredActionBlocks = [
+    /async findOneDetailed[\s\S]*throw new BusinessException\(['"`]Visit not found['"`]\)/,
+    /async listVisitCareFollowups[\s\S]*throw new BusinessException\(['"`]Visit not found['"`]\)/,
+    /async listVisitMediaBatches[\s\S]*throw new BusinessException\(['"`]Visit not found['"`]\)/,
     /async lockEmr[\s\S]*throw new BusinessException\(['"`]Visit not found['"`]\)/,
     /async requestUnlockEmr[\s\S]*throw new BusinessException\(['"`]Visit not found['"`]\)/,
     /async signEmr[\s\S]*throw new BusinessException\(['"`]Visit not found['"`]\)/,
     /async recordPrintAudit[\s\S]*throw new BusinessException\(['"`]Visit not found['"`]\)/,
     /async endConsultation[\s\S]*throw new BusinessException\(['"`]Visit not found['"`]\)/,
+    /async createVisitCareFollowup[\s\S]*throw new BusinessException\(['"`]Visit not found['"`]\)/,
+    /async createVisitMediaBatch[\s\S]*throw new BusinessException\(['"`]Visit not found['"`]\)/,
+    /async createVisitMediaFile[\s\S]*throw new BusinessException\(['"`]Visit not found['"`]\)/,
   ]
   requiredActionBlocks.forEach((pattern) => {
     if (pattern.test(serviceContent))
@@ -1639,9 +1645,15 @@ function auditEmrActionMissingRecordBoundaries() {
 
   const specContent = readFileSync(specPath, 'utf8')
   const requiredSpecPatterns = [
+    /visit details outside the current area/i,
+    /care followup lists outside the current area/i,
+    /media batch lists outside the current area/i,
     /locking EMR records outside the current area/i,
     /signing EMR records outside the current area/i,
     /print audit records outside the current area/i,
+    /creating care followups outside the current area/i,
+    /creating media batches outside the current area/i,
+    /creating media files outside the current area/i,
   ]
   requiredSpecPatterns.forEach((pattern) => {
     if (pattern.test(specContent))
