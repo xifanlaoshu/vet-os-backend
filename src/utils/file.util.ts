@@ -5,6 +5,8 @@ import { MultipartFile } from '@fastify/multipart'
 
 import dayjs from 'dayjs'
 
+import { cwd, env } from '~/global/env'
+
 enum Type {
   IMAGE = '图片',
   TXT = '文档',
@@ -70,11 +72,14 @@ export function getFilePath(name: string, currentDate: string, type: string) {
 }
 
 export function getProtectedUploadPath(tenantId: number, areaId: number, name: string, currentDate: string, type: string) {
-  return path.join('tenant', String(tenantId), 'area', String(areaId), currentDate, type, name)
+  return path.posix.join('tenant', String(tenantId), 'area', String(areaId), currentDate, type, name)
 }
 
 export function getProtectedUploadRoot() {
-  return path.join(__dirname, '../../', 'protected-upload')
+  const configuredRoot = env('PROTECTED_UPLOAD_ROOT', '').trim()
+  if (!configuredRoot)
+    return path.resolve(cwd, 'protected-upload')
+  return path.resolve(cwd, configuredRoot)
 }
 
 export async function saveLocalFile(buffer: Buffer, name: string, currentDate: string, type: string, tenantId?: number, areaId?: number) {
@@ -112,9 +117,10 @@ export async function saveFile(file: MultipartFile, name: string) {
 }
 
 export async function deleteFile(name: string) {
+  const normalizedName = name.replace(/\\/g, '/')
   const targetPath = path.isAbsolute(name)
     ? name
-    : name.startsWith('tenant/')
+    : normalizedName.startsWith('tenant/')
       ? resolveProtectedUploadPath(name)
       : path.join(__dirname, '../../', 'public', name)
   fs.unlink(targetPath, () => {

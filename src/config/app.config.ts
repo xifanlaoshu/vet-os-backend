@@ -16,6 +16,7 @@ export const AppConfig = registerAs(appRegToken, () => ({
   allowPublicRegister: envBoolean('ALLOW_PUBLIC_REGISTER', false),
   strictRbac: envBoolean('STRICT_RBAC', process.env.NODE_ENV === 'production'),
   strictTenantContext: envBoolean('STRICT_TENANT_CONTEXT', process.env.NODE_ENV === 'production'),
+  protectedUploadRoot: env('PROTECTED_UPLOAD_ROOT', ''),
   trustProxy: envBoolean('TRUST_PROXY', false),
   /** 是否允许多端登录 */
   multiDeviceLogin: envBoolean('MULTI_DEVICE_LOGIN', true),

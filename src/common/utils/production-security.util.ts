@@ -1,5 +1,6 @@
 import type { ConfigKeyPaths } from '~/config'
 
+import { resolve } from 'node:path'
 import { ConfigService } from '@nestjs/config'
 
 export function assertProductionSecurityConfig(configService: ConfigService<ConfigKeyPaths>) {
@@ -39,6 +40,15 @@ export function assertProductionSecurityConfig(configService: ConfigService<Conf
     errors.push('STRICT_RBAC must be true in production')
   if (!appConfig.strictTenantContext)
     errors.push('STRICT_TENANT_CONTEXT must be true in production')
+  if (!appConfig.protectedUploadRoot?.trim()) {
+    errors.push('PROTECTED_UPLOAD_ROOT must be configured in production')
+  }
+  else {
+    const protectedUploadRoot = resolve(process.cwd(), appConfig.protectedUploadRoot)
+    const publicRoot = resolve(process.cwd(), 'public')
+    if (protectedUploadRoot === publicRoot || protectedUploadRoot.startsWith(`${publicRoot}\\`) || protectedUploadRoot.startsWith(`${publicRoot}/`))
+      errors.push('PROTECTED_UPLOAD_ROOT must not be inside the public directory')
+  }
   if (swaggerConfig.enable)
     errors.push('SWAGGER_ENABLE must be false in production')
 
