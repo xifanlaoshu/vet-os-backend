@@ -117,6 +117,47 @@ export class VisitController {
     return this.visitService.reviewUnlockRequest(id, dto, { tenantId: user?.tenantId, areaId: user?.areaId, currentUserId: user?.uid })
   }
 
+  @Get('chronic/cases')
+  @ApiOperation({ summary: 'Chronic cases list' })
+  async listChronicCases(
+    @Query('petId') petId?: number,
+    @Query('customerId') customerId?: number,
+    @Query('status') status?: number,
+    @Query('keyword') keyword?: string,
+    @AuthUser() user?: IAuthUser,
+  ) {
+    return this.visitService.listChronicCases({
+      petId: petId ? Number(petId) : undefined,
+      customerId: customerId ? Number(customerId) : undefined,
+      status: status !== undefined ? Number(status) : undefined,
+      keyword,
+    }, user)
+  }
+
+  @Post('chronic/cases')
+  @ApiOperation({ summary: 'Create chronic case' })
+  async createChronicCase(@Body() dto: CreateChronicCaseDto, @AuthUser() user: IAuthUser) {
+    return this.visitService.createChronicCase(dto, user)
+  }
+
+  @Get('chronic/cases/:id')
+  @ApiOperation({ summary: 'Chronic case detail' })
+  async getChronicCase(@IdParam() id: number, @AuthUser() user: IAuthUser) {
+    return this.visitService.getChronicCaseDetail(id, user)
+  }
+
+  @Post('chronic/cases/:id/followups')
+  @ApiOperation({ summary: 'Add chronic followup' })
+  async addChronicFollowup(@IdParam() id: number, @Body() dto: CreateChronicFollowupDto, @AuthUser() user: IAuthUser) {
+    return this.visitService.addChronicFollowup(id, dto, user)
+  }
+
+  @Get('chronic/cases/:id/report')
+  @ApiOperation({ summary: 'Chronic report' })
+  async getChronicReport(@IdParam() id: number, @AuthUser() user: IAuthUser) {
+    return this.visitService.getChronicReport(id, user)
+  }
+
   @Get(':id')
   @ApiOperation({ summary: '就诊详情' })
   @ApiResult({ type: VisitEntity })
@@ -291,46 +332,5 @@ export class VisitController {
     @AuthUser() user: IAuthUser,
   ) {
     await this.visitService.endConsultation(id, { scope, currentUserId: user?.uid, tenantId: user?.tenantId, areaId: user?.areaId })
-  }
-
-  @Get('chronic/cases')
-  @ApiOperation({ summary: 'Chronic cases list' })
-  async listChronicCases(
-    @Query('petId') petId?: number,
-    @Query('customerId') customerId?: number,
-    @Query('status') status?: number,
-    @Query('keyword') keyword?: string,
-    @AuthUser() user?: IAuthUser,
-  ) {
-    return this.visitService.listChronicCases({
-      petId: petId ? Number(petId) : undefined,
-      customerId: customerId ? Number(customerId) : undefined,
-      status: status !== undefined ? Number(status) : undefined,
-      keyword,
-    }, user)
-  }
-
-  @Post('chronic/cases')
-  @ApiOperation({ summary: 'Create chronic case' })
-  async createChronicCase(@Body() dto: CreateChronicCaseDto, @AuthUser() user: IAuthUser) {
-    return this.visitService.createChronicCase(dto, user)
-  }
-
-  @Get('chronic/cases/:id')
-  @ApiOperation({ summary: 'Chronic case detail' })
-  async getChronicCase(@IdParam() id: number, @AuthUser() user: IAuthUser) {
-    return this.visitService.getChronicCaseDetail(id, user)
-  }
-
-  @Post('chronic/cases/:id/followups')
-  @ApiOperation({ summary: 'Add chronic followup' })
-  async addChronicFollowup(@IdParam() id: number, @Body() dto: CreateChronicFollowupDto, @AuthUser() user: IAuthUser) {
-    return this.visitService.addChronicFollowup(id, dto, user)
-  }
-
-  @Get('chronic/cases/:id/report')
-  @ApiOperation({ summary: 'Chronic report' })
-  async getChronicReport(@IdParam() id: number, @AuthUser() user: IAuthUser) {
-    return this.visitService.getChronicReport(id, user)
   }
 }
