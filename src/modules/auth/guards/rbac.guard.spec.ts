@@ -1,12 +1,19 @@
+import { BusinessException } from '~/common/exceptions/biz.exception'
+
 import { RbacGuard } from './rbac.guard'
 
-function createExecutionContext(user: any, permission: string | null = 'system:role:list'): any {
+function createExecutionContext(
+  user: any,
+  permission: string | null = 'system:role:list',
+  requestOverrides: Record<string, any> = {},
+): any {
   const handler = jest.fn()
   const clazz = jest.fn()
   const request = {
     method: 'GET',
     url: '/api/system/role',
     user,
+    ...requestOverrides,
   }
   return {
     getHandler: () => handler,
@@ -65,5 +72,23 @@ describe('rbacGuard tenant permission boundaries', () => {
 
     expect(authService.getPermissions).toHaveBeenCalledWith(user)
     expect(authService.setPermissionsCache).toHaveBeenCalledWith(7, ['system:role:list'])
+  })
+
+  it('does not bypass permissions for server monitoring routes', async () => {
+    const { guard } = createGuard({
+      permission: 'system:serve:stat',
+      authService: {
+        getPermissions: jest.fn(async () => ['system:role:list']),
+      },
+    })
+
+    await expect(guard.canActivate(createExecutionContext({
+      uid: 7,
+      roles: ['doctor'],
+      platformAdmin: false,
+      tenantId: 2,
+    }, 'system:serve:stat', {
+      url: '/api/system/serve/stat',
+    }))).rejects.toBeInstanceOf(BusinessException)
   })
 })

@@ -28,7 +28,6 @@ function isAuthenticatedPublicReadRoute(request: FastifyRequest) {
     /^\/system\/dict-type\/\d+$/.test(path),
     path === '/system/dict-item',
     /^\/system\/dict-item\/\d+$/.test(path),
-    path === '/system/serve/stat',
   ].some(Boolean)
 }
 

@@ -117,12 +117,6 @@
       "reason": "Authenticated pages read dictionary select options globally."
     },
     {
-      "method": "GET",
-      "path": "/serve/stat",
-      "access": "AllowAnon",
-      "reason": "Authenticated application shell reads runtime status; sensitive admin operations remain permission protected."
-    },
-    {
       "method": "SSE",
       "path": "/sse/:uid",
       "access": "AllowAnon",

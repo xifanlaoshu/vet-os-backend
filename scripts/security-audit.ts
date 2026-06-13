@@ -703,6 +703,17 @@ function auditTenantScopedRolePermissionBoundaries() {
     })
   })
 
+  const rbacGuardFile = 'src/modules/auth/guards/rbac.guard.ts'
+  const rbacGuardPath = join(root, ...rbacGuardFile.split('/'))
+  if (existsSync(rbacGuardPath) && /\/system\/serve\/stat/.test(readFileSync(rbacGuardPath, 'utf8'))) {
+    findings.push({
+      file: rbacGuardFile,
+      line: 1,
+      rule: 'rbac-no-server-monitoring-public-read-bypass',
+      message: 'Server monitoring must not be listed as an authenticated public read route; it requires explicit permission and platformAdmin checks.',
+    })
+  }
+
   const requiredSpecFiles = [
     'src/modules/system/role/role.service.spec.ts',
     'src/modules/auth/auth.service.spec.ts',
@@ -3268,7 +3279,7 @@ function parsePublicRouteMatrixLine(lineText: string) {
 }
 
 function routeKey(route: { method: string, path: string, access: string }) {
-  return `${route.access} ${route.method.toUpperCase()} ${route.path}`
+  return `${route.access.trim()} ${route.method.trim().toUpperCase()} ${route.path.trim()}`
 }
 
 function auditVpetScopedRepositoryAccess(absPath: string, lines: string[]) {
