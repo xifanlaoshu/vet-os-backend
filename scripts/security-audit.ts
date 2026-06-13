@@ -59,6 +59,8 @@ auditStorageTokenExpiration()
 auditProtectedUploadPersistenceAwait()
 auditVisitMediaFileSafety()
 auditPharmacyStockOutTransactionSafety()
+auditMemberCardBalanceTransactionSafety()
+auditBillingPaymentTransactionSafety()
 auditBillingMemberCardPaymentBoundaries()
 auditPrescriptionCurrentStaffTenantBoundary()
 auditPrescriptionWorkflowStateBoundaries()
@@ -803,6 +805,166 @@ function auditPharmacyStockOutTransactionSafety() {
       line: 1,
       rule: 'incomplete-pharmacy-stock-out-safety-tests',
       message: 'Pharmacy stock out tests must cover pessimistic locking, tenant-area scope, ledger snapshots, and insufficient stock without mutation.',
+    })
+  })
+}
+
+function auditMemberCardBalanceTransactionSafety() {
+  const serviceFile = 'src/modules/vpet-member/member.service.ts'
+  const specFile = 'src/modules/vpet-member/member.service.spec.ts'
+  const servicePath = join(root, ...serviceFile.split('/'))
+  const specPath = join(root, ...specFile.split('/'))
+  if (!existsSync(servicePath))
+    return
+
+  const serviceContent = readFileSync(servicePath, 'utf8')
+  const requiredServicePatterns = [
+    {
+      pattern: /dataSource\.transaction/,
+      rule: 'member-card-balance-transaction-required',
+      message: 'Member card recharge and deduction must run inside database transactions so balance changes and ledger logs commit atomically.',
+    },
+    {
+      pattern: /\.setLock\(\s*['"`]pessimistic_write['"`]\s*\)/,
+      rule: 'member-card-balance-lock-required',
+      message: 'Member card balance mutations must pessimistically lock the card row before calculating balance.',
+    },
+    {
+      pattern: /Recharge amount must be greater than 0/,
+      rule: 'member-card-recharge-positive-required',
+      message: 'Member card recharge must reject zero or negative amounts.',
+    },
+    {
+      pattern: /Deduct amount must be greater than 0/,
+      rule: 'member-card-deduct-positive-required',
+      message: 'Member card deduction must reject zero or negative amounts.',
+    },
+    {
+      pattern: /Member card is not active/,
+      rule: 'member-card-active-status-required',
+      message: 'Member card balance mutations must reject inactive cards.',
+    },
+    {
+      pattern: /balanceBefore[\s\S]*balanceAfter/,
+      rule: 'member-card-ledger-snapshot-required',
+      message: 'Member card balance mutations must write before/after balance snapshots to the ledger.',
+    },
+  ]
+
+  requiredServicePatterns.forEach(({ pattern, rule, message }) => {
+    if (pattern.test(serviceContent))
+      return
+    findings.push({
+      file: serviceFile,
+      line: 1,
+      rule,
+      message,
+    })
+  })
+
+  if (!existsSync(specPath)) {
+    findings.push({
+      file: specFile,
+      line: 1,
+      rule: 'missing-member-card-balance-safety-tests',
+      message: 'Member card balance mutations must have regression tests for transactions, locks, positive amounts, insufficient balance, and ledger snapshots.',
+    })
+    return
+  }
+
+  const specContent = readFileSync(specPath, 'utf8')
+  const requiredSpecPatterns = [
+    /locks member cards when recharging/i,
+    /locks member cards when deducting/i,
+    /pessimistic_write/,
+    /zero or negative member card balance operations/i,
+    /balanceBefore/,
+  ]
+  requiredSpecPatterns.forEach((pattern) => {
+    if (pattern.test(specContent))
+      return
+    findings.push({
+      file: specFile,
+      line: 1,
+      rule: 'incomplete-member-card-balance-safety-tests',
+      message: 'Member card balance tests must cover locking, positive amount guards, insufficient balance, and before/after ledger snapshots.',
+    })
+  })
+}
+
+function auditBillingPaymentTransactionSafety() {
+  const serviceFile = 'src/modules/vpet-billing/billing.service.ts'
+  const specFile = 'src/modules/vpet-billing/billing.service.spec.ts'
+  const servicePath = join(root, ...serviceFile.split('/'))
+  const specPath = join(root, ...specFile.split('/'))
+  if (!existsSync(servicePath))
+    return
+
+  const serviceContent = readFileSync(servicePath, 'utf8')
+  const requiredServicePatterns = [
+    {
+      pattern: /Payment amount must be greater than 0/,
+      rule: 'billing-payment-positive-required',
+      message: 'Billing payments must reject zero or negative amounts.',
+    },
+    {
+      pattern: /Billing not found/,
+      rule: 'billing-workflow-missing-bill-required',
+      message: 'Billing payment and refund workflow actions must reject missing or out-of-scope bills instead of silently returning null.',
+    },
+    {
+      pattern: /Billing is not payable/,
+      rule: 'billing-payment-final-state-block-required',
+      message: 'Billing payments must reject fully paid or fully refunded bills.',
+    },
+    {
+      pattern: /\.setLock\(\s*['"`]pessimistic_write['"`]\s*\)[\s\S]*bill\.id\s*=\s*:id/,
+      rule: 'billing-row-lock-required',
+      message: 'Billing payment and refund must pessimistically lock the bill row before calculating outstanding or refundable amounts.',
+    },
+    {
+      pattern: /\.setLock\(\s*['"`]pessimistic_write['"`]\s*\)[\s\S]*card\.(?:id|customerId)\s*=\s*:/,
+      rule: 'billing-member-card-lock-required',
+      message: 'Billing member-card payment and refund must pessimistically lock the member card before mutating balance.',
+    },
+  ]
+
+  requiredServicePatterns.forEach(({ pattern, rule, message }) => {
+    if (pattern.test(serviceContent))
+      return
+    findings.push({
+      file: serviceFile,
+      line: 1,
+      rule,
+      message,
+    })
+  })
+
+  if (!existsSync(specPath)) {
+    findings.push({
+      file: specFile,
+      line: 1,
+      rule: 'missing-billing-payment-safety-tests',
+      message: 'Billing payment and refund must have regression tests for row locks, positive payment amounts, scoped missing bills, and member-card locks.',
+    })
+    return
+  }
+
+  const specContent = readFileSync(specPath, 'utf8')
+  const requiredSpecPatterns = [
+    /locks billing rows before payment/i,
+    /zero payment amounts/i,
+    /locks billing rows before refunding/i,
+    /pessimistic_write/,
+  ]
+  requiredSpecPatterns.forEach((pattern) => {
+    if (pattern.test(specContent))
+      return
+    findings.push({
+      file: specFile,
+      line: 1,
+      rule: 'incomplete-billing-payment-safety-tests',
+      message: 'Billing payment tests must cover bill row locks, zero payment rejection, refund row locks, and scoped missing bills.',
     })
   })
 }

@@ -203,18 +203,26 @@ export class BillingService {
 
   async processPayment(id: number, dto: PaymentDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>): Promise<any> {
     const { tenantId, areaId } = requireTenantAreaContext(context)
+    if (Number(dto.paidAmount) <= 0)
+      throw new BusinessException('Payment amount must be greater than 0')
     return this.dataSource.transaction(async (manager) => {
       const billingRepository = manager.getRepository(BillingEntity)
       const paymentRepository = manager.getRepository(BillingPaymentEntity)
       const logRepository = manager.getRepository(MemberCardLogEntity)
       const cardRepository = manager.getRepository(MemberCardEntity)
 
-      const bill = await billingRepository.findOne({
-        where: { id, tenantId, areaId },
-        relations: ['details', 'payments'],
-      })
+      const bill = await billingRepository.createQueryBuilder('bill')
+        .setLock('pessimistic_write')
+        .leftJoinAndSelect('bill.details', 'details')
+        .leftJoinAndSelect('bill.payments', 'payments')
+        .where('bill.id = :id', { id })
+        .andWhere('bill.tenantId = :tenantId', { tenantId })
+        .andWhere('bill.areaId = :areaId', { areaId })
+        .getOne()
       if (!bill)
-        return null
+        throw new BusinessException('Billing not found')
+      if ([3, 4].includes(Number(bill.paymentStatus)))
+        throw new BusinessException('Billing is not payable')
 
       const currentDue = Math.max(
         Number(bill.totalAmount) - Number(bill.discount ?? 0) - this.calculatePaidAmount(bill.payments ?? []),
@@ -293,12 +301,16 @@ export class BillingService {
       const logRepository = manager.getRepository(MemberCardLogEntity)
       const auditRepository = manager.getRepository(OperationAuditLogEntity)
 
-      const bill = await billingRepository.findOne({
-        where: { id, tenantId, areaId },
-        relations: ['details', 'payments'],
-      })
+      const bill = await billingRepository.createQueryBuilder('bill')
+        .setLock('pessimistic_write')
+        .leftJoinAndSelect('bill.details', 'details')
+        .leftJoinAndSelect('bill.payments', 'payments')
+        .where('bill.id = :id', { id })
+        .andWhere('bill.tenantId = :tenantId', { tenantId })
+        .andWhere('bill.areaId = :areaId', { areaId })
+        .getOne()
       if (!bill)
-        return null
+        throw new BusinessException('Billing not found')
 
       const refundAmount = Number(dto.refundAmount || 0)
       if (refundAmount <= 0) {
@@ -502,7 +514,11 @@ export class BillingService {
   ) {
     if (!customerId)
       throw new BusinessException('Customer id is required for member refund')
-    const card = await cardRepository.findOneBy({ customerId, tenantId })
+    const card = await cardRepository.createQueryBuilder('card')
+      .setLock('pessimistic_write')
+      .where('card.customerId = :customerId', { customerId })
+      .andWhere('card.tenantId = :tenantId', { tenantId })
+      .getOne()
     if (!card)
       throw new BusinessException('Customer has no member card')
     return card
@@ -542,7 +558,11 @@ export class BillingService {
     let card: MemberCardEntity | null = null
 
     if (dto.memberCardId) {
-      card = await cardRepository.findOneBy({ id: dto.memberCardId, tenantId })
+      card = await cardRepository.createQueryBuilder('card')
+        .setLock('pessimistic_write')
+        .where('card.id = :memberCardId', { memberCardId: dto.memberCardId })
+        .andWhere('card.tenantId = :tenantId', { tenantId })
+        .getOne()
       if (!card)
         throw new BusinessException('Member card not found')
       if (bill.customerId && Number(card.customerId) !== Number(bill.customerId))
@@ -554,11 +574,17 @@ export class BillingService {
         throw new BusinessException('Customer id is required for member payment')
       if (bill.customerId && Number(customerId) !== Number(bill.customerId))
         throw new BusinessException('Member payment customer does not match billing customer')
-      card = await cardRepository.findOneBy({ customerId, tenantId })
+      card = await cardRepository.createQueryBuilder('card')
+        .setLock('pessimistic_write')
+        .where('card.customerId = :customerId', { customerId })
+        .andWhere('card.tenantId = :tenantId', { tenantId })
+        .getOne()
       if (!card)
         throw new BusinessException('Customer has no member card')
     }
 
+    if (Number(card.status) !== 1)
+      throw new BusinessException('Member card is not active')
     if (Number(card.balance) < dto.paidAmount) {
       throw new BusinessException('Insufficient member balance')
     }

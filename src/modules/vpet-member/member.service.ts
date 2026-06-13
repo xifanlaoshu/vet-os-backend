@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
-import { Repository } from 'typeorm'
+import { DataSource, Repository } from 'typeorm'
 import { requireTenantAreaContext, requireTenantContext } from '~/common/utils/tenant-context.util'
 import { paginate, paginateRawAndEntities } from '~/helper/paginate'
 import { CustomerEntity } from '../vpet-customer/entities/customer.entity'
@@ -23,6 +23,7 @@ export class MemberService {
     private logRepository: Repository<MemberCardLogEntity>,
     @InjectRepository(CustomerEntity)
     private customerRepository: Repository<CustomerEntity>,
+    private dataSource: DataSource,
   ) {}
 
   async openCard(dto: OpenCardDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>): Promise<MemberCardEntity> {
@@ -129,59 +130,85 @@ export class MemberService {
 
   async recharge(cardId: number, dto: RechargeDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>): Promise<MemberCardEntity> {
     const { tenantId, areaId } = requireTenantAreaContext(context)
-    const card = await this.cardRepository.findOneBy({ id: cardId, tenantId })
-    if (!card)
-      throw new BadRequestException('Member card not found')
+    if (Number(dto.amount) <= 0)
+      throw new BadRequestException('Recharge amount must be greater than 0')
 
-    const balanceBefore = Number(card.balance)
-    card.balance = balanceBefore + dto.amount
-    card.totalRecharge = Number(card.totalRecharge) + dto.amount
+    return this.dataSource.transaction(async (manager) => {
+      const cardRepository = manager.getRepository(MemberCardEntity)
+      const logRepository = manager.getRepository(MemberCardLogEntity)
+      const card = await cardRepository.createQueryBuilder('card')
+        .setLock('pessimistic_write')
+        .where('card.id = :cardId', { cardId })
+        .andWhere('card.tenantId = :tenantId', { tenantId })
+        .getOne()
+      if (!card)
+        throw new BadRequestException('Member card not found')
+      if (Number(card.status) !== 1)
+        throw new BadRequestException('Member card is not active')
 
-    await this.cardRepository.save(card)
-    await this.logRepository.save({
-      tenantId,
-      areaId,
-      cardId,
-      type: 1,
-      amount: dto.amount,
-      direction: 1,
-      balanceBefore,
-      balanceAfter: card.balance,
-      operatorId: dto.operatorId,
-      remark: dto.remark ?? 'recharge',
+      const balanceBefore = Number(card.balance)
+      card.balance = balanceBefore + dto.amount
+      card.totalRecharge = Number(card.totalRecharge) + dto.amount
+
+      await cardRepository.save(card)
+      await logRepository.save(logRepository.create({
+        tenantId,
+        areaId,
+        cardId,
+        type: 1,
+        amount: dto.amount,
+        direction: 1,
+        balanceBefore,
+        balanceAfter: card.balance,
+        operatorId: dto.operatorId,
+        remark: dto.remark ?? 'recharge',
+      }))
+
+      return card
     })
-
-    return card
   }
 
   async deduct(cardId: number, dto: DeductDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>): Promise<MemberCardEntity> {
     const { tenantId, areaId } = requireTenantAreaContext(context)
-    const card = await this.cardRepository.findOneBy({ id: cardId, tenantId })
-    if (!card)
-      throw new BadRequestException('Member card not found')
-    if (Number(card.balance) < dto.amount)
-      throw new BadRequestException('Insufficient balance')
+    if (Number(dto.amount) <= 0)
+      throw new BadRequestException('Deduct amount must be greater than 0')
 
-    const balanceBefore = Number(card.balance)
-    card.balance = balanceBefore - dto.amount
-    card.totalSpend = Number(card.totalSpend) + dto.amount
+    return this.dataSource.transaction(async (manager) => {
+      const cardRepository = manager.getRepository(MemberCardEntity)
+      const logRepository = manager.getRepository(MemberCardLogEntity)
+      const card = await cardRepository.createQueryBuilder('card')
+        .setLock('pessimistic_write')
+        .where('card.id = :cardId', { cardId })
+        .andWhere('card.tenantId = :tenantId', { tenantId })
+        .getOne()
+      if (!card)
+        throw new BadRequestException('Member card not found')
+      if (Number(card.status) !== 1)
+        throw new BadRequestException('Member card is not active')
+      if (Number(card.balance) < dto.amount)
+        throw new BadRequestException('Insufficient balance')
 
-    await this.cardRepository.save(card)
-    await this.logRepository.save({
-      tenantId,
-      areaId,
-      cardId,
-      type: 3,
-      amount: dto.amount,
-      direction: 2,
-      balanceBefore,
-      balanceAfter: card.balance,
-      operatorId: dto.operatorId,
-      billingId: dto.billingId,
-      remark: dto.remark ?? 'billing_deduction',
+      const balanceBefore = Number(card.balance)
+      card.balance = balanceBefore - dto.amount
+      card.totalSpend = Number(card.totalSpend) + dto.amount
+
+      await cardRepository.save(card)
+      await logRepository.save(logRepository.create({
+        tenantId,
+        areaId,
+        cardId,
+        type: 3,
+        amount: dto.amount,
+        direction: 2,
+        balanceBefore,
+        balanceAfter: card.balance,
+        operatorId: dto.operatorId,
+        billingId: dto.billingId,
+        remark: dto.remark ?? 'billing_deduction',
+      }))
+
+      return card
     })
-
-    return card
   }
 
   async getCardLogs(cardId: number, dto: QueryMemberCardLogDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
