@@ -146,15 +146,23 @@ export class PrescriptionService extends BaseService<PrescriptionEntity> {
 
   async submitForReview(id: number, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>): Promise<void> {
     const { tenantId, areaId } = requireTenantAreaContext(context)
-    await this.rxRepository.update({
-      id,
-      tenantId,
-      areaId,
-    }, { status: 2 })
+    const rx = await this.rxRepository.findOneBy({ id, tenantId, areaId })
+    if (!rx)
+      throw new BusinessException('Prescription not found')
+    if (Number(rx.status) !== 1)
+      throw new BusinessException('Only draft prescriptions can be submitted for review')
+    await this.rxRepository.update({ id, tenantId, areaId }, { status: 2 })
   }
 
   async reviewRx(id: number, dto: ReviewPrescriptionDto, options: { currentUserId?: number, tenantId?: number, areaId?: number } = {}): Promise<void> {
     const { tenantId, areaId } = requireTenantAreaContext(options)
+    const rx = await this.rxRepository.findOneBy({ id, tenantId, areaId })
+    if (!rx)
+      throw new BusinessException('Prescription not found')
+    if (Number(rx.status) !== 2)
+      throw new BusinessException('Only pending-review prescriptions can be reviewed')
+    if (![3, 5].includes(Number(dto.status)))
+      throw new BusinessException('Prescription review status must be approved or voided')
     const pharmacistId = await this.resolveCurrentStaffDoctorId(options.currentUserId, tenantId) ?? dto.pharmacistId
     await this.rxRepository.update({
       id,
@@ -176,6 +184,8 @@ export class PrescriptionService extends BaseService<PrescriptionEntity> {
       throw new BusinessException('Prescription is cancelled')
     if (Number(rx.status) === 4)
       return rx
+    if (Number(rx.status) !== 3)
+      throw new BusinessException('Only reviewed prescriptions can be dispensed')
     if (!rx.details?.length)
       throw new BusinessException('Prescription has no details')
 

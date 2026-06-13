@@ -60,6 +60,7 @@ auditProtectedUploadPersistenceAwait()
 auditVisitMediaFileSafety()
 auditBillingMemberCardPaymentBoundaries()
 auditPrescriptionCurrentStaffTenantBoundary()
+auditPrescriptionWorkflowStateBoundaries()
 auditVisitDerivedRecordConsistency()
 auditAppointmentWorkflowStateBoundaries()
 auditTrustedClientIpResolution()
@@ -851,6 +852,78 @@ function auditPrescriptionCurrentStaffTenantBoundary() {
       line: 1,
       rule: 'incomplete-prescription-current-staff-tenant-tests',
       message: 'Prescription current-staff tenant tests must cover direct lookup and at least one workflow that uses it.',
+    })
+  })
+}
+
+function auditPrescriptionWorkflowStateBoundaries() {
+  const serviceFile = 'src/modules/vpet-prescription/prescription.service.ts'
+  const specFile = 'src/modules/vpet-prescription/prescription.service.spec.ts'
+  const servicePath = join(root, ...serviceFile.split('/'))
+  const specPath = join(root, ...specFile.split('/'))
+  if (!existsSync(servicePath))
+    return
+
+  const serviceContent = readFileSync(servicePath, 'utf8')
+  const requiredServicePatterns = [
+    {
+      pattern: /Only draft prescriptions can be submitted for review/,
+      rule: 'prescription-submit-draft-only-required',
+      message: 'Prescription submission must only allow draft prescriptions to enter pending review.',
+    },
+    {
+      pattern: /Only pending-review prescriptions can be reviewed/,
+      rule: 'prescription-review-pending-only-required',
+      message: 'Prescription review must only allow pending-review prescriptions to be approved or voided.',
+    },
+    {
+      pattern: /Prescription review status must be approved or voided/,
+      rule: 'prescription-review-target-status-required',
+      message: 'Prescription review must restrict target status to approved or voided.',
+    },
+    {
+      pattern: /Only reviewed prescriptions can be dispensed/,
+      rule: 'prescription-dispense-reviewed-only-required',
+      message: 'Prescription dispensing must only allow reviewed prescriptions so stock cannot be deducted from draft or pending orders.',
+    },
+  ]
+
+  requiredServicePatterns.forEach(({ pattern, rule, message }) => {
+    if (pattern.test(serviceContent))
+      return
+    findings.push({
+      file: serviceFile,
+      line: 1,
+      rule,
+      message,
+    })
+  })
+
+  if (!existsSync(specPath)) {
+    findings.push({
+      file: specFile,
+      line: 1,
+      rule: 'missing-prescription-workflow-state-tests',
+      message: 'Prescription workflow state boundaries must have regression tests for submit, review, review target status, and dispense restrictions.',
+    })
+    return
+  }
+
+  const specContent = readFileSync(specPath, 'utf8')
+  const requiredSpecPatterns = [
+    /not drafts/i,
+    /not pending review/i,
+    /unsupported review target statuses/i,
+    /before review approval/i,
+  ]
+  requiredSpecPatterns.forEach((pattern) => {
+    if (pattern.test(specContent))
+      return
+    findings.push({
+      file: specFile,
+      line: 1,
+      rule: 'incomplete-prescription-workflow-state-tests',
+      message: 'Prescription workflow tests must cover non-draft submit, non-pending review, unsupported review target status, and dispensing before approval.',
     })
   })
 }
