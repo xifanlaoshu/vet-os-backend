@@ -14,7 +14,7 @@ jest.mock('sharp', () => ({
 
 jest.mock('~/utils/file.util', () => ({
   fileRename: jest.fn(() => 'file-20260613000000000.png'),
-  getExtname: jest.fn(() => 'png'),
+  getExtname: jest.fn((fileName: string) => String(fileName).split('.').pop() || ''),
   getFileType: jest.fn(() => 'image'),
   getProtectedUploadPath: jest.fn(() => 'tenant/2/area/3/2026-06-13/image/file-20260613000000000.png'),
   getSize: jest.fn(() => '8 B'),
@@ -84,5 +84,25 @@ describe('uploadService file safety', () => {
       mimetype: 'image/png',
       toBuffer: jest.fn(async () => Buffer.from('not-a-png')),
     } as any, { uid: 9, tenantId: 2, areaId: 3 } as any)).rejects.toBeInstanceOf(BadRequestException)
+  })
+
+  it('rejects uncommon image formats before persisting files', async () => {
+    const repository = { save: jest.fn() }
+    const service = new UploadService(repository as any)
+
+    await expect(service.saveFile({
+      filename: 'file.heic',
+      mimetype: 'image/heic',
+      toBuffer: jest.fn(async () => Buffer.from('heic')),
+    } as any, { uid: 9, tenantId: 2, areaId: 3 } as any)).rejects.toBeInstanceOf(BadRequestException)
+
+    await expect(service.saveFile({
+      filename: 'file.svg',
+      mimetype: 'image/svg+xml',
+      toBuffer: jest.fn(async () => Buffer.from('<svg />')),
+    } as any, { uid: 9, tenantId: 2, areaId: 3 } as any)).rejects.toBeInstanceOf(BadRequestException)
+
+    expect(saveLocalFileMock).not.toHaveBeenCalled()
+    expect(repository.save).not.toHaveBeenCalled()
   })
 })
