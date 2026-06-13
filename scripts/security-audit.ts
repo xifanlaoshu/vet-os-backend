@@ -57,6 +57,7 @@ auditTenantAreaLifecycleFilters()
 auditTenantScopedRolePermissionBoundaries()
 auditTenantScopedUniqueConstraints()
 auditTenantScopedDepartmentBoundaries()
+auditPlatformOnlySystemUserManagement()
 auditPublicAuthEndpointHardening()
 auditStorageTokenExpiration()
 auditProtectedUploadPersistenceAwait()
@@ -975,6 +976,60 @@ function auditTenantScopedDepartmentBoundaries() {
       line: 1,
       rule: 'missing-tenant-scoped-department-tests',
       message: 'Tenant-scoped department boundaries must have regression tests.',
+    })
+  }
+}
+
+function auditPlatformOnlySystemUserManagement() {
+  const controllerFile = 'src/modules/user/user.controller.ts'
+  const controllerPath = join(root, ...controllerFile.split('/'))
+  if (!existsSync(controllerPath)) {
+    findings.push({
+      file: controllerFile,
+      line: 1,
+      rule: 'missing-system-user-controller',
+      message: 'System user management controller is required for platform-only boundary checks.',
+    })
+    return
+  }
+
+  const content = readFileSync(controllerPath, 'utf8')
+  const requiredPatterns = [
+    {
+      pattern: /ForbiddenException/,
+      rule: 'system-user-platform-forbidden-required',
+      message: 'System user management must reject non-platform administrators.',
+    },
+    {
+      pattern: /assertPlatformAdmin\(user\)/,
+      rule: 'system-user-platform-check-required',
+      message: 'System user management handlers must assert platformAdmin before invoking global user services.',
+    },
+    {
+      pattern: /user\?\.platformAdmin/,
+      rule: 'system-user-platform-admin-flag-required',
+      message: 'System user management must use the explicit platformAdmin token flag.',
+    },
+    {
+      pattern: /System user management requires platform administrator privileges/,
+      rule: 'system-user-platform-denial-message-required',
+      message: 'System user management denial must be explicit for auditability.',
+    },
+  ]
+
+  requiredPatterns.forEach(({ pattern, rule, message }) => {
+    if (pattern.test(content))
+      return
+    findings.push({ file: controllerFile, line: 1, rule, message })
+  })
+
+  const specFile = 'src/modules/user/user.controller.spec.ts'
+  if (!existsSync(join(root, ...specFile.split('/')))) {
+    findings.push({
+      file: specFile,
+      line: 1,
+      rule: 'missing-system-user-platform-boundary-tests',
+      message: 'System user platform-only management must have regression tests.',
     })
   }
 }
