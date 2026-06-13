@@ -21,6 +21,101 @@ function createConsentService(overrides: {
 }
 
 describe('consentService record workflow boundaries', () => {
+  it('rejects consent record creation when the linked visit is outside the current area', async () => {
+    const save = jest.fn()
+    const service = createConsentService({
+      templateRepository: {
+        findOneBy: jest.fn(async () => ({ id: 1, isActive: 1, content: 'content' })),
+      },
+      visitRepository: {
+        findOne: jest.fn(async () => null),
+      },
+      recordRepository: {
+        create: jest.fn((value: any) => value),
+        save,
+      },
+    })
+
+    await expect(service.createRecord({
+      templateId: 1,
+      visitId: 8,
+      customerId: 5,
+      petId: 6,
+    }, { tenantId: 2, areaId: 3 })).rejects.toBeInstanceOf(BusinessException)
+
+    expect(save).not.toHaveBeenCalled()
+  })
+
+  it('rejects consent record creation when the selected customer differs from the visit customer', async () => {
+    const save = jest.fn()
+    const service = createConsentService({
+      templateRepository: {
+        findOneBy: jest.fn(async () => ({ id: 1, isActive: 1, content: 'content' })),
+      },
+      visitRepository: {
+        findOne: jest.fn(async () => ({ id: 8, customerId: 5, petId: 6, doctorId: 7 })),
+      },
+      customerRepository: {
+        findOneBy: jest.fn(async () => ({ id: 99, name: 'Other Customer' })),
+      },
+      petRepository: {
+        findOneBy: jest.fn(async () => ({ id: 6, customerId: 99 })),
+      },
+      doctorRepository: {
+        findOneBy: jest.fn(async () => ({ id: 7 })),
+      },
+      recordRepository: {
+        create: jest.fn((value: any) => value),
+        save,
+      },
+    })
+
+    await expect(service.createRecord({
+      templateId: 1,
+      visitId: 8,
+      customerId: 99,
+      petId: 6,
+      doctorId: 7,
+    }, { tenantId: 2, areaId: 3 })).rejects.toBeInstanceOf(BusinessException)
+
+    expect(save).not.toHaveBeenCalled()
+  })
+
+  it('rejects consent record creation when the selected doctor differs from the visit doctor', async () => {
+    const save = jest.fn()
+    const service = createConsentService({
+      templateRepository: {
+        findOneBy: jest.fn(async () => ({ id: 1, isActive: 1, content: 'content' })),
+      },
+      visitRepository: {
+        findOne: jest.fn(async () => ({ id: 8, customerId: 5, petId: 6, doctorId: 7 })),
+      },
+      customerRepository: {
+        findOneBy: jest.fn(async () => ({ id: 5, name: 'Visit Customer' })),
+      },
+      petRepository: {
+        findOneBy: jest.fn(async () => ({ id: 6, customerId: 5 })),
+      },
+      doctorRepository: {
+        findOneBy: jest.fn(async () => ({ id: 77 })),
+      },
+      recordRepository: {
+        create: jest.fn((value: any) => value),
+        save,
+      },
+    })
+
+    await expect(service.createRecord({
+      templateId: 1,
+      visitId: 8,
+      customerId: 5,
+      petId: 6,
+      doctorId: 77,
+    }, { tenantId: 2, areaId: 3 })).rejects.toBeInstanceOf(BusinessException)
+
+    expect(save).not.toHaveBeenCalled()
+  })
+
   it('rejects signing consent records that are already signed', async () => {
     const update = jest.fn()
     const service = createConsentService({

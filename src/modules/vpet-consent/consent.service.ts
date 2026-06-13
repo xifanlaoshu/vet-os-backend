@@ -175,6 +175,8 @@ export class ConsentService {
     const visit = dto.visitId
       ? await this.visitRepository.findOne({ where: { id: dto.visitId, tenantId, areaId }, relations: ['customer', 'pet', 'doctor'] })
       : null
+    if (dto.visitId && !visit)
+      throw new BusinessException('Visit not found')
 
     const customerId = dto.customerId ?? visit?.customerId
     const petId = dto.petId ?? visit?.petId
@@ -196,6 +198,12 @@ export class ConsentService {
       throw new BusinessException('Pet does not belong to the selected customer')
     if (visit && Number(visit.petId) !== Number(pet.id))
       throw new BusinessException('Visit does not belong to the selected pet')
+    if (visit && Number(visit.customerId) !== Number(customer.id))
+      throw new BusinessException('Visit does not belong to the selected customer')
+    if (visit && doctorId && visit.doctorId && Number(visit.doctorId) !== Number(doctorId))
+      throw new BusinessException('Visit does not belong to the selected doctor')
+    if (doctorId && !doctor)
+      throw new BusinessException('Doctor not found')
 
     const record = this.recordRepository.create({
       tenantId,

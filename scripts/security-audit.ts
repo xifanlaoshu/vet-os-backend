@@ -66,6 +66,7 @@ auditBillingMemberCardPaymentBoundaries()
 auditPrescriptionCurrentStaffTenantBoundary()
 auditPrescriptionWorkflowStateBoundaries()
 auditVisitDerivedRecordConsistency()
+auditConsentVisitDerivedRecordConsistency()
 auditInsuranceWorkflowStateBoundaries()
 auditAppointmentWorkflowStateBoundaries()
 auditClinicalWorkflowStateBoundaries()
@@ -1326,8 +1327,10 @@ function auditVisitDerivedRecordConsistency() {
       specFile: 'src/modules/vpet-lab/lab.service.spec.ts',
       customerPattern: /Lab customer does not match visit customer/,
       petPattern: /Lab pet does not match visit pet/,
+      billingPattern: /Lab template not found or inactive/,
       specCustomerPattern: /selected customer differs from the visit customer/i,
       specPetPattern: /selected pet differs from the visit pet/i,
+      specBillingPattern: /selected template is outside the current tenant/i,
     },
     {
       domain: 'reminder',
@@ -1404,6 +1407,61 @@ function auditVisitDerivedRecordConsistency() {
         message: `${target.domain} visit-derived record consistency tests must cover customer mismatch, pet mismatch, and linked billing mismatch where applicable.`,
       })
     }
+  })
+}
+
+function auditConsentVisitDerivedRecordConsistency() {
+  const serviceFile = 'src/modules/vpet-consent/consent.service.ts'
+  const specFile = 'src/modules/vpet-consent/consent.service.spec.ts'
+  const servicePath = join(root, ...serviceFile.split('/'))
+  const specPath = join(root, ...specFile.split('/'))
+  if (!existsSync(servicePath))
+    return
+
+  const serviceContent = readFileSync(servicePath, 'utf8')
+  const requiredServicePatterns = [
+    /dto\.visitId && !visit[\s\S]*Visit not found/,
+    /Visit does not belong to the selected pet/,
+    /Visit does not belong to the selected customer/,
+    /Visit does not belong to the selected doctor/,
+    /doctorId && !doctor[\s\S]*Doctor not found/,
+  ]
+  requiredServicePatterns.forEach((pattern) => {
+    if (pattern.test(serviceContent))
+      return
+    findings.push({
+      file: serviceFile,
+      line: 1,
+      rule: 'consent-visit-derived-consistency-required',
+      message: 'Consent records created from a visit must reject missing visits and customer, pet, or doctor values that differ from the visit.',
+    })
+  })
+
+  if (!existsSync(specPath)) {
+    findings.push({
+      file: specFile,
+      line: 1,
+      rule: 'missing-consent-visit-consistency-tests',
+      message: 'Consent visit-derived record consistency must have regression tests.',
+    })
+    return
+  }
+
+  const specContent = readFileSync(specPath, 'utf8')
+  const requiredSpecPatterns = [
+    /linked visit is outside the current area/i,
+    /selected customer differs from the visit customer/i,
+    /selected doctor differs from the visit doctor/i,
+  ]
+  requiredSpecPatterns.forEach((pattern) => {
+    if (pattern.test(specContent))
+      return
+    findings.push({
+      file: specFile,
+      line: 1,
+      rule: 'incomplete-consent-visit-consistency-tests',
+      message: 'Consent visit-derived consistency tests must cover missing linked visits, customer mismatch, and doctor mismatch.',
+    })
   })
 }
 

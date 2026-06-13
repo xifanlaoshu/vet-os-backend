@@ -80,6 +80,78 @@ describe('labService visit consistency boundaries', () => {
       testName: 'CBC',
     }, { tenantId: 2, areaId: 3 })).rejects.toBeInstanceOf(BusinessException)
   })
+
+  it('rejects lab order creation when the selected template is outside the current tenant', async () => {
+    const save = jest.fn()
+    const service = createLabService({
+      labOrderRepository: {
+        create: jest.fn((value: any) => value),
+        save,
+      },
+      labTemplateRepository: {
+        findOneBy: jest.fn(async () => null),
+      },
+      visitRepository: {
+        findOne: jest.fn(async () => ({ id: 8, customerId: 5, petId: 6, doctorId: 7 })),
+      },
+      customerRepository: {
+        findOneBy: jest.fn(async () => ({ id: 5, name: 'Visit Customer' })),
+      },
+      petRepository: {
+        findOneBy: jest.fn(async () => ({ id: 6, customerId: 5 })),
+      },
+      doctorRepository: {
+        findOneBy: jest.fn(async () => ({ id: 7 })),
+      },
+    })
+
+    await expect(service.create({
+      visitId: 8,
+      customerId: 5,
+      petId: 6,
+      doctorId: 7,
+      templateId: 99,
+      testName: 'CBC',
+    }, { tenantId: 2, areaId: 3 })).rejects.toBeInstanceOf(BusinessException)
+
+    expect(save).not.toHaveBeenCalled()
+  })
+
+  it('rejects lab order creation when the selected template is inactive', async () => {
+    const save = jest.fn()
+    const service = createLabService({
+      labOrderRepository: {
+        create: jest.fn((value: any) => value),
+        save,
+      },
+      labTemplateRepository: {
+        findOneBy: jest.fn(async () => ({ id: 99, isActive: 0 })),
+      },
+      visitRepository: {
+        findOne: jest.fn(async () => ({ id: 8, customerId: 5, petId: 6, doctorId: 7 })),
+      },
+      customerRepository: {
+        findOneBy: jest.fn(async () => ({ id: 5, name: 'Visit Customer' })),
+      },
+      petRepository: {
+        findOneBy: jest.fn(async () => ({ id: 6, customerId: 5 })),
+      },
+      doctorRepository: {
+        findOneBy: jest.fn(async () => ({ id: 7 })),
+      },
+    })
+
+    await expect(service.create({
+      visitId: 8,
+      customerId: 5,
+      petId: 6,
+      doctorId: 7,
+      templateId: 99,
+      testName: 'CBC',
+    }, { tenantId: 2, areaId: 3 })).rejects.toBeInstanceOf(BusinessException)
+
+    expect(save).not.toHaveBeenCalled()
+  })
 })
 
 describe('labService LIS workflow boundaries', () => {

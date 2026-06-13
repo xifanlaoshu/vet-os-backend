@@ -78,6 +78,8 @@ export class LabService {
     const template = dto.templateId
       ? await this.labTemplateRepository.findOneBy({ id: dto.templateId, tenantId })
       : null
+    if (dto.templateId && (!template || Number(template.isActive) !== 1))
+      throw new BusinessException('Lab template not found or inactive')
 
     const [customer, pet, doctor] = await Promise.all([
       this.customerRepository.findOneBy({ id: dto.customerId ?? visit.customerId, tenantId }),
