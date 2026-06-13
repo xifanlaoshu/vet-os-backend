@@ -56,6 +56,7 @@ auditJwtAuthGuardRegressionCoverage()
 auditTenantAreaLifecycleFilters()
 auditTenantScopedRolePermissionBoundaries()
 auditTenantScopedUniqueConstraints()
+auditTenantScopedDepartmentBoundaries()
 auditPublicAuthEndpointHardening()
 auditStorageTokenExpiration()
 auditProtectedUploadPersistenceAwait()
@@ -886,6 +887,94 @@ function auditTenantScopedUniqueConstraints() {
       line: 1,
       rule: 'missing-tenant-scoped-unique-tests',
       message: 'Tenant-scoped unique validator behavior must have regression tests.',
+    })
+  }
+}
+
+function auditTenantScopedDepartmentBoundaries() {
+  const checks: Array<{
+    file: string
+    patterns: Array<{ pattern: RegExp, rule: string, message: string }>
+  }> = [
+    {
+      file: 'src/modules/system/dept/dept.controller.ts',
+      patterns: [
+        {
+          pattern: /AuthUser\(\)\s*user:\s*IAuthUser/,
+          rule: 'dept-controller-auth-user-required',
+          message: 'Department controller handlers must receive the current auth user.',
+        },
+        {
+          pattern: /deptService\.getDeptTree\(dto,\s*user\)/,
+          rule: 'dept-list-tenant-context-required',
+          message: 'Department tree queries must pass tenant context.',
+        },
+        {
+          pattern: /deptService\.delete\(id,\s*user\)/,
+          rule: 'dept-delete-tenant-context-required',
+          message: 'Department delete must pass tenant context.',
+        },
+      ],
+    },
+    {
+      file: 'src/modules/system/dept/dept.service.ts',
+      patterns: [
+        {
+          pattern: /requireTenantContext\(context\)/,
+          rule: 'dept-service-require-tenant-context',
+          message: 'Department service must fail closed when tenant context is missing.',
+        },
+        {
+          pattern: /where:\s*\{\s*tenantId/,
+          rule: 'dept-tree-tenant-filter-required',
+          message: 'Department tree queries must filter by tenantId.',
+        },
+        {
+          pattern: /findOneBy\(\{\s*id,\s*tenantId\s*\}\)/,
+          rule: 'dept-parent-or-current-tenant-lookup-required',
+          message: 'Department parent/current lookups must include tenantId.',
+        },
+        {
+          pattern: /delete\(\{\s*id,\s*tenantId\s*\}\)/,
+          rule: 'dept-delete-scoped-criteria-required',
+          message: 'Department delete must use id + tenantId criteria.',
+        },
+        {
+          pattern: /countBy\(\{\s*tenantId,\s*dept:\s*\{\s*id\s*\}\s*\}\)/,
+          rule: 'dept-user-count-tenant-required',
+          message: 'Department user-count checks must include tenantId.',
+        },
+      ],
+    },
+  ]
+
+  checks.forEach(({ file, patterns }) => {
+    const absPath = join(root, ...file.split('/'))
+    if (!existsSync(absPath)) {
+      findings.push({
+        file,
+        line: 1,
+        rule: 'missing-tenant-scoped-department-file',
+        message: `${file} is required for tenant-scoped department boundaries.`,
+      })
+      return
+    }
+
+    const content = readFileSync(absPath, 'utf8')
+    patterns.forEach(({ pattern, rule, message }) => {
+      if (pattern.test(content))
+        return
+      findings.push({ file, line: 1, rule, message })
+    })
+  })
+
+  const specFile = 'src/modules/system/dept/dept.service.spec.ts'
+  if (!existsSync(join(root, ...specFile.split('/')))) {
+    findings.push({
+      file: specFile,
+      line: 1,
+      rule: 'missing-tenant-scoped-department-tests',
+      message: 'Tenant-scoped department boundaries must have regression tests.',
     })
   }
 }

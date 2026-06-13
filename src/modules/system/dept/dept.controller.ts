@@ -33,43 +33,43 @@ export class DeptController {
   @ApiOperation({ summary: 'Department list' })
   @ApiResult({ type: [DeptEntity] })
   @Perm(permissions.LIST)
-  async list(@Query() dto: DeptQueryDto, @AuthUser('uid') uid: number): Promise<DeptEntity[]> {
-    return this.deptService.getDeptTree(uid, dto)
+  async list(@Query() dto: DeptQueryDto, @AuthUser() user: IAuthUser): Promise<DeptEntity[]> {
+    return this.deptService.getDeptTree(dto, user)
   }
 
   @Post()
   @ApiOperation({ summary: 'Create department' })
   @Perm(permissions.CREATE)
-  async create(@Body(CreatorPipe) dto: DeptDto): Promise<void> {
-    await this.deptService.create(dto)
+  async create(@Body(CreatorPipe) dto: DeptDto, @AuthUser() user: IAuthUser): Promise<void> {
+    await this.deptService.create(dto, user)
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Department detail' })
   @Perm(permissions.READ)
-  async info(@IdParam() id: number) {
-    return this.deptService.info(id)
+  async info(@IdParam() id: number, @AuthUser() user: IAuthUser) {
+    return this.deptService.info(id, user)
   }
 
   @Put(':id')
   @ApiOperation({ summary: 'Update department' })
   @Perm(permissions.UPDATE)
-  async update(@IdParam() id: number, @Body(UpdaterPipe) updateDeptDto: DeptDto): Promise<void> {
-    await this.deptService.update(id, updateDeptDto)
+  async update(@IdParam() id: number, @Body(UpdaterPipe) updateDeptDto: DeptDto, @AuthUser() user: IAuthUser): Promise<void> {
+    await this.deptService.update(id, updateDeptDto, user)
   }
 
   @Delete(':id')
   @ApiOperation({ summary: 'Delete department' })
   @Perm(permissions.DELETE)
-  async delete(@IdParam() id: number): Promise<void> {
-    const count = await this.deptService.countUserByDeptId(id)
+  async delete(@IdParam() id: number, @AuthUser() user: IAuthUser): Promise<void> {
+    const count = await this.deptService.countUserByDeptId(id, user)
     if (count > 0)
       throw new BusinessException(ErrorEnum.DEPARTMENT_HAS_ASSOCIATED_USERS)
 
-    const count2 = await this.deptService.countChildDept(id)
+    const count2 = await this.deptService.countChildDept(id, user)
     if (count2 > 0)
       throw new BusinessException(ErrorEnum.DEPARTMENT_HAS_CHILD_DEPARTMENTS)
 
-    await this.deptService.delete(id)
+    await this.deptService.delete(id, user)
   }
 }
