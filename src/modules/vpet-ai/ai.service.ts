@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
+import { BusinessException } from '~/common/exceptions/biz.exception'
 import { requireTenantAreaContext } from '~/common/utils/tenant-context.util'
 import { paginate } from '~/helper/paginate'
 import { PetEntity } from '../vpet-pet/entities/pet.entity'
@@ -101,7 +102,7 @@ export class AiService {
       relations: ['details'],
     })
     if (!prescription) {
-      return null
+      throw new BusinessException('Prescription not found')
     }
 
     const visit = await this.visitRepository.findOneBy({ id: prescription.visitId, tenantId, areaId })

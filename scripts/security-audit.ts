@@ -70,6 +70,7 @@ auditInsuranceWorkflowStateBoundaries()
 auditAppointmentWorkflowStateBoundaries()
 auditClinicalWorkflowStateBoundaries()
 auditEmrActionMissingRecordBoundaries()
+auditAiActionMissingRecordBoundaries()
 auditTrustedClientIpResolution()
 auditSanitizedExceptionLogging()
 auditExternalHttpTimeouts()
@@ -1652,6 +1653,45 @@ function auditEmrActionMissingRecordBoundaries() {
       message: 'EMR action missing-record tests must cover lock, sign, and print audit rejection.',
     })
   })
+}
+
+function auditAiActionMissingRecordBoundaries() {
+  const serviceFile = 'src/modules/vpet-ai/ai.service.ts'
+  const specFile = 'src/modules/vpet-ai/ai.service.spec.ts'
+  const servicePath = join(root, ...serviceFile.split('/'))
+  const specPath = join(root, ...specFile.split('/'))
+  if (!existsSync(servicePath))
+    return
+
+  const serviceContent = readFileSync(servicePath, 'utf8')
+  if (!/async reviewPrescription[\s\S]*throw new BusinessException\(['"`]Prescription not found['"`]\)/.test(serviceContent)) {
+    findings.push({
+      file: serviceFile,
+      line: 1,
+      rule: 'ai-prescription-review-missing-record-required',
+      message: 'AI prescription review must reject missing or out-of-scope prescriptions instead of silently returning null.',
+    })
+  }
+
+  if (!existsSync(specPath)) {
+    findings.push({
+      file: specFile,
+      line: 1,
+      rule: 'missing-ai-action-missing-record-tests',
+      message: 'AI action endpoints must have regression tests for missing or out-of-scope business records.',
+    })
+    return
+  }
+
+  const specContent = readFileSync(specPath, 'utf8')
+  if (!/prescription reviews outside the current area/i.test(specContent)) {
+    findings.push({
+      file: specFile,
+      line: 1,
+      rule: 'incomplete-ai-action-missing-record-tests',
+      message: 'AI prescription review tests must cover missing or out-of-scope prescription rejection.',
+    })
+  }
 }
 
 function auditTrustedClientIpResolution() {
