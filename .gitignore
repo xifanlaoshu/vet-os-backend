@@ -74,4 +74,5 @@ out
 __data
 
 public/upload
+protected-upload
 types/env.d.ts

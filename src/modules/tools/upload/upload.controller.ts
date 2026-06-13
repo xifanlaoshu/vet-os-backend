@@ -44,10 +44,12 @@ export class UploadController {
       const result = await this.uploadService.saveFile(file, user)
 
       return {
+        id: result.id,
         filename: result.path,
         path: result.path,
         fileId: result.id,
         tokenExpiresAt: result.tokenExpiresAt,
+        thumbnail: result.thumbnail,
       }
     }
     catch (error) {

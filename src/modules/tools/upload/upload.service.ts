@@ -1,9 +1,11 @@
 import { randomBytes } from 'node:crypto'
+import path from 'node:path'
 import { MultipartFile } from '@fastify/multipart'
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import dayjs from 'dayjs'
 import { isNil } from 'lodash'
+import sharp from 'sharp'
 import { Repository } from 'typeorm'
 
 import { requireTenantAreaContext } from '~/common/utils/tenant-context.util'
@@ -47,6 +49,10 @@ export class UploadService {
 
   private readonly anonymousTokenTtlMinutes = 10
 
+  private readonly thumbnailWidth = 360
+
+  private readonly thumbnailQuality = 72
+
   constructor(
     @InjectRepository(Storage)
     private storageRepository: Repository<Storage>,
@@ -55,7 +61,16 @@ export class UploadService {
   /**
    * 保存文件上传记录
    */
-  async saveFile(file: MultipartFile, user: IAuthUser): Promise<{ id: number, path: string, tokenExpiresAt: Date }> {
+  async saveFile(file: MultipartFile, user: IAuthUser): Promise<{
+    id: number
+    path: string
+    tokenExpiresAt: Date
+    thumbnail?: {
+      id: number
+      path: string
+      tokenExpiresAt: Date
+    }
+  }> {
     if (isNil(file))
       throw new NotFoundException('Have not any file to upload!')
     const { tenantId, areaId } = requireTenantAreaContext(user)
@@ -100,9 +115,86 @@ export class UploadService {
       scanStatus: 2,
     })
 
+    const thumbnail = await this.createImageThumbnail({
+      buffer,
+      sourceName: name,
+      originalFileName: fileName,
+      currentDate,
+      tenantId,
+      areaId,
+      userId: user.uid,
+      sourceStorageId: storage.id,
+    })
+
     return {
       id: storage.id,
       path,
+      tokenExpiresAt,
+      ...(thumbnail ? { thumbnail } : {}),
+    }
+  }
+
+  private async createImageThumbnail({
+    buffer,
+    sourceName,
+    originalFileName,
+    currentDate,
+    tenantId,
+    areaId,
+    userId,
+    sourceStorageId,
+  }: {
+    buffer: Buffer
+    sourceName: string
+    originalFileName: string
+    currentDate: string
+    tenantId: number
+    areaId: number
+    userId: number
+    sourceStorageId: number
+  }) {
+    const sourceExt = getExtname(sourceName).toLowerCase()
+    if (!['png', 'jpg', 'jpeg', 'webp'].includes(sourceExt))
+      return null
+
+    const thumbnailBuffer = await sharp(buffer, { animated: false })
+      .rotate()
+      .resize({ width: this.thumbnailWidth, withoutEnlargement: true })
+      .webp({ quality: this.thumbnailQuality })
+      .toBuffer()
+    const parsedSourceName = path.parse(sourceName)
+    const parsedOriginalFileName = path.parse(originalFileName)
+    const thumbnailName = `${parsedSourceName.name}-thumb.webp`
+    const thumbnailFileName = `${parsedOriginalFileName.name || parsedSourceName.name}-thumb.webp`
+    const extName = 'webp'
+    const type = getFileType(extName)
+    const accessToken = randomBytes(32).toString('base64url')
+    const tokenExpiresAt = dayjs().add(this.anonymousTokenTtlMinutes, 'minute').toDate()
+    const diskPath = getProtectedUploadPath(tenantId, areaId, thumbnailName, currentDate, type)
+    const thumbnailPath = `/api/tools/storage/file/${accessToken}`
+
+    await saveLocalFile(thumbnailBuffer, thumbnailName, currentDate, type, tenantId, areaId)
+    const thumbnailStorage = await this.storageRepository.save({
+      name: thumbnailName,
+      fileName: thumbnailFileName,
+      extName,
+      path: thumbnailPath,
+      diskPath,
+      accessToken,
+      tokenExpiresAt,
+      type,
+      size: getSize(thumbnailBuffer.length),
+      userId,
+      tenantId,
+      areaId,
+      bizType: 'vpet_media_thumbnail',
+      bizId: sourceStorageId,
+      scanStatus: 2,
+    })
+
+    return {
+      id: thumbnailStorage.id,
+      path: thumbnailPath,
       tokenExpiresAt,
     }
   }

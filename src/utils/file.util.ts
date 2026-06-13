@@ -20,7 +20,7 @@ export function getFileType(extName: string) {
   const music = 'mp3 wav wma mpa ram ra aac aif m4a'
   const video = 'avi mpg mpe mpeg asf wmv mov qt rm mp4 flv m4v webm ogv ogg'
   const image
-    = 'bmp dib pcp dif wmf gif jpg tif eps psd cdr iff tga pcd mpt png jpeg'
+    = 'bmp dib pcp dif wmf gif jpg tif eps psd cdr iff tga pcd mpt png jpeg webp'
   if (image.includes(extName))
     return Type.IMAGE
 

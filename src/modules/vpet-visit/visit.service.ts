@@ -939,6 +939,12 @@ export class VisitService extends BaseService<VisitEntity> {
     const storageId = dto.storageType === 'local'
       ? await this.resolveVisitMediaStorageId(dto.storageId, safeUrl, visit.tenantId, visit.areaId)
       : null
+    const thumbnailUrl = dto.storageType === 'local' && dto.thumbnailUrl
+      ? this.validateVisitMediaUrl(dto.storageType, dto.thumbnailUrl)
+      : null
+    const thumbnailStorageId = dto.storageType === 'local' && thumbnailUrl
+      ? await this.resolveVisitMediaStorageId(dto.thumbnailStorageId, thumbnailUrl, visit.tenantId, visit.areaId)
+      : null
 
     await this.mediaFileRepository.save(this.mediaFileRepository.create({
       tenantId: visit.tenantId,
@@ -948,9 +954,11 @@ export class VisitService extends BaseService<VisitEntity> {
       fileType: dto.fileType,
       storageType: dto.storageType,
       storageId,
+      thumbnailStorageId,
       fileName: dto.fileName ?? null,
       originalName: dto.originalName ?? null,
       url: safeUrl,
+      thumbnailUrl,
       mimeType: dto.mimeType ?? null,
       fileSize: dto.fileSize ?? null,
       sortNo: dto.sortNo ?? await this.nextMediaFileSortNo(batchId),
@@ -1355,9 +1363,11 @@ export class VisitService extends BaseService<VisitEntity> {
           fileType: file.fileType,
           storageType: file.storageType,
           storageId: file.storageId,
+          thumbnailStorageId: file.thumbnailStorageId,
           fileName: file.fileName,
           originalName: file.originalName,
           url: file.url,
+          thumbnailUrl: file.thumbnailUrl,
           mimeType: file.mimeType,
           fileSize: file.fileSize,
           sortNo: file.sortNo,

@@ -2,6 +2,16 @@ import { BadRequestException } from '@nestjs/common'
 import { saveLocalFile } from '~/utils/file.util'
 import { UploadService } from './upload.service'
 
+jest.mock('sharp', () => ({
+  __esModule: true,
+  default: jest.fn(() => ({
+    rotate: jest.fn().mockReturnThis(),
+    resize: jest.fn().mockReturnThis(),
+    webp: jest.fn().mockReturnThis(),
+    toBuffer: jest.fn(async () => Buffer.from('thumbnail')),
+  })),
+}))
+
 jest.mock('~/utils/file.util', () => ({
   fileRename: jest.fn(() => 'file-20260613000000000.png'),
   getExtname: jest.fn(() => 'png'),
@@ -20,13 +30,14 @@ describe('uploadService file safety', () => {
 
   it('waits for protected local file persistence before saving storage metadata', async () => {
     const writes: string[] = []
-    saveLocalFileMock.mockImplementation(async () => {
-      writes.push('file')
+    saveLocalFileMock.mockImplementation(async (_buffer, name) => {
+      writes.push(String(name).includes('-thumb.') ? 'thumbnail-file' : 'file')
     })
+    let nextId = 10
     const repository = {
       save: jest.fn(async (payload) => {
-        writes.push('metadata')
-        return { ...payload, id: 10 }
+        writes.push(payload.bizType === 'vpet_media_thumbnail' ? 'thumbnail-metadata' : 'metadata')
+        return { ...payload, id: nextId++ }
       }),
     }
     const service = new UploadService(repository as any)
@@ -39,14 +50,27 @@ describe('uploadService file safety', () => {
       id: 10,
       path: expect.stringMatching(/^\/api\/tools\/storage\/file\//),
       tokenExpiresAt: expect.any(Date),
+      thumbnail: {
+        id: 11,
+        path: expect.stringMatching(/^\/api\/tools\/storage\/file\//),
+        tokenExpiresAt: expect.any(Date),
+      },
     })
 
-    expect(writes).toEqual(['file', 'metadata'])
+    expect(writes).toEqual(['file', 'metadata', 'thumbnail-file', 'thumbnail-metadata'])
     expect(repository.save).toHaveBeenCalledWith(expect.objectContaining({
       tenantId: 2,
       areaId: 3,
       scanStatus: 2,
       tokenExpiresAt: expect.any(Date),
+    }))
+    expect(repository.save).toHaveBeenCalledWith(expect.objectContaining({
+      tenantId: 2,
+      areaId: 3,
+      extName: 'webp',
+      bizType: 'vpet_media_thumbnail',
+      bizId: 10,
+      scanStatus: 2,
     }))
     const savedPayload = repository.save.mock.calls[0][0]
     expect(savedPayload.tokenExpiresAt.getTime()).toBeLessThanOrEqual(Date.now() + 10 * 60 * 1000)

@@ -300,6 +300,10 @@ export class CreateVisitMediaFileDto {
   storageId?: number
 
   @IsOptional()
+  @IsInt()
+  thumbnailStorageId?: number
+
+  @IsOptional()
   @IsString()
   fileName?: string
 
@@ -309,6 +313,10 @@ export class CreateVisitMediaFileDto {
 
   @IsString()
   url: string
+
+  @IsOptional()
+  @IsString()
+  thumbnailUrl?: string
 
   @IsOptional()
   @IsString()

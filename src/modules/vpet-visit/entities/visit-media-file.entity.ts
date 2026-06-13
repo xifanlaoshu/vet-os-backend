@@ -6,6 +6,7 @@ import { VisitEntity } from './visit.entity'
 @Index('idx_visit_media_file_batch', ['batchId'])
 @Index('idx_visit_media_file_visit', ['visitId'])
 @Index('idx_visit_media_file_storage', ['storageId'])
+@Index('idx_visit_media_file_thumb_storage', ['thumbnailStorageId'])
 @Entity('vpet_visit_media_file')
 export class VisitMediaFileEntity extends CommonEntity {
   @Column({ name: 'tenant_id', default: 1, comment: '租户 ID' })
@@ -37,6 +38,9 @@ export class VisitMediaFileEntity extends CommonEntity {
   @Column({ name: 'storage_id', nullable: true })
   storageId: number | null
 
+  @Column({ name: 'thumbnail_storage_id', nullable: true })
+  thumbnailStorageId: number | null
+
   @Column({ name: 'file_name', length: 255, nullable: true })
   fileName: string | null
 
@@ -45,6 +49,9 @@ export class VisitMediaFileEntity extends CommonEntity {
 
   @Column({ type: 'varchar', length: 1000 })
   url: string
+
+  @Column({ name: 'thumbnail_url', type: 'varchar', length: 1000, nullable: true })
+  thumbnailUrl: string | null
 
   @Column({ name: 'mime_type', length: 120, nullable: true })
   mimeType: string | null
