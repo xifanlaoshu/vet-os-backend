@@ -89,6 +89,10 @@ export class LabService {
       throw new BusinessException('Customer not found')
     if (!pet)
       throw new BusinessException('Pet not found')
+    if (visit.customerId && Number(customer.id) !== Number(visit.customerId))
+      throw new BusinessException('Lab customer does not match visit customer')
+    if (visit.petId && Number(pet.id) !== Number(visit.petId))
+      throw new BusinessException('Lab pet does not match visit pet')
     if (Number(pet.customerId) !== Number(customer.id)) {
       throw new BusinessException('Pet does not belong to the selected customer')
     }

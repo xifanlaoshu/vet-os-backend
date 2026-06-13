@@ -88,6 +88,12 @@ export class HospitalizationService {
       throw new BusinessException('Customer not found')
     if (!pet)
       throw new BusinessException('Pet not found')
+    if (visit.customerId && Number(customer.id) !== Number(visit.customerId))
+      throw new BusinessException('Hospitalization customer does not match visit customer')
+    if (visit.petId && Number(pet.id) !== Number(visit.petId))
+      throw new BusinessException('Hospitalization pet does not match visit pet')
+    if (doctor && visit.doctorId && Number(doctor.id) !== Number(visit.doctorId))
+      throw new BusinessException('Hospitalization doctor does not match visit doctor')
     if (Number(pet.customerId) !== Number(customer.id))
       throw new BusinessException('Pet does not belong to the selected customer')
 

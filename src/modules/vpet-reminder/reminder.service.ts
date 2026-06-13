@@ -66,6 +66,8 @@ export class ReminderService {
       throw new BusinessException('Pet not found')
     if (Number(pet.customerId) !== Number(customer.id))
       throw new BusinessException('Pet does not belong to the selected customer')
+    if (visit && Number(visit.customerId) !== Number(dto.customerId))
+      throw new BusinessException('Visit does not belong to the selected customer')
     if (visit && Number(visit.petId) !== Number(dto.petId))
       throw new BusinessException('Visit does not belong to the selected pet')
 

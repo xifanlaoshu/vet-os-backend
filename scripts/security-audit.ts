@@ -60,6 +60,7 @@ auditProtectedUploadPersistenceAwait()
 auditVisitMediaFileSafety()
 auditBillingMemberCardPaymentBoundaries()
 auditPrescriptionCurrentStaffTenantBoundary()
+auditVisitDerivedRecordConsistency()
 auditTrustedClientIpResolution()
 auditSanitizedExceptionLogging()
 auditExternalHttpTimeouts()
@@ -850,6 +851,83 @@ function auditPrescriptionCurrentStaffTenantBoundary() {
       rule: 'incomplete-prescription-current-staff-tenant-tests',
       message: 'Prescription current-staff tenant tests must cover direct lookup and at least one workflow that uses it.',
     })
+  })
+}
+
+function auditVisitDerivedRecordConsistency() {
+  const targets = [
+    {
+      domain: 'hospitalization',
+      serviceFile: 'src/modules/vpet-hospitalization/hospitalization.service.ts',
+      specFile: 'src/modules/vpet-hospitalization/hospitalization.service.spec.ts',
+      customerPattern: /Hospitalization customer does not match visit customer/,
+      petPattern: /Hospitalization pet does not match visit pet/,
+      specCustomerPattern: /selected customer differs from the visit customer/i,
+      specPetPattern: /selected pet differs from the visit pet/i,
+    },
+    {
+      domain: 'lab',
+      serviceFile: 'src/modules/vpet-lab/lab.service.ts',
+      specFile: 'src/modules/vpet-lab/lab.service.spec.ts',
+      customerPattern: /Lab customer does not match visit customer/,
+      petPattern: /Lab pet does not match visit pet/,
+      specCustomerPattern: /selected customer differs from the visit customer/i,
+      specPetPattern: /selected pet differs from the visit pet/i,
+    },
+    {
+      domain: 'reminder',
+      serviceFile: 'src/modules/vpet-reminder/reminder.service.ts',
+      specFile: 'src/modules/vpet-reminder/reminder.service.spec.ts',
+      customerPattern: /Visit does not belong to the selected customer/,
+      petPattern: /Visit does not belong to the selected pet/,
+      specCustomerPattern: /selected customer differs from the linked visit customer/i,
+      specPetPattern: /selected pet differs from the linked visit pet/i,
+    },
+  ]
+
+  targets.forEach((target) => {
+    const servicePath = join(root, ...target.serviceFile.split('/'))
+    const specPath = join(root, ...target.specFile.split('/'))
+    if (!existsSync(servicePath))
+      return
+
+    const serviceContent = readFileSync(servicePath, 'utf8')
+    if (!target.customerPattern.test(serviceContent)) {
+      findings.push({
+        file: target.serviceFile,
+        line: 1,
+        rule: `${target.domain}-visit-customer-consistency-required`,
+        message: `${target.domain} records created from a visit must reject customer values that differ from the visit customer.`,
+      })
+    }
+    if (!target.petPattern.test(serviceContent)) {
+      findings.push({
+        file: target.serviceFile,
+        line: 1,
+        rule: `${target.domain}-visit-pet-consistency-required`,
+        message: `${target.domain} records created from a visit must reject pet values that differ from the visit pet.`,
+      })
+    }
+
+    if (!existsSync(specPath)) {
+      findings.push({
+        file: target.specFile,
+        line: 1,
+        rule: `missing-${target.domain}-visit-consistency-tests`,
+        message: `${target.domain} visit-derived record consistency must have regression tests for customer and pet mismatch.`,
+      })
+      return
+    }
+
+    const specContent = readFileSync(specPath, 'utf8')
+    if (!target.specCustomerPattern.test(specContent) || !target.specPetPattern.test(specContent)) {
+      findings.push({
+        file: target.specFile,
+        line: 1,
+        rule: `incomplete-${target.domain}-visit-consistency-tests`,
+        message: `${target.domain} visit-derived record consistency tests must cover customer mismatch and pet mismatch.`,
+      })
+    }
   })
 }
 
