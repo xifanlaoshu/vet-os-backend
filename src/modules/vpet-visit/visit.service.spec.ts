@@ -1,9 +1,15 @@
 import { BusinessException } from '~/common/exceptions/biz.exception'
+import { deleteFile } from '~/utils'
 
 import { VisitService } from './visit.service'
 
+jest.mock('~/utils', () => ({
+  deleteFile: jest.fn(),
+}))
+
 function createVisitService(overrides: {
   visitRepository?: any
+  mediaFileRepository?: any
   operationAuditRepository?: any
   storageRepository?: any
 } = {}) {
@@ -15,7 +21,7 @@ function createVisitService(overrides: {
     {} as any,
     {} as any,
     {} as any,
-    {} as any,
+    overrides.mediaFileRepository ?? {} as any,
     {} as any,
     {} as any,
     {} as any,
@@ -103,6 +109,68 @@ describe('visitService media file safety', () => {
     expect(() => service.validateVisitMediaMimeType('video', 'video/mp4'))
       .not
       .toThrow()
+  })
+
+  it('deletes media file records together with original and thumbnail storage files', async () => {
+    const visitRepository = {
+      findOneBy: jest.fn(async () => ({ id: 8, tenantId: 2, areaId: 3, doctorId: 6 })),
+    }
+    const mediaFileRepository = {
+      findOneBy: jest.fn(async () => ({
+        id: 12,
+        visitId: 8,
+        batchId: 5,
+        tenantId: 2,
+        areaId: 3,
+        storageId: 21,
+        thumbnailStorageId: 22,
+      })),
+      delete: jest.fn(),
+    }
+    const storageRepository = {
+      find: jest.fn(async () => [
+        { id: 21, diskPath: 'tenant/2/area/3/2026-06-13/image/original.png' },
+        { id: 22, diskPath: 'tenant/2/area/3/2026-06-13/image/thumb.webp' },
+      ]),
+      delete: jest.fn(),
+    }
+    const service = createVisitService({
+      visitRepository,
+      mediaFileRepository,
+      storageRepository,
+    })
+    service.listVisitMediaBatches = jest.fn(async () => [{ id: 5 }])
+
+    await expect(service.deleteVisitMediaFile(8, 5, 12, { tenantId: 2, areaId: 3 }))
+      .resolves
+      .toEqual([{ id: 5 }])
+
+    expect(mediaFileRepository.findOneBy).toHaveBeenCalledWith(expect.objectContaining({
+      id: 12,
+      batchId: 5,
+      visitId: 8,
+      tenantId: 2,
+      areaId: 3,
+    }))
+    expect(mediaFileRepository.delete).toHaveBeenCalledWith(expect.objectContaining({
+      id: 12,
+      batchId: 5,
+      visitId: 8,
+      tenantId: 2,
+      areaId: 3,
+    }))
+    expect(storageRepository.find).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        tenantId: 2,
+        areaId: 3,
+      }),
+    }))
+    expect(storageRepository.delete).toHaveBeenCalledWith(expect.objectContaining({
+      tenantId: 2,
+      areaId: 3,
+    }))
+    expect(deleteFile).toHaveBeenCalledWith('tenant/2/area/3/2026-06-13/image/original.png')
+    expect(deleteFile).toHaveBeenCalledWith('tenant/2/area/3/2026-06-13/image/thumb.webp')
   })
 })
 

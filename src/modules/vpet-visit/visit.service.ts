@@ -1,11 +1,12 @@
 import { createHash } from 'node:crypto'
 import { Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
-import { Brackets, QueryFailedError, Repository } from 'typeorm'
+import { Brackets, In, QueryFailedError, Repository } from 'typeorm'
 import { BusinessException } from '~/common/exceptions/biz.exception'
 import { requireTenantAreaContext, requireTenantContext } from '~/common/utils/tenant-context.util'
 import { BaseService } from '~/helper/crud/base.service'
 import { paginate } from '~/helper/paginate'
+import { deleteFile } from '~/utils'
 import { Storage } from '../tools/storage/storage.entity'
 import { AppointmentEntity } from '../vpet-appointment/entities/appointment.entity'
 import { DoctorEntity } from '../vpet-appointment/entities/doctor.entity'
@@ -964,6 +965,57 @@ export class VisitService extends BaseService<VisitEntity> {
       sortNo: dto.sortNo ?? await this.nextMediaFileSortNo(batchId),
       remark: dto.remark ?? null,
     }))
+
+    return this.listVisitMediaBatches(visitId, options)
+  }
+
+  async deleteVisitMediaFile(visitId: number, batchId: number, fileId: number, options: CurrentStaffScopeOptions = {}) {
+    const visit = await this.findScopedVisit(visitId, options)
+    if (!visit)
+      throw new BusinessException('Visit not found')
+    await this.assertVisitBelongsToScopedDoctor(visit, options)
+
+    const mediaFile = await this.mediaFileRepository.findOneBy({
+      id: fileId,
+      batchId,
+      visitId,
+      tenantId: visit.tenantId,
+      areaId: visit.areaId,
+    })
+    if (!mediaFile)
+      throw new BusinessException('Media file not found')
+
+    const storageIds = [mediaFile.storageId, mediaFile.thumbnailStorageId]
+      .map(id => Number(id || 0))
+      .filter(id => id > 0)
+
+    await this.mediaFileRepository.delete({
+      id: fileId,
+      batchId,
+      visitId,
+      tenantId: visit.tenantId,
+      areaId: visit.areaId,
+    })
+
+    if (storageIds.length > 0) {
+      const storageItems = await this.storageRepository.find({
+        where: {
+          id: In(storageIds),
+          tenantId: visit.tenantId,
+          areaId: visit.areaId,
+        },
+      })
+      if (storageItems.length > 0) {
+        await this.storageRepository.delete({
+          id: In(storageItems.map(item => item.id)),
+          tenantId: visit.tenantId,
+          areaId: visit.areaId,
+        })
+        storageItems.forEach((item) => {
+          deleteFile(item.diskPath || item.path)
+        })
+      }
+    }
 
     return this.listVisitMediaBatches(visitId, options)
   }

@@ -187,6 +187,18 @@ export class VisitController {
     return this.visitService.createVisitMediaFile(id, Number(batchId), dto, { scope, currentUserId: user?.uid, tenantId: user?.tenantId, areaId: user?.areaId })
   }
 
+  @Delete(':id/media-batches/:batchId/files/:fileId')
+  @ApiOperation({ summary: 'Delete media file from visit media batch' })
+  async deleteMediaFile(
+    @IdParam() id: number,
+    @Param('batchId') batchId: string,
+    @Param('fileId') fileId: string,
+    @Query('scope') scope: string | undefined,
+    @AuthUser() user: IAuthUser,
+  ) {
+    return this.visitService.deleteVisitMediaFile(id, Number(batchId), Number(fileId), { scope, currentUserId: user?.uid, tenantId: user?.tenantId, areaId: user?.areaId })
+  }
+
   @Put(':id')
   @ApiOperation({ summary: '更新就诊(保存SOAP等)' })
   async update(
