@@ -60,6 +60,7 @@ auditTenantScopedDepartmentBoundaries()
 auditPlatformOnlySystemUserManagement()
 auditPlatformOnlyTenantManagement()
 auditPlatformOnlyMenuManagement()
+auditPlatformOnlyTaskManagement()
 auditPublicAuthEndpointHardening()
 auditStorageTokenExpiration()
 auditProtectedUploadPersistenceAwait()
@@ -1190,6 +1191,81 @@ function auditPlatformOnlyMenuManagement() {
       line: 1,
       rule: 'incomplete-menu-management-platform-boundary-tests',
       message: 'Menu platform-only tests must cover tenant read access, non-platform write denial, platform write access, and backend permission enumeration denial.',
+    })
+  })
+}
+
+function auditPlatformOnlyTaskManagement() {
+  const controllerFile = 'src/modules/system/task/task.controller.ts'
+  const controllerPath = join(root, ...controllerFile.split('/'))
+  if (!existsSync(controllerPath)) {
+    findings.push({
+      file: controllerFile,
+      line: 1,
+      rule: 'missing-system-task-controller',
+      message: 'System task management controller is required for platform-only boundary checks.',
+    })
+    return
+  }
+
+  const content = readFileSync(controllerPath, 'utf8')
+  const requiredPatterns = [
+    {
+      pattern: /ForbiddenException/,
+      rule: 'task-management-platform-forbidden-required',
+      message: 'Task platform management must reject non-platform administrators.',
+    },
+    {
+      pattern: /assertPlatformAdmin\(user\)/,
+      rule: 'task-management-platform-check-required',
+      message: 'Task list, detail, mutation, and execution handlers must assert platformAdmin.',
+    },
+    {
+      pattern: /user\?\.platformAdmin/,
+      rule: 'task-management-platform-admin-flag-required',
+      message: 'Task platform management must use the explicit platformAdmin token flag.',
+    },
+    {
+      pattern: /Task platform management requires platform administrator privileges/,
+      rule: 'task-management-platform-denial-message-required',
+      message: 'Task platform management denial must be explicit for auditability.',
+    },
+  ]
+
+  requiredPatterns.forEach(({ pattern, rule, message }) => {
+    if (pattern.test(content))
+      return
+    findings.push({ file: controllerFile, line: 1, rule, message })
+  })
+
+  const specFile = 'src/modules/system/task/task.controller.spec.ts'
+  const specPath = join(root, ...specFile.split('/'))
+  if (!existsSync(specPath)) {
+    findings.push({
+      file: specFile,
+      line: 1,
+      rule: 'missing-task-management-platform-boundary-tests',
+      message: 'Task platform-only management must have regression tests.',
+    })
+    return
+  }
+
+  const specContent = readFileSync(specPath, 'utf8')
+  const requiredSpecPatterns = [
+    /rejects task list access for non-platform administrators/i,
+    /allows platform administrators to list global tasks/i,
+    /rejects task creation and update for non-platform administrators/i,
+    /rejects task execution controls for non-platform administrators/i,
+    /rejects task deletion for non-platform administrators/i,
+  ]
+  requiredSpecPatterns.forEach((pattern) => {
+    if (pattern.test(specContent))
+      return
+    findings.push({
+      file: specFile,
+      line: 1,
+      rule: 'incomplete-task-management-platform-boundary-tests',
+      message: 'Task platform-only tests must cover list, mutation, execution control, and deletion boundaries.',
     })
   })
 }
