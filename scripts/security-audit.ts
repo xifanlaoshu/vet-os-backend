@@ -59,6 +59,7 @@ auditStorageTokenExpiration()
 auditProtectedUploadPersistenceAwait()
 auditVisitMediaFileSafety()
 auditPharmacyStockOutTransactionSafety()
+auditStoreTransferWorkflowSafety()
 auditMemberCardBalanceTransactionSafety()
 auditBillingPaymentTransactionSafety()
 auditBillingMemberCardPaymentBoundaries()
@@ -805,6 +806,88 @@ function auditPharmacyStockOutTransactionSafety() {
       line: 1,
       rule: 'incomplete-pharmacy-stock-out-safety-tests',
       message: 'Pharmacy stock out tests must cover pessimistic locking, tenant-area scope, ledger snapshots, and insufficient stock without mutation.',
+    })
+  })
+}
+
+function auditStoreTransferWorkflowSafety() {
+  const serviceFile = 'src/modules/vpet-store/store.service.ts'
+  const specFile = 'src/modules/vpet-store/store.service.spec.ts'
+  const servicePath = join(root, ...serviceFile.split('/'))
+  const specPath = join(root, ...specFile.split('/'))
+  if (!existsSync(servicePath))
+    return
+
+  const serviceContent = readFileSync(servicePath, 'utf8')
+  const requiredServicePatterns = [
+    {
+      pattern: /Only pending transfers can be approved/,
+      rule: 'store-transfer-approve-pending-only-required',
+      message: 'Store transfers must only be approved from pending status.',
+    },
+    {
+      pattern: /Transfer must be approved before completion/,
+      rule: 'store-transfer-complete-approved-only-required',
+      message: 'Store transfers must only be completed after approval.',
+    },
+    {
+      pattern: /dataSource\.transaction/,
+      rule: 'store-transfer-complete-transaction-required',
+      message: 'Store transfer completion must run inside a transaction so source and target stock updates commit atomically.',
+    },
+    {
+      pattern: /\.setLock\(\s*['"`]pessimistic_write['"`]\s*\)[\s\S]*transfer\.id\s*=\s*:id/,
+      rule: 'store-transfer-row-lock-required',
+      message: 'Store transfer completion must pessimistically lock the transfer row before checking and changing status.',
+    },
+    {
+      pattern: /\.setLock\(\s*['"`]pessimistic_write['"`]\s*\)[\s\S]*stock\.storeId\s*=\s*:storeId/,
+      rule: 'store-transfer-stock-lock-required',
+      message: 'Store transfer completion must pessimistically lock source and target stock rows before changing quantities.',
+    },
+    {
+      pattern: /Insufficient source stock/,
+      rule: 'store-transfer-source-stock-check-required',
+      message: 'Store transfer completion must reject insufficient source stock before mutating stock rows.',
+    },
+  ]
+
+  requiredServicePatterns.forEach(({ pattern, rule, message }) => {
+    if (pattern.test(serviceContent))
+      return
+    findings.push({
+      file: serviceFile,
+      line: 1,
+      rule,
+      message,
+    })
+  })
+
+  if (!existsSync(specPath)) {
+    findings.push({
+      file: specFile,
+      line: 1,
+      rule: 'missing-store-transfer-workflow-tests',
+      message: 'Store transfer workflow must have regression tests for approval status, transfer row lock, stock row locks, and insufficient source stock.',
+    })
+    return
+  }
+
+  const specContent = readFileSync(specPath, 'utf8')
+  const requiredSpecPatterns = [
+    /not pending/i,
+    /locks transfer and stock rows/i,
+    /pessimistic_write/,
+    /locked source stock is insufficient/i,
+  ]
+  requiredSpecPatterns.forEach((pattern) => {
+    if (pattern.test(specContent))
+      return
+    findings.push({
+      file: specFile,
+      line: 1,
+      rule: 'incomplete-store-transfer-workflow-tests',
+      message: 'Store transfer tests must cover non-pending approval, transfer and stock locks, and insufficient source stock without mutation.',
     })
   })
 }

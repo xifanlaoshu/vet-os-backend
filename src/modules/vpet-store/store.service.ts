@@ -145,10 +145,15 @@ export class StoreService {
 
   async approveTransfer(id: number, dto: ApproveTransferDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
     const { tenantId, areaId } = requireTenantAreaContext(context)
+    const transfer = await this.transferRepository.findOneBy({ id, tenantId, areaId })
+    if (!transfer)
+      throw new BusinessException('Transfer not found')
+    if (Number(transfer.status) !== 1)
+      throw new BusinessException('Only pending transfers can be approved')
     await this.transferRepository.update({ id, tenantId, areaId }, {
       status: 2,
       approvedBy: dto.approvedBy ?? null,
-      approvedAt: new Date().toISOString(),
+      approvedAt: transfer.approvedAt ?? new Date().toISOString(),
     })
     return this.transferRepository.findOne({
       where: { id, tenantId, areaId },
@@ -163,10 +168,13 @@ export class StoreService {
       const transferItemRepository = manager.getRepository(DrugTransferItemEntity)
       const stockRepository = manager.getRepository(StoreDrugStockEntity)
 
-      const transfer = await transferRepository.findOne({
-        where: { id, tenantId, areaId },
-        relations: ['items'],
-      })
+      const transfer = await transferRepository.createQueryBuilder('transfer')
+        .setLock('pessimistic_write')
+        .leftJoinAndSelect('transfer.items', 'items')
+        .where('transfer.id = :id', { id })
+        .andWhere('transfer.tenantId = :tenantId', { tenantId })
+        .andWhere('transfer.areaId = :areaId', { areaId })
+        .getOne()
       if (!transfer)
         throw new BusinessException('Transfer not found')
       if (Number(transfer.status) === 3)
@@ -176,14 +184,26 @@ export class StoreService {
 
       const items = await transferItemRepository.find({ where: { transferId: id, tenantId, areaId } })
       for (const item of items) {
-        const sourceStock = await stockRepository.findOneBy({ storeId: transfer.sourceStoreId, drugId: item.drugId, tenantId, areaId })
+        const sourceStock = await stockRepository.createQueryBuilder('stock')
+          .setLock('pessimistic_write')
+          .where('stock.storeId = :storeId', { storeId: transfer.sourceStoreId })
+          .andWhere('stock.drugId = :drugId', { drugId: item.drugId })
+          .andWhere('stock.tenantId = :tenantId', { tenantId })
+          .andWhere('stock.areaId = :areaId', { areaId })
+          .getOne()
         if (!sourceStock || Number(sourceStock.quantity) < Number(item.quantity)) {
           throw new BusinessException(`Insufficient source stock for ${item.drugName}`)
         }
         sourceStock.quantity = Number(sourceStock.quantity) - Number(item.quantity)
         await stockRepository.save(sourceStock)
 
-        let targetStock = await stockRepository.findOneBy({ storeId: transfer.targetStoreId, drugId: item.drugId, tenantId, areaId })
+        let targetStock = await stockRepository.createQueryBuilder('stock')
+          .setLock('pessimistic_write')
+          .where('stock.storeId = :storeId', { storeId: transfer.targetStoreId })
+          .andWhere('stock.drugId = :drugId', { drugId: item.drugId })
+          .andWhere('stock.tenantId = :tenantId', { tenantId })
+          .andWhere('stock.areaId = :areaId', { areaId })
+          .getOne()
         if (!targetStock) {
           targetStock = stockRepository.create({
             tenantId,
