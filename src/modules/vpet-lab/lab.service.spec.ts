@@ -3,6 +3,9 @@ import { BusinessException } from '~/common/exceptions/biz.exception'
 import { LabService } from './lab.service'
 
 function createLabService(overrides: {
+  labOrderRepository?: any
+  labResultItemRepository?: any
+  lisOrderRepository?: any
   labTemplateRepository?: any
   visitRepository?: any
   customerRepository?: any
@@ -10,9 +13,9 @@ function createLabService(overrides: {
   doctorRepository?: any
 } = {}) {
   return new LabService(
-    {} as any,
-    {} as any,
-    {} as any,
+    overrides.labOrderRepository ?? {} as any,
+    overrides.labResultItemRepository ?? {} as any,
+    overrides.lisOrderRepository ?? {} as any,
     overrides.labTemplateRepository ?? {} as any,
     overrides.visitRepository ?? {} as any,
     overrides.customerRepository ?? {} as any,
@@ -76,5 +79,29 @@ describe('labService visit consistency boundaries', () => {
       doctorId: 7,
       testName: 'CBC',
     }, { tenantId: 2, areaId: 3 })).rejects.toBeInstanceOf(BusinessException)
+  })
+})
+
+describe('labService LIS workflow boundaries', () => {
+  it('rejects submitting completed lab orders to LIS', async () => {
+    const update = jest.fn()
+    const saveLis = jest.fn()
+    const service = createLabService({
+      labOrderRepository: {
+        findOneBy: jest.fn(async () => ({ id: 8, status: 4 })),
+        update,
+      },
+      lisOrderRepository: {
+        findOneBy: jest.fn(async () => null),
+        create: jest.fn((value: any) => value),
+        save: saveLis,
+      },
+    })
+
+    await expect(service.submitLisOrder(8, { deviceCode: 'CBC-01' }, { tenantId: 2, areaId: 3 }))
+      .rejects
+      .toBeInstanceOf(BusinessException)
+    expect(saveLis).not.toHaveBeenCalled()
+    expect(update).not.toHaveBeenCalled()
   })
 })

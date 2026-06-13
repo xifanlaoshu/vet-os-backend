@@ -63,3 +63,44 @@ describe('reminderService visit consistency boundaries', () => {
     }, { tenantId: 2, areaId: 3 })).rejects.toBeInstanceOf(BusinessException)
   })
 })
+
+describe('reminderService workflow state boundaries', () => {
+  it('rejects completing reminders that are already canceled', async () => {
+    const update = jest.fn()
+    const service = createReminderService({
+      reminderRepository: {
+        findOneBy: jest.fn(async () => ({ id: 8, status: 4 })),
+        update,
+      },
+    })
+
+    await expect(service.complete(8, { tenantId: 2, areaId: 3 })).rejects.toBeInstanceOf(BusinessException)
+    expect(update).not.toHaveBeenCalled()
+  })
+
+  it('rejects canceling reminders that are already completed', async () => {
+    const update = jest.fn()
+    const service = createReminderService({
+      reminderRepository: {
+        findOneBy: jest.fn(async () => ({ id: 8, status: 3 })),
+        update,
+      },
+    })
+
+    await expect(service.cancel(8, { tenantId: 2, areaId: 3 })).rejects.toBeInstanceOf(BusinessException)
+    expect(update).not.toHaveBeenCalled()
+  })
+
+  it('keeps cancel idempotent for already canceled reminders', async () => {
+    const update = jest.fn()
+    const service = createReminderService({
+      reminderRepository: {
+        findOneBy: jest.fn(async () => ({ id: 8, status: 4 })),
+        update,
+      },
+    })
+
+    await expect(service.cancel(8, { tenantId: 2, areaId: 3 })).resolves.toEqual({ id: 8, status: 4 })
+    expect(update).not.toHaveBeenCalled()
+  })
+})

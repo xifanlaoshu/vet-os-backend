@@ -297,6 +297,8 @@ export class LabService {
     const order = await this.labOrderRepository.findOneBy({ id, tenantId, areaId })
     if (!order)
       throw new BusinessException('Lab order not found')
+    if (![1, 2].includes(Number(order.status)))
+      throw new BusinessException('Only pending or sampled lab orders can be submitted to LIS')
 
     let lisOrder = await this.lisOrderRepository.findOneBy({ labOrderId: id, tenantId, areaId })
     if (!lisOrder) {

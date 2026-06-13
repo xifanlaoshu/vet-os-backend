@@ -236,6 +236,8 @@ export class ConsentService {
       throw new BusinessException('Consent record not found')
     if (record.status === 3)
       throw new BusinessException('Consent record has been voided')
+    if (record.status === 2)
+      throw new BusinessException('Consent record has already been signed')
 
     await this.recordRepository.update({ id, tenantId, areaId }, {
       status: 2,
@@ -252,6 +254,10 @@ export class ConsentService {
     const record = await this.recordRepository.findOneBy({ id, tenantId, areaId })
     if (!record)
       throw new BusinessException('Consent record not found')
+    if (record.status === 2)
+      throw new BusinessException('Signed consent record cannot be voided')
+    if (record.status === 3)
+      return
     await this.recordRepository.update({ id, tenantId, areaId }, { status: 3 })
   }
 

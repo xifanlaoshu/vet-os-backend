@@ -68,6 +68,7 @@ auditPrescriptionWorkflowStateBoundaries()
 auditVisitDerivedRecordConsistency()
 auditInsuranceWorkflowStateBoundaries()
 auditAppointmentWorkflowStateBoundaries()
+auditClinicalWorkflowStateBoundaries()
 auditTrustedClientIpResolution()
 auditSanitizedExceptionLogging()
 auditExternalHttpTimeouts()
@@ -1502,6 +1503,91 @@ function auditAppointmentWorkflowStateBoundaries() {
       line: 1,
       rule: 'incomplete-appointment-workflow-state-tests',
       message: 'Appointment workflow state tests must cover direct status changes, checked-in core edits, checked-in cancel, visit cancel, idempotent cancel, and scoped missing records.',
+    })
+  })
+}
+
+function auditClinicalWorkflowStateBoundaries() {
+  const targets = [
+    {
+      domain: 'reminder',
+      serviceFile: 'src/modules/vpet-reminder/reminder.service.ts',
+      specFile: 'src/modules/vpet-reminder/reminder.service.spec.ts',
+      servicePatterns: [
+        /Completed or canceled reminders cannot be completed again/,
+        /Completed reminders cannot be canceled/,
+      ],
+      specPatterns: [
+        /already canceled/i,
+        /already completed/i,
+        /cancel idempotent/i,
+      ],
+    },
+    {
+      domain: 'consent',
+      serviceFile: 'src/modules/vpet-consent/consent.service.ts',
+      specFile: 'src/modules/vpet-consent/consent.service.spec.ts',
+      servicePatterns: [
+        /Consent record has already been signed/,
+        /Signed consent record cannot be voided/,
+      ],
+      specPatterns: [
+        /already signed/i,
+        /voiding consent records that are already signed/i,
+        /void idempotent/i,
+      ],
+    },
+    {
+      domain: 'lab',
+      serviceFile: 'src/modules/vpet-lab/lab.service.ts',
+      specFile: 'src/modules/vpet-lab/lab.service.spec.ts',
+      servicePatterns: [
+        /Only pending or sampled lab orders can be submitted to LIS/,
+      ],
+      specPatterns: [
+        /completed lab orders to LIS/i,
+      ],
+    },
+  ]
+
+  targets.forEach((target) => {
+    const servicePath = join(root, ...target.serviceFile.split('/'))
+    const specPath = join(root, ...target.specFile.split('/'))
+    if (!existsSync(servicePath))
+      return
+
+    const serviceContent = readFileSync(servicePath, 'utf8')
+    target.servicePatterns.forEach((pattern) => {
+      if (pattern.test(serviceContent))
+        return
+      findings.push({
+        file: target.serviceFile,
+        line: 1,
+        rule: `${target.domain}-clinical-workflow-state-required`,
+        message: `${target.domain} clinical workflow actions must enforce terminal-state boundaries.`,
+      })
+    })
+
+    if (!existsSync(specPath)) {
+      findings.push({
+        file: target.specFile,
+        line: 1,
+        rule: `missing-${target.domain}-clinical-workflow-tests`,
+        message: `${target.domain} clinical workflow state boundaries must have regression tests.`,
+      })
+      return
+    }
+
+    const specContent = readFileSync(specPath, 'utf8')
+    target.specPatterns.forEach((pattern) => {
+      if (pattern.test(specContent))
+        return
+      findings.push({
+        file: target.specFile,
+        line: 1,
+        rule: `incomplete-${target.domain}-clinical-workflow-tests`,
+        message: `${target.domain} clinical workflow state tests are missing a required terminal-state case.`,
+      })
     })
   })
 }

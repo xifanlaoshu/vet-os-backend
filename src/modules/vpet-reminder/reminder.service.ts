@@ -96,6 +96,8 @@ export class ReminderService {
     const current = await this.reminderRepository.findOneBy({ id, tenantId, areaId })
     if (!current)
       throw new BusinessException('Reminder not found')
+    if ([3, 4].includes(Number(current.status)))
+      throw new BusinessException('Completed or canceled reminders cannot be completed again')
     await this.reminderRepository.update({ id, tenantId, areaId }, {
       status: 3,
       completedAt: new Date().toISOString(),
@@ -109,6 +111,10 @@ export class ReminderService {
     const current = await this.reminderRepository.findOneBy({ id, tenantId, areaId })
     if (!current)
       throw new BusinessException('Reminder not found')
+    if (Number(current.status) === 3)
+      throw new BusinessException('Completed reminders cannot be canceled')
+    if (Number(current.status) === 4)
+      return current
     await this.reminderRepository.update({ id, tenantId, areaId }, { status: 4 })
     return this.reminderRepository.findOneBy({ id, tenantId, areaId })
   }
