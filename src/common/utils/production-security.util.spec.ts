@@ -9,6 +9,7 @@ function createConfigService(overrides: Record<string, any> = {}) {
       strictRbac: true,
       strictTenantContext: true,
       protectedUploadRoot: 'D:/vet-os-data/protected-upload',
+      publicUploadRoot: 'D:/vet-os-data/public-upload',
     },
     security: {
       jwtSecret: 'jwt-secret-with-enough-random-looking-length-1234567890',
@@ -81,6 +82,18 @@ describe('production security configuration guard', () => {
     const configService = createConfigService({
       app: {
         protectedUploadRoot: 'public/protected-upload',
+      },
+    })
+
+    expect(() => assertProductionSecurityConfig(configService as any)).toThrow(/PROTECTED_UPLOAD_ROOT/)
+  })
+
+  it('rejects protected upload roots inside configured public upload roots in production', () => {
+    process.env.NODE_ENV = 'production'
+    const configService = createConfigService({
+      app: {
+        protectedUploadRoot: 'runtime/public-upload/protected',
+        publicUploadRoot: 'runtime/public-upload',
       },
     })
 

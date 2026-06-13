@@ -962,7 +962,7 @@ export class VisitService extends BaseService<VisitEntity> {
       throw new BusinessException('Unsupported media URL protocol')
 
     if (storageType === 'local') {
-      if (!url.startsWith('/api/storage/file/') && !url.startsWith('/upload/'))
+      if (!url.startsWith('/api/storage/file/'))
         throw new BusinessException('Local media URL must reference an uploaded file')
       if (url.includes('..') || url.includes('\\'))
         throw new BusinessException('Invalid local media URL')

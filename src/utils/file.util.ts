@@ -68,7 +68,8 @@ export function fileRename(fileName: string) {
 }
 
 export function getFilePath(name: string, currentDate: string, type: string) {
-  return `/upload/${currentDate}/${type}/${name}`
+  const prefix = normalizeUrlPrefix(env('PUBLIC_UPLOAD_URL_PREFIX', '/upload'))
+  return `${prefix}/${currentDate}/${type}/${name}`
 }
 
 export function getProtectedUploadPath(tenantId: number, areaId: number, name: string, currentDate: string, type: string) {
@@ -82,10 +83,22 @@ export function getProtectedUploadRoot() {
   return path.resolve(cwd, configuredRoot)
 }
 
+export function getPublicUploadRoot() {
+  const configuredRoot = env('PUBLIC_UPLOAD_ROOT', '').trim()
+  if (!configuredRoot)
+    return path.resolve(cwd, 'public/upload')
+  return path.resolve(cwd, configuredRoot)
+}
+
+function normalizeUrlPrefix(prefix: string) {
+  const normalized = (prefix || '/upload').trim().replace(/\/+$/, '')
+  return normalized.startsWith('/') ? normalized : `/${normalized}`
+}
+
 export async function saveLocalFile(buffer: Buffer, name: string, currentDate: string, type: string, tenantId?: number, areaId?: number) {
   const root = tenantId && areaId
     ? getProtectedUploadRoot()
-    : path.join(__dirname, '../../', 'public/upload')
+    : getPublicUploadRoot()
   const filePath = tenantId && areaId
     ? path.join(root, 'tenant', String(tenantId), 'area', String(areaId), currentDate, type)
     : path.join(root, `${currentDate}/`, `${type}/`)
@@ -110,7 +123,7 @@ export function resolveProtectedUploadPath(relativePath: string) {
 }
 
 export async function saveFile(file: MultipartFile, name: string) {
-  const filePath = path.join(__dirname, '../../', 'public/upload', name)
+  const filePath = path.join(getPublicUploadRoot(), name)
   const writeStream = fs.createWriteStream(filePath)
   const buffer = await file.toBuffer()
   writeStream.write(buffer)
@@ -122,7 +135,7 @@ export async function deleteFile(name: string) {
     ? name
     : normalizedName.startsWith('tenant/')
       ? resolveProtectedUploadPath(name)
-      : path.join(__dirname, '../../', 'public', name)
+      : path.join(getPublicUploadRoot(), normalizedName.replace(/^\/?upload\//, ''))
   fs.unlink(targetPath, () => {
     // console.log(error);
   })

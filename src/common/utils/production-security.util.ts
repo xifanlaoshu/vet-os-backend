@@ -46,7 +46,16 @@ export function assertProductionSecurityConfig(configService: ConfigService<Conf
   else {
     const protectedUploadRoot = resolve(process.cwd(), appConfig.protectedUploadRoot)
     const publicRoot = resolve(process.cwd(), 'public')
-    if (protectedUploadRoot === publicRoot || protectedUploadRoot.startsWith(`${publicRoot}\\`) || protectedUploadRoot.startsWith(`${publicRoot}/`))
+    const publicUploadRoot = appConfig.publicUploadRoot?.trim()
+      ? resolve(process.cwd(), appConfig.publicUploadRoot)
+      : resolve(publicRoot, 'upload')
+    const isInsidePublicRoot = protectedUploadRoot === publicRoot
+      || protectedUploadRoot.startsWith(`${publicRoot}\\`)
+      || protectedUploadRoot.startsWith(`${publicRoot}/`)
+    const isInsidePublicUploadRoot = protectedUploadRoot === publicUploadRoot
+      || protectedUploadRoot.startsWith(`${publicUploadRoot}\\`)
+      || protectedUploadRoot.startsWith(`${publicUploadRoot}/`)
+    if (isInsidePublicRoot || isInsidePublicUploadRoot)
       errors.push('PROTECTED_UPLOAD_ROOT must not be inside the public directory')
   }
   if (swaggerConfig.enable)

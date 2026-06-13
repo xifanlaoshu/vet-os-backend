@@ -1802,9 +1802,9 @@ function auditVisitMediaFileSafety() {
       message: 'Visit media URL validation must reject script, data, file, and vbscript protocols.',
     },
     {
-      pattern: /!url\.startsWith\('\/api\/storage\/file\/'\)\s*&&\s*!url\.startsWith\('\/upload\/'\)/,
+      pattern: /if\s*\(\s*!url\.startsWith\('\/api\/storage\/file\/'\)\s*\)/,
       rule: 'visit-media-local-path-scope-required',
-      message: 'Local visit media URLs must be restricted to protected storage or upload paths.',
+      message: 'Local visit media URLs must be restricted to protected storage preview links.',
     },
     {
       pattern: /allowedHosts\.has\(parsed\.host\)/,

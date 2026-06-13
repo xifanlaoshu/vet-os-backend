@@ -1,19 +1,31 @@
 import path from 'node:path'
 
 import {
+  getFilePath,
   getProtectedUploadPath,
   getProtectedUploadRoot,
+  getPublicUploadRoot,
   resolveProtectedUploadPath,
 } from './file.util'
 
 describe('protected upload path configuration', () => {
   const originalProtectedUploadRoot = process.env.PROTECTED_UPLOAD_ROOT
+  const originalPublicUploadRoot = process.env.PUBLIC_UPLOAD_ROOT
+  const originalPublicUploadUrlPrefix = process.env.PUBLIC_UPLOAD_URL_PREFIX
 
   afterEach(() => {
     if (originalProtectedUploadRoot === undefined)
       delete process.env.PROTECTED_UPLOAD_ROOT
     else
       process.env.PROTECTED_UPLOAD_ROOT = originalProtectedUploadRoot
+    if (originalPublicUploadRoot === undefined)
+      delete process.env.PUBLIC_UPLOAD_ROOT
+    else
+      process.env.PUBLIC_UPLOAD_ROOT = originalPublicUploadRoot
+    if (originalPublicUploadUrlPrefix === undefined)
+      delete process.env.PUBLIC_UPLOAD_URL_PREFIX
+    else
+      process.env.PUBLIC_UPLOAD_URL_PREFIX = originalPublicUploadUrlPrefix
   })
 
   it('defaults protected uploads to the workspace protected-upload directory', () => {
@@ -26,6 +38,22 @@ describe('protected upload path configuration', () => {
     process.env.PROTECTED_UPLOAD_ROOT = 'runtime-data/protected-upload'
 
     expect(getProtectedUploadRoot()).toBe(path.resolve(process.cwd(), 'runtime-data/protected-upload'))
+  })
+
+  it('resolves public upload roots from environment variables for legacy public uploads', () => {
+    delete process.env.PUBLIC_UPLOAD_ROOT
+    expect(getPublicUploadRoot()).toBe(path.resolve(process.cwd(), 'public/upload'))
+
+    process.env.PUBLIC_UPLOAD_ROOT = 'runtime-data/public-upload'
+    expect(getPublicUploadRoot()).toBe(path.resolve(process.cwd(), 'runtime-data/public-upload'))
+  })
+
+  it('uses a configurable public upload URL prefix for legacy public upload links', () => {
+    delete process.env.PUBLIC_UPLOAD_URL_PREFIX
+    expect(getFilePath('file.png', '2026-06-13', 'image')).toBe('/upload/2026-06-13/image/file.png')
+
+    process.env.PUBLIC_UPLOAD_URL_PREFIX = '/assets/upload/'
+    expect(getFilePath('file.png', '2026-06-13', 'image')).toBe('/assets/upload/2026-06-13/image/file.png')
   })
 
   it('stores tenant-area disk paths in portable POSIX format', () => {

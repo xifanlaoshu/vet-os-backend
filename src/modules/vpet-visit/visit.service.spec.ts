@@ -56,8 +56,8 @@ describe('visitService media file safety', () => {
 
     expect(service.validateVisitMediaUrl('local', '/api/storage/file/token-123'))
       .toBe('/api/storage/file/token-123')
-    expect(service.validateVisitMediaUrl('local', '/upload/tenant/2/area/3/image.png'))
-      .toBe('/upload/tenant/2/area/3/image.png')
+    expect(() => service.validateVisitMediaUrl('local', '/upload/tenant/2/area/3/image.png'))
+      .toThrow(BusinessException)
     expect(() => service.validateVisitMediaUrl('local', '/assets/public.png'))
       .toThrow(BusinessException)
     expect(() => service.validateVisitMediaUrl('local', '/api/storage/file/../secret.png'))
