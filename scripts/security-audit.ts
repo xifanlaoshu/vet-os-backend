@@ -855,7 +855,17 @@ function auditPrescriptionCurrentStaffTenantBoundary() {
 }
 
 function auditVisitDerivedRecordConsistency() {
-  const targets = [
+  const targets: Array<{
+    domain: string
+    serviceFile: string
+    specFile: string
+    customerPattern: RegExp
+    petPattern: RegExp
+    billingPattern?: RegExp
+    specCustomerPattern: RegExp
+    specPetPattern: RegExp
+    specBillingPattern?: RegExp
+  }> = [
     {
       domain: 'hospitalization',
       serviceFile: 'src/modules/vpet-hospitalization/hospitalization.service.ts',
@@ -883,6 +893,17 @@ function auditVisitDerivedRecordConsistency() {
       specCustomerPattern: /selected customer differs from the linked visit customer/i,
       specPetPattern: /selected pet differs from the linked visit pet/i,
     },
+    {
+      domain: 'insurance',
+      serviceFile: 'src/modules/vpet-insurance/insurance.service.ts',
+      specFile: 'src/modules/vpet-insurance/insurance.service.spec.ts',
+      customerPattern: /Insurance claim data does not match visit/,
+      petPattern: /Insurance claim data does not match visit/,
+      billingPattern: /Billing does not match visit/,
+      specCustomerPattern: /selected customer differs from the visit customer/i,
+      specPetPattern: /selected pet differs from the visit pet/i,
+      specBillingPattern: /selected bill belongs to another visit/i,
+    },
   ]
 
   targets.forEach((target) => {
@@ -908,24 +929,34 @@ function auditVisitDerivedRecordConsistency() {
         message: `${target.domain} records created from a visit must reject pet values that differ from the visit pet.`,
       })
     }
+    if (target.billingPattern && !target.billingPattern.test(serviceContent)) {
+      findings.push({
+        file: target.serviceFile,
+        line: 1,
+        rule: `${target.domain}-visit-billing-consistency-required`,
+        message: `${target.domain} records created from a visit must reject billing values that differ from the visit bill.`,
+      })
+    }
 
     if (!existsSync(specPath)) {
       findings.push({
         file: target.specFile,
         line: 1,
         rule: `missing-${target.domain}-visit-consistency-tests`,
-        message: `${target.domain} visit-derived record consistency must have regression tests for customer and pet mismatch.`,
+        message: `${target.domain} visit-derived record consistency must have regression tests for customer, pet, and linked billing mismatch where applicable.`,
       })
       return
     }
 
     const specContent = readFileSync(specPath, 'utf8')
-    if (!target.specCustomerPattern.test(specContent) || !target.specPetPattern.test(specContent)) {
+    const hasRequiredVisitTests = target.specCustomerPattern.test(specContent) && target.specPetPattern.test(specContent)
+    const hasRequiredBillingTests = !target.specBillingPattern || target.specBillingPattern.test(specContent)
+    if (!hasRequiredVisitTests || !hasRequiredBillingTests) {
       findings.push({
         file: target.specFile,
         line: 1,
         rule: `incomplete-${target.domain}-visit-consistency-tests`,
-        message: `${target.domain} visit-derived record consistency tests must cover customer mismatch and pet mismatch.`,
+        message: `${target.domain} visit-derived record consistency tests must cover customer mismatch, pet mismatch, and linked billing mismatch where applicable.`,
       })
     }
   })
