@@ -23,6 +23,12 @@ export class LoginDto {
   @MinLength(4)
   @MaxLength(4)
   verifyCode: string
+
+  @ApiProperty({ description: 'MFA code', required: false })
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{6}$/)
+  mfaCode?: string
 }
 
 export class RegisterDto {

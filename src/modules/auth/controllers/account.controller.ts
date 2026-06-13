@@ -15,8 +15,9 @@ import { PasswordUpdateDto } from '~/modules/user/dto/password.dto'
 import { AccountInfo } from '../../user/user.model'
 import { UserService } from '../../user/user.service'
 import { AuthService } from '../auth.service'
-import { AccountMenus, AccountUpdateDto, SelectContextDto, SwitchAreaDto } from '../dto/account.dto'
+import { AccountMenus, AccountUpdateDto, MfaCodeDto, SelectContextDto, SwitchAreaDto } from '../dto/account.dto'
 import { JwtAuthGuard } from '../guards/jwt-auth.guard'
+import { MfaService } from '../services/mfa.service'
 
 @ApiTags('Account - 账户模块')
 @ApiSecurityAuth()
@@ -27,6 +28,7 @@ export class AccountController {
   constructor(
     private userService: UserService,
     private authService: AuthService,
+    private mfaService: MfaService,
     @Inject(AppConfig.KEY) private readonly appConfig: IAppConfig,
   ) {}
 
@@ -105,5 +107,26 @@ dto: AccountUpdateDto,
 dto: PasswordUpdateDto,
   ): Promise<void> {
     await this.userService.updatePassword(user.uid, dto)
+  }
+
+  @Post('mfa/setup')
+  @ApiOperation({ summary: 'Create MFA setup secret' })
+  @AllowAnon()
+  async setupMfa(@AuthUser() user: IAuthUser) {
+    return this.mfaService.createSetup(user)
+  }
+
+  @Post('mfa/enable')
+  @ApiOperation({ summary: 'Enable MFA' })
+  @AllowAnon()
+  async enableMfa(@AuthUser() user: IAuthUser, @Body() dto: MfaCodeDto) {
+    await this.mfaService.enable(user, dto.code)
+  }
+
+  @Post('mfa/disable')
+  @ApiOperation({ summary: 'Disable MFA' })
+  @AllowAnon()
+  async disableMfa(@AuthUser() user: IAuthUser, @Body() dto: MfaCodeDto) {
+    await this.mfaService.disable(user, dto.code)
   }
 }

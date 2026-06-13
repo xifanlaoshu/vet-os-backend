@@ -18,4 +18,7 @@ export class AccountInfo {
 
   @ApiProperty({ description: '头像' })
   avatar: string
+
+  @ApiProperty({ description: 'MFA enabled' })
+  mfaEnabled: boolean
 }

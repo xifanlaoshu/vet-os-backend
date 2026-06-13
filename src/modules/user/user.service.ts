@@ -79,6 +79,7 @@ export class UserService {
       throw new BusinessException(ErrorEnum.USER_NOT_FOUND)
 
     delete user?.psalt
+    delete user?.mfaSecret
 
     return user
   }

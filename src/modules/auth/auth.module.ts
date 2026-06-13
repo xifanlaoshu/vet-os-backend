@@ -23,6 +23,7 @@ import { EmailController } from './controllers/email.controller'
 import { AccessTokenEntity } from './entities/access-token.entity'
 import { RefreshTokenEntity } from './entities/refresh-token.entity'
 import { CaptchaService } from './services/captcha.service'
+import { MfaService } from './services/mfa.service'
 import { PermissionMetadataAuditService } from './services/permission-metadata-audit.service'
 import { TokenService } from './services/token.service'
 import { JwtStrategy } from './strategies/jwt.strategy'
@@ -34,7 +35,7 @@ const controllers = [
   CaptchaController,
   EmailController,
 ]
-const providers = [AuthService, TokenService, CaptchaService, PermissionMetadataAuditService]
+const providers = [AuthService, TokenService, CaptchaService, MfaService, PermissionMetadataAuditService]
 const strategies = [LocalStrategy, JwtStrategy]
 
 @Module({

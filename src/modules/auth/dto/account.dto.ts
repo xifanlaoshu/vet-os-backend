@@ -74,6 +74,13 @@ export class SelectContextDto {
   areaId: number
 }
 
+export class MfaCodeDto {
+  @ApiProperty({ description: 'MFA code' })
+  @IsString()
+  @Matches(/^\d{6}$/)
+  code: string
+}
+
 export class MenuMeta extends PartialType(OmitType(MenuEntity, ['parentId', 'createdAt', 'updatedAt', 'id', 'roles', 'path', 'name'] as const)) {
   title: string
 }

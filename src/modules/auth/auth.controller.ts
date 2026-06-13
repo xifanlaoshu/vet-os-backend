@@ -57,6 +57,7 @@ export class AuthController {
         dto.password,
         ip,
         ua,
+        dto.mfaCode,
       )
       await this.clearLoginFailures(dto.username, ip)
       setAuthSessionCookies(reply, this.appConfig, this.securityConfig, token.refreshToken)

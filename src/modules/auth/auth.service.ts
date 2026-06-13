@@ -20,6 +20,7 @@ import { RoleService } from '../system/role/role.service'
 import { TenantService } from '../system/tenant/tenant.service'
 
 import { LoginToken } from './models/auth.model'
+import { MfaService } from './services/mfa.service'
 import { TokenService } from './services/token.service'
 
 @Injectable()
@@ -31,6 +32,7 @@ export class AuthService {
     private tenantService: TenantService,
     private userService: UserService,
     private loginLogService: LoginLogService,
+    private mfaService: MfaService,
     private tokenService: TokenService,
     @Inject(SecurityConfig.KEY) private securityConfig: ISecurityConfig,
     @Inject(AppConfig.KEY) private appConfig: IAppConfig,
@@ -63,6 +65,7 @@ export class AuthService {
     password: string,
     ip: string,
     ua: string,
+    mfaCode?: string,
   ): Promise<LoginToken> {
     const user = await this.userService.findUserByUserName(username)
     if (isEmpty(user))
@@ -74,6 +77,8 @@ export class AuthService {
 
     if (isLegacyPasswordHash(user.password))
       await this.userService.setPasswordHash(user.id, await hashPassword(password, user.psalt))
+
+    this.mfaService.assertLoginAllowed(user, mfaCode)
 
     const roleIds = await this.roleService.getRoleIdsByUser(user.id)
 

@@ -33,3 +33,7 @@ export function genLoginFailKey(identifier: string | number) {
 export function genLoginLockKey(identifier: string | number) {
   return `auth:login:lock:${String(identifier)}` as const
 }
+
+export function genMfaSetupKey(uid: string | number) {
+  return `auth:mfa:setup:${String(uid)}` as const
+}

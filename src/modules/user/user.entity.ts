@@ -50,6 +50,13 @@ export class UserEntity extends CommonEntity {
   @Column({ nullable: true })
   remark: string
 
+  @Column({ name: 'mfa_enabled', type: 'tinyint', default: 0 })
+  mfaEnabled: boolean
+
+  @Exclude()
+  @Column({ name: 'mfa_secret', type: 'varchar', length: 512, nullable: true })
+  mfaSecret: string | null
+
   @Column({ type: 'tinyint', nullable: true, default: 1 })
   status: number
 

@@ -1,3 +1,4 @@
+import { hashPassword } from '~/utils'
 import { AuthService } from './auth.service'
 
 function createService(overrides: {
@@ -5,6 +6,9 @@ function createService(overrides: {
   menuService?: any
   roleService?: any
   tenantService?: any
+  userService?: any
+  loginLogService?: any
+  mfaService?: any
   tokenService?: any
 } = {}) {
   const redis = {
@@ -43,6 +47,19 @@ function createService(overrides: {
     })),
     ...overrides.tokenService,
   }
+  const userService = {
+    findUserByUserName: jest.fn(),
+    setPasswordHash: jest.fn(),
+    ...overrides.userService,
+  }
+  const mfaService = {
+    assertLoginAllowed: jest.fn(),
+    ...overrides.mfaService,
+  }
+  const loginLogService = {
+    create: jest.fn(),
+    ...overrides.loginLogService,
+  }
 
   return {
     service: new AuthService(
@@ -50,8 +67,9 @@ function createService(overrides: {
       menuService,
       roleService,
       tenantService,
-      {} as any,
-      {} as any,
+      userService,
+      loginLogService,
+      mfaService,
       tokenService,
       { jwtExprire: 3600 } as any,
       { multiDeviceLogin: false } as any,
@@ -60,6 +78,9 @@ function createService(overrides: {
     menuService,
     roleService,
     tenantService,
+    userService,
+    loginLogService,
+    mfaService,
     tokenService,
   }
 }
@@ -131,5 +152,35 @@ describe('authService tenant permission boundaries', () => {
       'EX',
       3600,
     )
+  })
+
+  it('requires enabled MFA users to pass MFA verification during login', async () => {
+    const password = 'StrongPassword123'
+    const salt = '0123456789abcdef0123456789abcdef'
+    const passwordHash = await hashPassword(password, salt)
+    const { service, mfaService, userService } = createService({
+      userService: {
+        findUserByUserName: jest.fn(async () => ({
+          id: 7,
+          username: 'doctor',
+          password: passwordHash,
+          psalt: salt,
+          mfaEnabled: true,
+          mfaSecret: 'encrypted-mfa-secret',
+        })),
+      },
+    })
+
+    await expect(service.login('doctor', password, '127.0.0.1', 'jest', '123456')).resolves.toEqual({
+      token: 'tenant-token',
+      refreshToken: 'refresh-token',
+    })
+
+    expect(mfaService.assertLoginAllowed).toHaveBeenCalledWith(expect.objectContaining({
+      id: 7,
+      mfaEnabled: true,
+      mfaSecret: 'encrypted-mfa-secret',
+    }), '123456')
+    expect(userService.findUserByUserName).toHaveBeenCalledWith('doctor')
   })
 })

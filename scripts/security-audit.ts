@@ -74,6 +74,7 @@ auditPlatformOnlyTaskManagement()
 auditPlatformOnlySystemOperations()
 auditPublicAuthEndpointHardening()
 auditAuthCookieCsrfSessionSafety()
+auditMfaFoundationSafety()
 auditStorageTokenExpiration()
 auditProtectedUploadPersistenceAwait()
 auditVisitMediaFileSafety()
@@ -1919,6 +1920,218 @@ function auditAuthCookieCsrfSessionSafety() {
       line: 1,
       rule: 'incomplete-auth-cookie-csrf-regression-tests',
       message: 'AuthController cookie/CSRF regression tests are missing a required security case.',
+    })
+  })
+}
+
+function auditMfaFoundationSafety() {
+  const authServicePath = join(root, 'src', 'modules', 'auth', 'auth.service.ts')
+  const accountControllerPath = join(root, 'src', 'modules', 'auth', 'controllers', 'account.controller.ts')
+  const userEntityPath = join(root, 'src', 'modules', 'user', 'user.entity.ts')
+  const mfaServicePath = join(root, 'src', 'modules', 'auth', 'services', 'mfa.service.ts')
+  const mfaUtilPath = join(root, 'src', 'modules', 'auth', 'utils', 'mfa.util.ts')
+  const authDtoPath = join(root, 'src', 'modules', 'auth', 'dto', 'auth.dto.ts')
+  const mfaSpecPath = join(root, 'src', 'modules', 'auth', 'services', 'mfa.service.spec.ts')
+  const authSpecPath = join(root, 'src', 'modules', 'auth', 'auth.service.spec.ts')
+
+  const requiredFiles = [
+    { path: mfaServicePath, file: 'src/modules/auth/services/mfa.service.ts', rule: 'mfa-service-required' },
+    { path: mfaUtilPath, file: 'src/modules/auth/utils/mfa.util.ts', rule: 'mfa-totp-utility-required' },
+  ]
+  requiredFiles.forEach(({ path: filePath, file, rule }) => {
+    if (existsSync(filePath))
+      return
+    findings.push({
+      file,
+      line: 1,
+      rule,
+      message: 'MFA foundation must include a dedicated service and TOTP utility.',
+    })
+  })
+
+  if (existsSync(userEntityPath)) {
+    const userEntity = readFileSync(userEntityPath, 'utf8')
+    const requiredUserPatterns = [
+      {
+        pattern: /name:\s*['"`]mfa_enabled['"`]/,
+        rule: 'user-mfa-enabled-column-required',
+        message: 'UserEntity must persist whether MFA is enabled.',
+      },
+      {
+        pattern: /name:\s*['"`]mfa_secret['"`][\s\S]*nullable:\s*true/,
+        rule: 'user-mfa-secret-column-required',
+        message: 'UserEntity must persist the encrypted MFA secret.',
+      },
+      {
+        pattern: /@Exclude\(\)[\s\S]*mfaSecret/,
+        rule: 'user-mfa-secret-excluded-required',
+        message: 'MFA secrets must be excluded from serialized user output.',
+      },
+    ]
+    requiredUserPatterns.forEach(({ pattern, rule, message }) => {
+      if (pattern.test(userEntity))
+        return
+      findings.push({
+        file: 'src/modules/user/user.entity.ts',
+        line: 1,
+        rule,
+        message,
+      })
+    })
+  }
+
+  if (existsSync(mfaUtilPath)) {
+    const mfaUtil = readFileSync(mfaUtilPath, 'utf8')
+    const requiredUtilPatterns = [
+      {
+        pattern: /createHmac\(['"`]sha1['"`]/,
+        rule: 'mfa-totp-hmac-required',
+        message: 'MFA TOTP verification must use the standard HMAC-SHA1 algorithm.',
+      },
+      {
+        pattern: /timingSafeEqual/,
+        rule: 'mfa-code-constant-time-compare-required',
+        message: 'MFA code comparisons must use timingSafeEqual.',
+      },
+      {
+        pattern: /aes-256-gcm/,
+        rule: 'mfa-secret-encryption-required',
+        message: 'MFA secrets must be encrypted before persistence.',
+      },
+    ]
+    requiredUtilPatterns.forEach(({ pattern, rule, message }) => {
+      if (pattern.test(mfaUtil))
+        return
+      findings.push({
+        file: 'src/modules/auth/utils/mfa.util.ts',
+        line: 1,
+        rule,
+        message,
+      })
+    })
+  }
+
+  if (existsSync(mfaServicePath)) {
+    const mfaService = readFileSync(mfaServicePath, 'utf8')
+    const requiredServicePatterns = [
+      {
+        pattern: /genMfaSetupKey\(user\.uid\)/,
+        rule: 'mfa-setup-redis-ttl-required',
+        message: 'MFA setup secrets must be stored temporarily in Redis with a TTL.',
+      },
+      {
+        pattern: /encryptMfaSecret\(secret,\s*this\.securityConfig\.cookieSecret\)/,
+        rule: 'mfa-service-encrypt-secret-required',
+        message: 'MFA service must encrypt setup secrets before storage.',
+      },
+      {
+        pattern: /verifyTotpCode\(secret,\s*code\)/,
+        rule: 'mfa-enable-code-verification-required',
+        message: 'MFA enablement must verify the pending TOTP code before persisting.',
+      },
+      {
+        pattern: /assertLoginAllowed/,
+        rule: 'mfa-login-gate-required',
+        message: 'MFA service must expose a login gate for enabled users.',
+      },
+    ]
+    requiredServicePatterns.forEach(({ pattern, rule, message }) => {
+      if (pattern.test(mfaService))
+        return
+      findings.push({
+        file: 'src/modules/auth/services/mfa.service.ts',
+        line: 1,
+        rule,
+        message,
+      })
+    })
+  }
+
+  if (existsSync(authServicePath) && !/mfaService\.assertLoginAllowed\(user,\s*mfaCode\)/.test(readFileSync(authServicePath, 'utf8'))) {
+    findings.push({
+      file: 'src/modules/auth/auth.service.ts',
+      line: 1,
+      rule: 'auth-login-mfa-gate-required',
+      message: 'AuthService.login() must call the MFA login gate after password verification and before token issuance.',
+    })
+  }
+
+  if (existsSync(accountControllerPath)) {
+    const accountController = readFileSync(accountControllerPath, 'utf8')
+    const requiredAccountPatterns = [
+      /@Post\(['"`]mfa\/setup['"`]\)/,
+      /@Post\(['"`]mfa\/enable['"`]\)/,
+      /@Post\(['"`]mfa\/disable['"`]\)/,
+    ]
+    requiredAccountPatterns.forEach((pattern) => {
+      if (pattern.test(accountController))
+        return
+      findings.push({
+        file: 'src/modules/auth/controllers/account.controller.ts',
+        line: 1,
+        rule: 'account-mfa-endpoints-required',
+        message: 'AccountController must expose MFA setup, enable, and disable endpoints.',
+      })
+    })
+  }
+
+  if (existsSync(authDtoPath) && !/mfaCode\??:\s*string/.test(readFileSync(authDtoPath, 'utf8'))) {
+    findings.push({
+      file: 'src/modules/auth/dto/auth.dto.ts',
+      line: 1,
+      rule: 'login-mfa-code-dto-required',
+      message: 'LoginDto must accept an optional MFA code for enabled users.',
+    })
+  }
+
+  const migrationExists = readdirSync(join(root, 'src', 'migrations')).some(file => /add-user-mfa/i.test(file))
+  if (!migrationExists) {
+    findings.push({
+      file: 'src/migrations',
+      line: 1,
+      rule: 'user-mfa-migration-required',
+      message: 'MFA user columns must be added through an explicit migration.',
+    })
+  }
+
+  const requiredSpecs = [
+    {
+      path: mfaSpecPath,
+      file: 'src/modules/auth/services/mfa.service.spec.ts',
+      patterns: [
+        /without storing the plain secret in Redis/i,
+        /enables MFA only after validating the pending setup code/i,
+        /rejects login when enabled MFA codes are missing or invalid/i,
+      ],
+    },
+    {
+      path: authSpecPath,
+      file: 'src/modules/auth/auth.service.spec.ts',
+      patterns: [
+        /requires enabled MFA users to pass MFA verification during login/i,
+      ],
+    },
+  ]
+  requiredSpecs.forEach(({ path: specPath, file, patterns }) => {
+    if (!existsSync(specPath)) {
+      findings.push({
+        file,
+        line: 1,
+        rule: 'missing-mfa-regression-tests',
+        message: 'MFA foundation must have regression tests for setup storage, enablement, and login enforcement.',
+      })
+      return
+    }
+    const spec = readFileSync(specPath, 'utf8')
+    patterns.forEach((pattern) => {
+      if (pattern.test(spec))
+        return
+      findings.push({
+        file,
+        line: 1,
+        rule: 'incomplete-mfa-regression-tests',
+        message: 'MFA regression tests are missing a required security case.',
+      })
     })
   })
 }
