@@ -8,6 +8,7 @@ import { ApiResult } from '~/common/decorators/api-result.decorator'
 import { Ip } from '~/common/decorators/http.decorator'
 import { InjectRedis } from '~/common/decorators/inject-redis.decorator'
 import { AppConfig, IAppConfig, ISecurityConfig, SecurityConfig } from '~/config'
+import { envNumber, isDev } from '~/global/env'
 import { genLoginFailKey, genLoginLockKey } from '~/helper/genRedisKey'
 
 import { UserService } from '../user/user.service'
@@ -24,6 +25,9 @@ import {
   setAuthSessionCookies,
   setCsrfCookie,
 } from './utils/session-cookie.util'
+
+const LOGIN_THROTTLE_LIMIT = envNumber('LOGIN_THROTTLER_LIMIT', isDev ? 30 : 10)
+const LOGIN_THROTTLE_TTL = envNumber('LOGIN_THROTTLER_TTL', 60000)
 
 @ApiTags('Auth - 认证模块')
 @UseGuards(LocalGuard)
@@ -42,7 +46,7 @@ export class AuthController {
   @Post('login')
   @ApiOperation({ summary: '登录' })
   @ApiResult({ type: LoginToken })
-  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  @Throttle({ default: { limit: LOGIN_THROTTLE_LIMIT, ttl: LOGIN_THROTTLE_TTL } })
   async login(
     @Body() dto: LoginDto,
     @Ip()ip: string,

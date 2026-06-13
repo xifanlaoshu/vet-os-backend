@@ -8,6 +8,7 @@ import * as svgCaptcha from 'svg-captcha'
 import { ApiResult } from '~/common/decorators/api-result.decorator'
 
 import { InjectRedis } from '~/common/decorators/inject-redis.decorator'
+import { envNumber, isDev } from '~/global/env'
 import { genCaptchaImgKey } from '~/helper/genRedisKey'
 import { generateUUID } from '~/utils'
 
@@ -15,6 +16,9 @@ import { Public } from '../decorators/public.decorator'
 
 import { ImageCaptchaDto } from '../dto/captcha.dto'
 import { ImageCaptcha } from '../models/auth.model'
+
+const CAPTCHA_THROTTLE_LIMIT = envNumber('CAPTCHA_THROTTLER_LIMIT', isDev ? 60 : 20)
+const CAPTCHA_THROTTLE_TTL = envNumber('CAPTCHA_THROTTLER_TTL', 60000)
 
 @ApiTags('Captcha - 验证码模块')
 @UseGuards(ThrottlerGuard)
@@ -26,7 +30,7 @@ export class CaptchaController {
   @ApiOperation({ summary: '获取登录图片验证码' })
   @ApiResult({ type: ImageCaptcha })
   @Public()
-  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  @Throttle({ default: { limit: CAPTCHA_THROTTLE_LIMIT, ttl: CAPTCHA_THROTTLE_TTL } })
   async captchaByImg(@Query() dto: ImageCaptchaDto): Promise<ImageCaptcha> {
     const { width, height } = dto
 
