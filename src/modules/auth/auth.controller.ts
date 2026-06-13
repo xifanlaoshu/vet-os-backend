@@ -1,6 +1,7 @@
-import { BadRequestException, Body, Controller, Headers, Inject, Post, UseGuards } from '@nestjs/common'
+import { BadRequestException, Body, Controller, Get, Headers, Inject, Post, Req, Res, UseGuards } from '@nestjs/common'
 import { ApiOperation, ApiTags } from '@nestjs/swagger'
 import { Throttle } from '@nestjs/throttler'
+import { FastifyReply, FastifyRequest } from 'fastify'
 import Redis from 'ioredis'
 
 import { ApiResult } from '~/common/decorators/api-result.decorator'
@@ -17,6 +18,12 @@ import { LoginDto, RefreshTokenDto, RegisterDto } from './dto/auth.dto'
 import { LocalGuard } from './guards/local.guard'
 import { LoginToken } from './models/auth.model'
 import { CaptchaService } from './services/captcha.service'
+import {
+  getRefreshTokenCookie,
+  isValidCsrfRequest,
+  setAuthSessionCookies,
+  setCsrfCookie,
+} from './utils/session-cookie.util'
 
 @ApiTags('Auth - 认证模块')
 @UseGuards(LocalGuard)
@@ -36,7 +43,12 @@ export class AuthController {
   @ApiOperation({ summary: '登录' })
   @ApiResult({ type: LoginToken })
   @Throttle({ default: { limit: 10, ttl: 60000 } })
-  async login(@Body() dto: LoginDto, @Ip()ip: string, @Headers('user-agent')ua: string): Promise<LoginToken> {
+  async login(
+    @Body() dto: LoginDto,
+    @Ip()ip: string,
+    @Headers('user-agent')ua: string,
+    @Res({ passthrough: true }) reply: FastifyReply,
+  ): Promise<LoginToken> {
     await this.captchaService.checkImgCaptcha(dto.captchaId, dto.verifyCode)
     await this.assertLoginNotLocked(dto.username, ip)
     try {
@@ -47,6 +59,7 @@ export class AuthController {
         ua,
       )
       await this.clearLoginFailures(dto.username, ip)
+      setAuthSessionCookies(reply, this.appConfig, this.securityConfig, token.refreshToken)
       return token
     }
     catch (error) {
@@ -65,12 +78,31 @@ export class AuthController {
     await this.userService.register(dto)
   }
 
+  @Get('csrf')
+  @Throttle({ default: { limit: 60, ttl: 60000 } })
+  @ApiOperation({ summary: 'Get CSRF token' })
+  async csrf(@Res({ passthrough: true }) reply: FastifyReply) {
+    const csrfToken = setCsrfCookie(reply, this.securityConfig)
+    return { csrfToken }
+  }
+
   @Post('refresh')
   @ApiOperation({ summary: '刷新访问令牌' })
   @ApiResult({ type: LoginToken })
   @Throttle({ default: { limit: 20, ttl: 60000 } })
-  async refresh(@Body() dto: RefreshTokenDto): Promise<LoginToken> {
-    const token = await this.authService.refreshLoginToken(dto.refreshToken)
+  async refresh(
+    @Body() dto: RefreshTokenDto,
+    @Req() req: FastifyRequest,
+    @Res({ passthrough: true }) reply: FastifyReply,
+  ): Promise<LoginToken> {
+    const refreshToken = dto?.refreshToken || getRefreshTokenCookie(req)
+    if (!refreshToken)
+      throw new BadRequestException('Refresh token is required.')
+    if (!dto?.refreshToken && !isValidCsrfRequest(req))
+      throw new BadRequestException('Invalid CSRF token.')
+
+    const token = await this.authService.refreshLoginToken(refreshToken)
+    setAuthSessionCookies(reply, this.appConfig, this.securityConfig, token.refreshToken)
     return {
       token: token.accessToken,
       refreshToken: token.refreshToken,

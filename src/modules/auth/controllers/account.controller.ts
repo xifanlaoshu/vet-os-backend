@@ -1,12 +1,14 @@
-import { Body, Controller, Get, Post, Put, Req, UseGuards } from '@nestjs/common'
+import { Body, Controller, Get, Inject, Post, Put, Req, Res, UseGuards } from '@nestjs/common'
 import { ApiExtraModels, ApiOperation, ApiTags } from '@nestjs/swagger'
-import { FastifyRequest } from 'fastify'
+import { FastifyReply, FastifyRequest } from 'fastify'
 
 import { ApiResult } from '~/common/decorators/api-result.decorator'
 
 import { ApiSecurityAuth } from '~/common/decorators/swagger.decorator'
+import { AppConfig, IAppConfig } from '~/config'
 import { AllowAnon } from '~/modules/auth/decorators/allow-anon.decorator'
 import { AuthUser } from '~/modules/auth/decorators/auth-user.decorator'
+import { clearAuthSessionCookies } from '~/modules/auth/utils/session-cookie.util'
 
 import { PasswordUpdateDto } from '~/modules/user/dto/password.dto'
 
@@ -25,6 +27,7 @@ export class AccountController {
   constructor(
     private userService: UserService,
     private authService: AuthService,
+    @Inject(AppConfig.KEY) private readonly appConfig: IAppConfig,
   ) {}
 
   @Get('profile')
@@ -38,8 +41,13 @@ export class AccountController {
   @Get('logout')
   @ApiOperation({ summary: '账户登出' })
   @AllowAnon()
-  async logout(@AuthUser() user: IAuthUser, @Req() req: FastifyRequest): Promise<void> {
+  async logout(
+    @AuthUser() user: IAuthUser,
+    @Req() req: FastifyRequest,
+    @Res({ passthrough: true }) reply: FastifyReply,
+  ): Promise<void> {
     await this.authService.clearLoginStatus(user, req.accessToken)
+    clearAuthSessionCookies(reply, this.appConfig)
   }
 
   @Get('menus')

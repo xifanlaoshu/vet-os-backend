@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger'
 
-import { IsString, Matches, MaxLength, MinLength } from 'class-validator'
+import { IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator'
 
 export class LoginDto {
   @ApiProperty({ description: '手机号/邮箱' })
@@ -43,8 +43,9 @@ export class RegisterDto {
 }
 
 export class RefreshTokenDto {
+  @IsOptional()
   @ApiProperty({ description: '刷新令牌' })
   @IsString()
   @MinLength(20)
-  refreshToken: string
+  refreshToken?: string
 }

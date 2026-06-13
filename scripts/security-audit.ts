@@ -73,6 +73,7 @@ auditPlatformOnlyMenuManagement()
 auditPlatformOnlyTaskManagement()
 auditPlatformOnlySystemOperations()
 auditPublicAuthEndpointHardening()
+auditAuthCookieCsrfSessionSafety()
 auditStorageTokenExpiration()
 auditProtectedUploadPersistenceAwait()
 auditVisitMediaFileSafety()
@@ -285,9 +286,9 @@ function auditHttpRuntimeSecurityBootstrap() {
       message: 'CORS must use an explicit origin allowlist outside development.',
     },
     {
-      pattern: /allowedHeaders:\s*\[[\s\S]*['"`]Authorization['"`][\s\S]*['"`]X-Area-Id['"`]/,
+      pattern: /allowedHeaders:\s*\[[\s\S]*['"`]Authorization['"`][\s\S]*['"`]X-Area-Id['"`][\s\S]*['"`]X-CSRF-Token['"`]/,
       rule: 'cors-auth-area-headers-required',
-      message: 'CORS allowed headers must include Authorization and X-Area-Id for tenant-area scoped requests.',
+      message: 'CORS allowed headers must include Authorization, X-Area-Id, and X-CSRF-Token for scoped and cookie-based requests.',
     },
   ]
 
@@ -1798,6 +1799,126 @@ function auditPublicAuthEndpointHardening() {
       line: routeIndex + 1,
       rule: 'public-auth-endpoint-throttle-required',
       message: `${route} must declare a local @Throttle limit in addition to global throttling.`,
+    })
+  })
+}
+
+function auditAuthCookieCsrfSessionSafety() {
+  const authControllerPath = join(root, 'src', 'modules', 'auth', 'auth.controller.ts')
+  const accountControllerPath = join(root, 'src', 'modules', 'auth', 'controllers', 'account.controller.ts')
+  const cookieUtilPath = join(root, 'src', 'modules', 'auth', 'utils', 'session-cookie.util.ts')
+  const authSpecPath = join(root, 'src', 'modules', 'auth', 'auth.controller.spec.ts')
+  if (!existsSync(authControllerPath) || !existsSync(cookieUtilPath))
+    return
+
+  const authController = readFileSync(authControllerPath, 'utf8')
+  const cookieUtil = readFileSync(cookieUtilPath, 'utf8')
+  const requiredCookieUtilPatterns = [
+    {
+      pattern: /REFRESH_TOKEN_COOKIE\s*=\s*['"`]vet_os_refresh_token['"`]/,
+      rule: 'refresh-token-cookie-name-required',
+      message: 'Auth cookie utility must define a dedicated refresh-token cookie name.',
+    },
+    {
+      pattern: /httpOnly:\s*true/,
+      rule: 'refresh-token-cookie-httponly-required',
+      message: 'Refresh-token cookies must be HttpOnly so application scripts cannot read them.',
+    },
+    {
+      pattern: /sameSite:\s*['"`]lax['"`]/,
+      rule: 'auth-cookie-samesite-required',
+      message: 'Auth cookies must set SameSite to reduce CSRF exposure.',
+    },
+    {
+      pattern: /timingSafeEqual/,
+      rule: 'csrf-token-constant-time-compare-required',
+      message: 'CSRF token comparisons must use timingSafeEqual with equal-length checks.',
+    },
+  ]
+
+  requiredCookieUtilPatterns.forEach(({ pattern, rule, message }) => {
+    if (pattern.test(cookieUtil))
+      return
+    findings.push({
+      file: 'src/modules/auth/utils/session-cookie.util.ts',
+      line: 1,
+      rule,
+      message,
+    })
+  })
+
+  const requiredAuthPatterns = [
+    {
+      pattern: /@Get\(['"`]csrf['"`]\)/,
+      rule: 'csrf-bootstrap-endpoint-required',
+      message: 'AuthController must expose a throttled CSRF bootstrap endpoint for cookie-based clients.',
+    },
+    {
+      pattern: /setAuthSessionCookies\(reply,\s*this\.appConfig,\s*this\.securityConfig,\s*token\.refreshToken\)/,
+      rule: 'auth-login-refresh-cookie-required',
+      message: 'Login and refresh responses must issue the hardened refresh-token and CSRF cookies.',
+    },
+    {
+      pattern: /getRefreshTokenCookie\(req\)/,
+      rule: 'auth-refresh-cookie-source-required',
+      message: 'Refresh endpoint must support reading refresh tokens from the HttpOnly cookie.',
+    },
+    {
+      pattern: /!dto\?\.refreshToken\s*&&\s*!isValidCsrfRequest\(req\)/,
+      rule: 'auth-cookie-refresh-csrf-required',
+      message: 'Cookie-based refresh requests must require a matching CSRF token.',
+    },
+  ]
+
+  requiredAuthPatterns.forEach(({ pattern, rule, message }) => {
+    if (pattern.test(authController))
+      return
+    findings.push({
+      file: 'src/modules/auth/auth.controller.ts',
+      line: 1,
+      rule,
+      message,
+    })
+  })
+
+  if (existsSync(accountControllerPath)) {
+    const accountController = readFileSync(accountControllerPath, 'utf8')
+    if (!/clearAuthSessionCookies\(reply,\s*this\.appConfig\)/.test(accountController)) {
+      findings.push({
+        file: 'src/modules/auth/controllers/account.controller.ts',
+        line: 1,
+        rule: 'logout-clear-auth-cookies-required',
+        message: 'Logout must clear refresh-token and CSRF cookies to complete the browser-session lifecycle.',
+      })
+    }
+  }
+
+  if (!existsSync(authSpecPath)) {
+    findings.push({
+      file: 'src/modules/auth/auth.controller.spec.ts',
+      line: 1,
+      rule: 'missing-auth-cookie-csrf-regression-tests',
+      message: 'AuthController must have regression tests for HttpOnly refresh cookies and CSRF-protected cookie refresh.',
+    })
+    return
+  }
+
+  const authSpec = readFileSync(authSpecPath, 'utf8')
+  const requiredSpecPatterns = [
+    /sets HttpOnly refresh and readable CSRF cookies after login/i,
+    /issues CSRF cookies for cookie based auth clients/i,
+    /keeps body refresh-token compatibility without requiring CSRF/i,
+    /allows cookie refresh only when CSRF header matches the CSRF cookie/i,
+    /rejects cookie refresh requests without a matching CSRF token/i,
+  ]
+  requiredSpecPatterns.forEach((pattern) => {
+    if (pattern.test(authSpec))
+      return
+    findings.push({
+      file: 'src/modules/auth/auth.controller.spec.ts',
+      line: 1,
+      rule: 'incomplete-auth-cookie-csrf-regression-tests',
+      message: 'AuthController cookie/CSRF regression tests are missing a required security case.',
     })
   })
 }
