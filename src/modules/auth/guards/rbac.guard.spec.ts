@@ -45,6 +45,38 @@ function createGuard(overrides: { authService?: any, permission?: string | null 
   }
 }
 
+function createGuardWithAccessMetadata({
+  isPublic = false,
+  allowAnon = false,
+  permission = 'system:role:list',
+  authService,
+}: {
+  isPublic?: boolean
+  allowAnon?: boolean
+  permission?: string | null
+  authService?: any
+} = {}) {
+  const service = {
+    getPermissionsCache: jest.fn(async () => null),
+    getPermissions: jest.fn(async () => ['system:role:list']),
+    setPermissionsCache: jest.fn(),
+    ...authService,
+  }
+  const reflector = {
+    getAllAndOverride: jest.fn((key: string) => {
+      if (key.includes('public'))
+        return isPublic
+      if (key.includes('allow'))
+        return allowAnon
+      return permission
+    }),
+  }
+  return {
+    guard: new RbacGuard(reflector as any, service),
+    authService: service,
+  }
+}
+
 describe('rbacGuard tenant permission boundaries', () => {
   it('allows platform administrators by explicit platformAdmin context', async () => {
     const { guard, authService } = createGuard()
@@ -89,6 +121,39 @@ describe('rbacGuard tenant permission boundaries', () => {
       tenantId: 2,
     }, 'system:serve:stat', {
       url: '/api/system/serve/stat',
+    }))).rejects.toBeInstanceOf(BusinessException)
+  })
+
+  it('allows routes only when AllowAnon metadata is explicit', async () => {
+    const { guard, authService } = createGuardWithAccessMetadata({
+      allowAnon: true,
+      permission: null,
+    })
+
+    await expect(guard.canActivate(createExecutionContext({
+      uid: 7,
+      roles: ['doctor'],
+      platformAdmin: false,
+      tenantId: 2,
+    }, null, {
+      url: '/api/system/dict-type',
+    }))).resolves.toBe(true)
+    expect(authService.getPermissions).not.toHaveBeenCalled()
+  })
+
+  it('does not bypass missing metadata based on dictionary route paths', async () => {
+    const { guard } = createGuardWithAccessMetadata({
+      allowAnon: false,
+      permission: null,
+    })
+
+    await expect(guard.canActivate(createExecutionContext({
+      uid: 7,
+      roles: ['doctor'],
+      platformAdmin: false,
+      tenantId: 2,
+    }, null, {
+      url: '/api/system/dict-type',
     }))).rejects.toBeInstanceOf(BusinessException)
   })
 })

@@ -713,6 +713,14 @@ function auditTenantScopedRolePermissionBoundaries() {
       message: 'Server monitoring must not be listed as an authenticated public read route; it requires explicit permission and platformAdmin checks.',
     })
   }
+  if (existsSync(rbacGuardPath) && /isAuthenticatedPublicReadRoute|normalizeRequestPath/.test(readFileSync(rbacGuardPath, 'utf8'))) {
+    findings.push({
+      file: rbacGuardFile,
+      line: 1,
+      rule: 'rbac-no-path-based-public-read-bypass',
+      message: 'RBAC must not bypass permissions based on URL paths; use explicit @AllowAnon or @Perm metadata instead.',
+    })
+  }
 
   const requiredSpecFiles = [
     'src/modules/system/role/role.service.spec.ts',

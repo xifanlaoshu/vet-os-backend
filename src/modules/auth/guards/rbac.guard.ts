@@ -12,25 +12,6 @@ import { AuthService } from '~/modules/auth/auth.service'
 
 import { ALLOW_ANON_KEY, PERMISSION_KEY, PUBLIC_KEY, Roles } from '../auth.constant'
 
-function normalizeRequestPath(request: FastifyRequest) {
-  const path = request.url.split('?')[0] || ''
-  return path.replace(/^\/api(?=\/)/, '')
-}
-
-function isAuthenticatedPublicReadRoute(request: FastifyRequest) {
-  if (request.method !== 'GET')
-    return false
-
-  const path = normalizeRequestPath(request)
-  return [
-    path === '/system/dict-type',
-    path === '/system/dict-type/select-options',
-    /^\/system\/dict-type\/\d+$/.test(path),
-    path === '/system/dict-item',
-    /^\/system\/dict-item\/\d+$/.test(path),
-  ].some(Boolean)
-}
-
 @Injectable()
 export class RbacGuard implements CanActivate {
   constructor(
@@ -57,7 +38,7 @@ export class RbacGuard implements CanActivate {
       context.getHandler(),
       context.getClass(),
     ])
-    if (allowAnon || isAuthenticatedPublicReadRoute(request))
+    if (allowAnon)
       return true
 
     const payloadPermission = this.reflector.getAllAndOverride<string | string[]>(
