@@ -101,7 +101,7 @@ export class TokenService {
       areaId: context.areaId,
       areaName: context.areaName,
       accessibleAreaIds: context.accessibleAreaIds ?? [],
-      platformAdmin: context.platformAdmin ?? roles.includes('admin'),
+      platformAdmin: Boolean(context.platformAdmin),
       contextSelected: context.contextSelected ?? Boolean(context.tenantId && context.areaId),
     }
 

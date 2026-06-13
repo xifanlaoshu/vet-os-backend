@@ -91,6 +91,23 @@ describe('rbacGuard tenant permission boundaries', () => {
     expect(authService.getPermissions).not.toHaveBeenCalled()
   })
 
+  it('does not bypass permissions for tenant users with an admin role value', async () => {
+    const { guard } = createGuard({
+      authService: {
+        getPermissionsCache: jest.fn(async () => null),
+        getPermissions: jest.fn(async () => []),
+        setPermissionsCache: jest.fn(),
+      },
+    })
+
+    await expect(guard.canActivate(createExecutionContext({
+      uid: 7,
+      roles: ['admin'],
+      platformAdmin: false,
+      tenantId: 2,
+    }))).rejects.toBeInstanceOf(BusinessException)
+  })
+
   it('loads permissions using the full token context when cache is missing', async () => {
     const { guard, authService } = createGuard()
     const user = {

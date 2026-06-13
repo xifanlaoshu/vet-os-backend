@@ -10,7 +10,7 @@ import { BusinessException } from '~/common/exceptions/biz.exception'
 import { ErrorEnum } from '~/constants/error-code.constant'
 import { AuthService } from '~/modules/auth/auth.service'
 
-import { ALLOW_ANON_KEY, PERMISSION_KEY, PUBLIC_KEY, Roles } from '../auth.constant'
+import { ALLOW_ANON_KEY, PERMISSION_KEY, PUBLIC_KEY } from '../auth.constant'
 
 @Injectable()
 export class RbacGuard implements CanActivate {
@@ -50,7 +50,7 @@ export class RbacGuard implements CanActivate {
     if (!payloadPermission)
       throw new BusinessException(ErrorEnum.NO_PERMISSION)
 
-    if (user.platformAdmin || user.roles.includes(Roles.ADMIN))
+    if (user.platformAdmin)
       return true
 
     const cachedPermissions = await this.authService.getPermissionsCache(user.uid)

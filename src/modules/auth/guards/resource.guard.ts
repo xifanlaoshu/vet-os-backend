@@ -10,7 +10,7 @@ import { BusinessException } from '~/common/exceptions/biz.exception'
 
 import { ErrorEnum } from '~/constants/error-code.constant'
 
-import { PUBLIC_KEY, RESOURCE_KEY, Roles } from '../auth.constant'
+import { PUBLIC_KEY, RESOURCE_KEY } from '../auth.constant'
 import { ResourceObject } from '../decorators/resource.decorator'
 
 @Injectable()
@@ -43,7 +43,7 @@ export class ResourceGuard implements CanActivate {
       context.getHandler(),
     ) ?? { entity: null, condition: null }
 
-    if (entity && !user.roles.includes(Roles.ADMIN)) {
+    if (entity && !user.platformAdmin) {
       const repo: Repository<any> = this.dataSource.getRepository(entity)
 
       /**

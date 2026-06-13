@@ -80,7 +80,7 @@ export class MenuService {
     if (isEmpty(roleIds))
       return generatorRouters([])
 
-    if (context?.platformAdmin || this.roleService.hasAdminRole(roleIds)) {
+    if (context?.platformAdmin) {
       menus = await this.menuRepository.find({ order: { orderNo: 'ASC' } })
     }
     else {
@@ -176,7 +176,7 @@ export class MenuService {
     const roleIds = await this.roleService.getRoleIdsByUser(uid, roleTenantId)
     let permission: any[] = []
     let result: any = null
-    if (context?.platformAdmin || this.roleService.hasAdminRole(roleIds)) {
+    if (context?.platformAdmin) {
       result = await this.menuRepository.findBy({
         permission: Not(IsNull()),
         type: In([1, 2]),

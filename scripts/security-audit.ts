@@ -55,6 +55,7 @@ auditTenantContextGuard()
 auditJwtAuthGuardRegressionCoverage()
 auditTenantAreaLifecycleFilters()
 auditTenantScopedRolePermissionBoundaries()
+auditNoRoleValuePlatformBypass()
 auditTenantScopedUniqueConstraints()
 auditTenantScopedDepartmentBoundaries()
 auditTenantScopedDictionaryItemTypeBoundary()
@@ -632,7 +633,7 @@ function auditTenantScopedRolePermissionBoundaries() {
           message: 'Menu and permission calculation must resolve roles with the selected tenant context.',
         },
         {
-          pattern: /context\?\.platformAdmin \|\| this\.roleService\.hasAdminRole/,
+          pattern: /if\s*\(\s*context\?\.platformAdmin\s*\)/,
           rule: 'menu-platform-admin-explicit-bypass-required',
           message: 'Menu and permission calculation must explicitly respect platformAdmin context.',
         },
@@ -647,7 +648,7 @@ function auditTenantScopedRolePermissionBoundaries() {
       file: 'src/modules/auth/guards/rbac.guard.ts',
       patterns: [
         {
-          pattern: /user\.platformAdmin \|\| user\.roles\.includes/,
+          pattern: /if\s*\(\s*user\.platformAdmin\s*\)/,
           rule: 'rbac-platform-admin-explicit-bypass-required',
           message: 'RBAC must authorize platform administrators through explicit platformAdmin context.',
         },
@@ -738,6 +739,63 @@ function auditTenantScopedRolePermissionBoundaries() {
       line: 1,
       rule: 'missing-tenant-role-permission-boundary-tests',
       message: 'Tenant-scoped role and permission boundaries must have regression tests.',
+    })
+  })
+}
+
+function auditNoRoleValuePlatformBypass() {
+  const forbidden: Array<{ file: string, patterns: Array<{ pattern: RegExp, rule: string, message: string }> }> = [
+    {
+      file: 'src/modules/auth/guards/rbac.guard.ts',
+      patterns: [
+        {
+          pattern: /roles\.includes\(\s*Roles\.ADMIN\s*\)|roles\.includes\(\s*['"`]admin['"`]\s*\)/,
+          rule: 'rbac-no-admin-role-platform-bypass',
+          message: 'RBAC must not treat a role value named admin as platform administrator; use explicit platformAdmin only.',
+        },
+      ],
+    },
+    {
+      file: 'src/modules/auth/guards/resource.guard.ts',
+      patterns: [
+        {
+          pattern: /roles\.includes\(\s*Roles\.ADMIN\s*\)|roles\.includes\(\s*['"`]admin['"`]\s*\)/,
+          rule: 'resource-no-admin-role-owner-bypass',
+          message: 'Resource ownership checks must not bypass on role value admin; use explicit platformAdmin only.',
+        },
+      ],
+    },
+    {
+      file: 'src/modules/auth/services/token.service.ts',
+      patterns: [
+        {
+          pattern: /platformAdmin:\s*context\.platformAdmin\s*\?\?|platformAdmin:[^\n]*roles\.includes/,
+          rule: 'token-no-admin-role-platform-derivation',
+          message: 'Access tokens must not derive platformAdmin from role values; only explicit platformAdmin context may set it.',
+        },
+      ],
+    },
+    {
+      file: 'src/modules/system/menu/menu.service.ts',
+      patterns: [
+        {
+          pattern: /context\?\.platformAdmin\s*\|\||hasAdminRole\(roleIds\)/,
+          rule: 'menu-no-admin-role-global-menu-bypass',
+          message: 'Menu and permission calculation must not use tenant admin role ids to grant global platform menus.',
+        },
+      ],
+    },
+  ]
+
+  forbidden.forEach(({ file, patterns }) => {
+    const filePath = join(root, ...file.split('/'))
+    if (!existsSync(filePath))
+      return
+    const content = readFileSync(filePath, 'utf8')
+    patterns.forEach(({ pattern, rule, message }) => {
+      if (!pattern.test(content))
+        return
+      findings.push({ file, line: 1, rule, message })
     })
   })
 }
