@@ -36,6 +36,12 @@ export class SFileList {
 export class UploadToken {
   @ApiProperty({ description: '上传token' })
   token: string
+
+  @ApiProperty({ description: '租户院区隔离后的上传路径前缀' })
+  prefix: string
+
+  @ApiProperty({ description: '租户院区隔离后的完整上传文件 Key' })
+  key: string
 }
 
 export class SFileInfoDetail {

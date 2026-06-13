@@ -91,6 +91,7 @@ auditCaptchaLogMasking()
 auditRefreshTokenCleanupNullSafety()
 auditProtectedFileResponseHeaders()
 auditNetdiskPrivateDownloadTtl()
+auditNetdiskTenantAreaIsolation()
 
 const rules = [
   {
@@ -3178,6 +3179,53 @@ function auditNetdiskPrivateDownloadTtl() {
       })
     }
   })
+}
+
+function auditNetdiskTenantAreaIsolation() {
+  const servicePath = join(root, 'src', 'modules', 'netdisk', 'manager', 'manage.service.ts')
+  const controllerPath = join(root, 'src', 'modules', 'netdisk', 'manager', 'manage.controller.ts')
+  if (!existsSync(servicePath) || !existsSync(controllerPath))
+    return
+
+  const serviceContent = readFileSync(servicePath, 'utf8')
+  const controllerContent = readFileSync(controllerPath, 'utf8')
+  const requiredServicePatterns: Array<[RegExp, string]> = [
+    [/requireTenantAreaContext/, 'Netdisk OSS operations must require tenant and area context.'],
+    [/getTenantAreaPrefix/, 'Netdisk must have a single tenant-area prefix helper.'],
+    [/buildScopedKey/, 'Netdisk must build OSS keys through the scoped key helper.'],
+    [/normalizeClientPath/, 'Netdisk must normalize client paths before using them as OSS keys.'],
+    [/stripScopedPrefix/, 'Netdisk list/search results must strip and validate the current tenant-area prefix.'],
+    [/scope:\s*key\s*\?\s*`\$\{this\.qiniuConfig\.bucket\}:\$\{key\}`/, 'Netdisk upload tokens must be scoped to the exact object key, not the whole bucket.'],
+  ]
+
+  requiredServicePatterns.forEach(([pattern, message]) => {
+    if (pattern.test(serviceContent))
+      return
+    findings.push({
+      file: 'src/modules/netdisk/manager/manage.service.ts',
+      line: 1,
+      rule: 'netdisk-tenant-area-isolation-required',
+      message,
+    })
+  })
+
+  if (!/netDiskManageToken|async token\(@Query\(\)\s*dto:\s*FileInfoDto,\s*@AuthUser\(\)\s*user:\s*IAuthUser\)/.test(controllerContent)) {
+    findings.push({
+      file: 'src/modules/netdisk/manager/manage.controller.ts',
+      line: 1,
+      rule: 'netdisk-upload-token-key-binding-required',
+      message: 'Netdisk upload-token route must accept target file path/name and bind the token to the scoped object key.',
+    })
+  }
+
+  if (!/createUploadToken\(`\$\{user\.uid\}`,\s*key\)/.test(controllerContent)) {
+    findings.push({
+      file: 'src/modules/netdisk/manager/manage.controller.ts',
+      line: 1,
+      rule: 'netdisk-upload-token-exact-key-required',
+      message: 'Netdisk upload tokens must be created for the exact scoped object key returned to the client.',
+    })
+  }
 }
 
 function readPublicRouteAllowlist() {

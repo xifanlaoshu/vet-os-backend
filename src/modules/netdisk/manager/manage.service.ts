@@ -1,10 +1,11 @@
 import { basename, extname } from 'node:path'
 
-import { Inject, Injectable } from '@nestjs/common'
+import { BadRequestException, Inject, Injectable } from '@nestjs/common'
 import { isEmpty } from 'lodash'
 import * as qiniu from 'qiniu'
 import { auth, conf, rs } from 'qiniu'
 
+import { requireTenantAreaContext } from '~/common/utils/tenant-context.util'
 import { IOssConfig, OssConfig } from '~/config'
 import { NETDISK_COPY_SUFFIX, NETDISK_DELIMITER, NETDISK_HANDLE_MAX_ITEM, NETDISK_LIMIT } from '~/constants/oss.constant'
 
@@ -38,20 +39,51 @@ export class NetDiskManageService {
     this.bucketManager = new qiniu.rs.BucketManager(this.mac, this.config)
   }
 
+  getTenantAreaPrefix(context?: Pick<IAuthUser, 'tenantId' | 'areaId'>): string {
+    const { tenantId, areaId } = requireTenantAreaContext(context)
+    return `tenants/${tenantId}/areas/${areaId}/netdisk/`
+  }
+
+  buildScopedKey(path = '', context?: Pick<IAuthUser, 'tenantId' | 'areaId'>): string {
+    const prefix = this.getTenantAreaPrefix(context)
+    return `${prefix}${this.normalizeClientPath(path)}`
+  }
+
+  private normalizeClientPath(path = ''): string {
+    const normalized = path.replace(/\\/g, '/').replace(/^\/+/, '')
+    const parts = normalized.split('/').filter(Boolean)
+
+    if (parts.some(part => part === '.' || part === '..'))
+      throw new BadRequestException('Invalid netdisk path')
+
+    return parts.length === 0
+      ? ''
+      : `${parts.join('/')}${normalized.endsWith('/') ? '/' : ''}`
+  }
+
+  private stripScopedPrefix(key: string, prefix: string): string {
+    if (!key.startsWith(prefix))
+      throw new BadRequestException('OSS object is outside current tenant area netdisk scope')
+
+    return key.slice(prefix.length)
+  }
+
   /**
    * 获取文件列表
    * @param prefix 当前文件夹路径，搜索模式下会被忽略
    * @param marker 下一页标识
    * @returns iFileListResult
    */
-  async getFileList(prefix = '', marker = '', skey = ''): Promise<SFileList> {
-    // 是否需要搜索
+  async getFileList(prefix = '', marker = '', skey = '', context?: Pick<IAuthUser, 'tenantId' | 'areaId'>): Promise<SFileList> {
+    const clientPrefix = this.normalizeClientPath(prefix)
+    const scopedPrefix = this.buildScopedKey(clientPrefix, context)
+    const rootPrefix = this.getTenantAreaPrefix(context)
     const searching = !isEmpty(skey)
     return new Promise<SFileList>((resolve, reject) => {
       this.bucketManager.listPrefix(
         this.qiniuConfig.bucket,
         {
-          prefix: searching ? '' : prefix,
+          prefix: searching ? rootPrefix : scopedPrefix,
           limit: NETDISK_LIMIT,
           delimiter: searching ? '' : NETDISK_DELIMITER,
           marker,
@@ -69,14 +101,13 @@ export class NetDiskManageService {
             if (!searching && !isEmpty(respBody.commonPrefixes)) {
               // dir
               for (const dirPath of respBody.commonPrefixes) {
-                const name = (dirPath as string)
-                  .substr(0, dirPath.length - 1)
-                  .replace(prefix, '')
+                const scopedDirPath = this.stripScopedPrefix(dirPath as string, rootPrefix)
+                const name = scopedDirPath
+                  .substring(0, scopedDirPath.length - 1)
+                  .replace(clientPrefix, '')
                 if (isEmpty(skey) || name.includes(skey)) {
                   fileList.push({
-                    name: (dirPath as string)
-                      .substr(0, dirPath.length - 1)
-                      .replace(prefix, ''),
+                    name,
                     type: 'dir',
                     id: generateRandomValue(10),
                   })
@@ -89,11 +120,12 @@ export class NetDiskManageService {
               for (const item of respBody.items) {
                 // 搜索模式下处理
                 if (searching) {
-                  const pathList: string[] = item.key.split(NETDISK_DELIMITER)
+                  const clientKey = this.stripScopedPrefix(item.key, rootPrefix)
+                  const pathList: string[] = clientKey.split(NETDISK_DELIMITER)
                   // dir is empty stirng, file is key string
                   const name = pathList.pop()
                   if (
-                    item.key.endsWith(NETDISK_DELIMITER)
+                    clientKey.endsWith(NETDISK_DELIMITER)
                     && pathList[pathList.length - 1].includes(skey)
                   ) {
                     // 结果是目录
@@ -120,7 +152,8 @@ export class NetDiskManageService {
                 }
                 else {
                   // 正常获取列表
-                  const fileKey = item.key.replace(prefix, '') as string
+                  const clientKey = this.stripScopedPrefix(item.key, rootPrefix)
+                  const fileKey = clientKey.replace(clientPrefix, '') as string
                   if (!isEmpty(fileKey)) {
                     fileList.push({
                       id: generateRandomValue(10),
@@ -154,11 +187,11 @@ export class NetDiskManageService {
   /**
    * 获取文件信息
    */
-  async getFileInfo(name: string, path: string): Promise<SFileInfoDetail> {
+  async getFileInfo(name: string, path: string, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>): Promise<SFileInfoDetail> {
     return new Promise((resolve, reject) => {
       this.bucketManager.stat(
         this.qiniuConfig.bucket,
-        `${path}${name}`,
+        this.buildScopedKey(`${path}${name}`, context),
         (err, respBody, respInfo) => {
           if (err) {
             reject(err)
@@ -211,11 +244,12 @@ export class NetDiskManageService {
     name: string,
     path: string,
     headers: { [k: string]: string },
+    context?: Pick<IAuthUser, 'tenantId' | 'areaId'>,
   ): Promise<void> {
     return new Promise((resolve, reject) => {
       this.bucketManager.changeHeaders(
         this.qiniuConfig.bucket,
-        `${path}${name}`,
+        this.buildScopedKey(`${path}${name}`, context),
         headers,
         (err, _, respInfo) => {
           if (err) {
@@ -312,9 +346,9 @@ export class NetDiskManageService {
    * 创建Upload Token, 默认过期时间一小时
    * @returns upload token
    */
-  createUploadToken(endUser: string): string {
+  createUploadToken(endUser: string, key = ''): string {
     const policy = new qiniu.rs.PutPolicy({
-      scope: this.qiniuConfig.bucket,
+      scope: key ? `${this.qiniuConfig.bucket}:${key}` : this.qiniuConfig.bucket,
       insertOnly: 1,
       fsizeLimit: 1024 ** 2 * 10,
       endUser,
@@ -328,9 +362,9 @@ export class NetDiskManageService {
    * @param dir 文件路径
    * @param name 文件名称
    */
-  async renameFile(dir: string, name: string, toName: string): Promise<void> {
-    const fileName = `${dir}${name}`
-    const toFileName = `${dir}${toName}`
+  async renameFile(dir: string, name: string, toName: string, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>): Promise<void> {
+    const fileName = this.buildScopedKey(`${dir}${name}`, context)
+    const toFileName = this.buildScopedKey(`${dir}${toName}`, context)
     const op = {
       force: true,
     }
@@ -365,9 +399,9 @@ export class NetDiskManageService {
   /**
    * 移动文件
    */
-  async moveFile(dir: string, toDir: string, name: string): Promise<void> {
-    const fileName = `${dir}${name}`
-    const toFileName = `${toDir}${name}`
+  async moveFile(dir: string, toDir: string, name: string, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>): Promise<void> {
+    const fileName = this.buildScopedKey(`${dir}${name}`, context)
+    const toFileName = this.buildScopedKey(`${toDir}${name}`, context)
     const op = {
       force: true,
     }
@@ -402,12 +436,12 @@ export class NetDiskManageService {
   /**
    * 复制文件
    */
-  async copyFile(dir: string, toDir: string, name: string): Promise<void> {
-    const fileName = `${dir}${name}`
+  async copyFile(dir: string, toDir: string, name: string, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>): Promise<void> {
+    const fileName = this.buildScopedKey(`${dir}${name}`, context)
     // 拼接文件名
     const ext = extname(name)
     const bn = basename(name, ext)
-    const toFileName = `${toDir}${bn}${NETDISK_COPY_SUFFIX}${ext}`
+    const toFileName = this.buildScopedKey(`${toDir}${bn}${NETDISK_COPY_SUFFIX}${ext}`, context)
     const op = {
       force: true,
     }
@@ -442,9 +476,9 @@ export class NetDiskManageService {
   /**
    * 重命名文件夹
    */
-  async renameDir(path: string, name: string, toName: string): Promise<void> {
-    const dirName = `${path}${name}`
-    const toDirName = `${path}${toName}`
+  async renameDir(path: string, name: string, toName: string, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>): Promise<void> {
+    const dirName = this.buildScopedKey(`${path}${name}`, context)
+    const toDirName = this.buildScopedKey(`${path}${toName}`, context)
     let hasFile = true
     let marker = ''
     const op = {
@@ -540,11 +574,11 @@ export class NetDiskManageService {
    * @param dir 删除的文件夹目录
    * @param name 文件名
    */
-  async deleteFile(dir: string, name: string): Promise<void> {
+  async deleteFile(dir: string, name: string, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>): Promise<void> {
     return new Promise((resolve, reject) => {
       this.bucketManager.delete(
         this.qiniuConfig.bucket,
-        `${dir}${name}`,
+        this.buildScopedKey(`${dir}${name}`, context),
         (err, respBody, respInfo) => {
           if (err) {
             reject(err)
@@ -573,12 +607,13 @@ export class NetDiskManageService {
   async deleteMultiFileOrDir(
     fileList: FileOpItem[],
     dir: string,
+    context?: Pick<IAuthUser, 'tenantId' | 'areaId'>,
   ): Promise<void> {
     const files = fileList.filter(item => item.type === 'file')
     if (files.length > 0) {
       // 批处理文件
       const copyOperations = files.map((item) => {
-        const fileName = `${dir}${item.name}`
+        const fileName = this.buildScopedKey(`${dir}${item.name}`, context)
         return qiniu.rs.deleteOp(this.qiniuConfig.bucket, fileName)
       })
       await new Promise<void>((resolve, reject) => {
@@ -608,7 +643,7 @@ export class NetDiskManageService {
     if (dirs.length > 0) {
       // 处理文件夹的复制
       for (let i = 0; i < dirs.length; i++) {
-        const dirName = `${dir}${dirs[i].name}/`
+        const dirName = this.buildScopedKey(`${dir}${dirs[i].name}/`, context)
         let hasFile = true
         let marker = ''
         while (hasFile) {
@@ -678,6 +713,7 @@ export class NetDiskManageService {
     fileList: FileOpItem[],
     dir: string,
     toDir: string,
+    context?: Pick<IAuthUser, 'tenantId' | 'areaId'>,
   ): Promise<void> {
     const files = fileList.filter(item => item.type === 'file')
     const op = {
@@ -686,11 +722,11 @@ export class NetDiskManageService {
     if (files.length > 0) {
       // 批处理文件
       const copyOperations = files.map((item) => {
-        const fileName = `${dir}${item.name}`
+        const fileName = this.buildScopedKey(`${dir}${item.name}`, context)
         // 拼接文件名
         const ext = extname(item.name)
         const bn = basename(item.name, ext)
-        const toFileName = `${toDir}${bn}${NETDISK_COPY_SUFFIX}${ext}`
+        const toFileName = this.buildScopedKey(`${toDir}${bn}${NETDISK_COPY_SUFFIX}${ext}`, context)
         return qiniu.rs.copyOp(
           this.qiniuConfig.bucket,
           fileName,
@@ -726,8 +762,8 @@ export class NetDiskManageService {
     if (dirs.length > 0) {
       // 处理文件夹的复制
       for (let i = 0; i < dirs.length; i++) {
-        const dirName = `${dir}${dirs[i].name}/`
-        const copyDirName = `${toDir}${dirs[i].name}${NETDISK_COPY_SUFFIX}/`
+        const dirName = this.buildScopedKey(`${dir}${dirs[i].name}/`, context)
+        const copyDirName = this.buildScopedKey(`${toDir}${dirs[i].name}${NETDISK_COPY_SUFFIX}/`, context)
         let hasFile = true
         let marker = ''
         while (hasFile) {
@@ -804,6 +840,7 @@ export class NetDiskManageService {
     fileList: FileOpItem[],
     dir: string,
     toDir: string,
+    context?: Pick<IAuthUser, 'tenantId' | 'areaId'>,
   ): Promise<void> {
     const files = fileList.filter(item => item.type === 'file')
     const op = {
@@ -812,8 +849,8 @@ export class NetDiskManageService {
     if (files.length > 0) {
       // 批处理文件
       const copyOperations = files.map((item) => {
-        const fileName = `${dir}${item.name}`
-        const toFileName = `${toDir}${item.name}`
+        const fileName = this.buildScopedKey(`${dir}${item.name}`, context)
+        const toFileName = this.buildScopedKey(`${toDir}${item.name}`, context)
         return qiniu.rs.moveOp(
           this.qiniuConfig.bucket,
           fileName,
@@ -849,8 +886,8 @@ export class NetDiskManageService {
     if (dirs.length > 0) {
       // 处理文件夹的复制
       for (let i = 0; i < dirs.length; i++) {
-        const dirName = `${dir}${dirs[i].name}/`
-        const toDirName = `${toDir}${dirs[i].name}/`
+        const dirName = this.buildScopedKey(`${dir}${dirs[i].name}/`, context)
+        const toDirName = this.buildScopedKey(`${toDir}${dirs[i].name}/`, context)
         // 移动的目录不是是自己
         if (toDirName.startsWith(dirName))
           continue
