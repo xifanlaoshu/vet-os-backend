@@ -61,6 +61,9 @@ import { SocketModule } from './socket/socket.module'
     // 启用 CLS 上下文
     ClsModule.forRoot({
       global: true,
+      middleware: {
+        mount: true,
+      },
       // https://github.com/Papooch/nestjs-cls/issues/92
       interceptor: {
         mount: true,

@@ -79,6 +79,8 @@ function createGuard(overrides: {
   }
   const cls = {
     set: jest.fn(),
+    isActive: jest.fn(() => true),
+    run: jest.fn((_options: any, callback: any) => callback()),
   }
   const reflector = {
     getAllAndOverride: jest.fn(() => false),
@@ -197,6 +199,17 @@ describe('jwtAuthGuard security boundaries', () => {
 
     await expect(guard.canActivate(createExecutionContext(createRequest()))).resolves.toBe(true)
 
+    expect(cls.set).toHaveBeenCalledWith('tenantId', 2)
+    expect(cls.set).toHaveBeenCalledWith('areaId', 3)
+  })
+
+  it('creates a CLS context before writing tenant context when none is active', async () => {
+    const { guard, cls } = createGuard()
+    cls.isActive.mockReturnValue(false)
+
+    await expect(guard.canActivate(createExecutionContext(createRequest()))).resolves.toBe(true)
+
+    expect(cls.run).toHaveBeenCalledWith({ ifNested: 'reuse' }, expect.any(Function))
     expect(cls.set).toHaveBeenCalledWith('tenantId', 2)
     expect(cls.set).toHaveBeenCalledWith('areaId', 3)
   })

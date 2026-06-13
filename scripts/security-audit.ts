@@ -767,7 +767,7 @@ function auditTenantScopedUniqueConstraints() {
       file: 'src/modules/auth/guards/jwt-auth.guard.ts',
       required: [
         {
-          pattern: /cls(?:\s+as\s+any)?\)\.set\(['"`]tenantId['"`],\s*request\.user\.tenantId\)|cls\.set\(['"`]tenantId['"`],\s*request\.user\.tenantId\)/,
+          pattern: /setTenantContext\(request\.user\.tenantId,\s*request\.user\.areaId\)[\s\S]*cls(?:\s+as\s+any)?\)\.set\(['"`]tenantId['"`],\s*tenantId\)|cls\.set\(['"`]tenantId['"`],\s*tenantId\)/,
           rule: 'jwt-guard-cls-tenant-required',
           message: 'JWT guard must store resolved tenantId in CLS for downstream validators.',
         },

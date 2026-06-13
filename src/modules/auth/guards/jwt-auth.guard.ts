@@ -114,8 +114,7 @@ export class JwtAuthGuard extends AuthGuard(AuthStrategy.JWT) {
       ...request.user,
       ...contextUser,
     }
-    ;(this.cls as any).set('tenantId', request.user.tenantId)
-    ;(this.cls as any).set('areaId', request.user.areaId)
+    this.setTenantContext(request.user.tenantId, request.user.areaId)
 
     if (!this.appConfig.multiDeviceLogin) {
       const cacheToken = await this.authService.getTokenByUid(request.user.uid)
@@ -131,5 +130,17 @@ export class JwtAuthGuard extends AuthGuard(AuthStrategy.JWT) {
       throw err || new UnauthorizedException()
 
     return user
+  }
+
+  private setTenantContext(tenantId: number, areaId: number) {
+    const writeContext = () => {
+      ;(this.cls as any).set('tenantId', tenantId)
+      ;(this.cls as any).set('areaId', areaId)
+    }
+
+    if (this.cls.isActive())
+      return writeContext()
+
+    return this.cls.run({ ifNested: 'reuse' }, writeContext)
   }
 }
