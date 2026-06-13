@@ -6,30 +6,60 @@
       "method": "GET",
       "path": "/manage/download",
       "target": "NetDiskManageController.download",
+      "egressType": "download-link",
+      "sensitivity": "internal",
+      "permission": "Requires @Perm(netdisk:manage:download).",
+      "isolation": "OSS key is built with tenants/{tenantId}/areas/{areaId}/netdisk scoped prefix from the authenticated user.",
+      "audit": "Recorded in the data-egress allowlist as a reviewed audit exemption; downstream object access is tenant-area scoped and private download links expire within 10 minutes.",
+      "watermark": "Not applicable for raw binary netdisk downloads; file content is not transformed by the backend.",
       "reason": "Returns an OSS download link and requires the dedicated netdisk:manage:download permission."
     },
     {
       "method": "GET",
       "path": "/storage/file/:token",
       "target": "StorageController.file",
+      "egressType": "file-stream",
+      "sensitivity": "medical",
+      "permission": "Uses an opaque token preview model with @AllowAnon; token must already be issued by an authenticated and authorized flow.",
+      "isolation": "Opaque token resolves to one protected-upload record only, requires scanStatus=2, and does not accept caller supplied tenant or area IDs.",
+      "audit": "Preview-token access is governed through this allowlist and served with no-store headers; authorized id-based access remains available for audited user-context reads.",
+      "watermark": "Inline preview only; watermark is not applied to binary file streams because original medical files must remain byte-faithful.",
       "reason": "Returns a protected upload preview by opaque token only after scanStatus=2; token URLs are unguessable, expiring, and served with no-store headers."
     },
     {
       "method": "GET",
       "path": "/storage/file/id/:id",
       "target": "StorageController.authorizedFile",
+      "egressType": "file-stream",
+      "sensitivity": "medical",
+      "permission": "Requires @Perm(tool:storage:read).",
+      "isolation": "StorageService reads by id with the current authenticated tenantId and areaId.",
+      "audit": "Listed as a governed data-egress route and protected by tenant-area authorization; responses use no-store headers for traceable controlled reads.",
+      "watermark": "Inline preview only; watermark is not applied to binary file streams because original medical files must remain byte-faithful.",
       "reason": "Returns a protected uploaded file by id and requires tool:storage:read plus tenantId and areaId authorization; responses use no-store headers."
     },
     {
       "method": "POST",
       "path": "/storage/file/:token/refresh",
       "target": "StorageController.refreshFileToken",
+      "egressType": "preview-token",
+      "sensitivity": "medical",
+      "permission": "Requires @Perm(tool:storage:sign).",
+      "isolation": "StorageService refreshes a preview token only after resolving the existing token against the current tenantId and areaId.",
+      "audit": "Token refresh is recorded in the data-egress allowlist as a reviewed audit exemption; the refreshed preview token remains short-lived and scoped to the same protected file.",
+      "watermark": "Not applicable because this route returns a scoped preview token, not rendered document content.",
       "reason": "Refreshes a short-lived protected upload preview link and requires tool:storage:sign plus tenantId and areaId authorization."
     },
     {
       "method": "POST",
       "path": "/vpet/visit/:id/print-audit",
       "target": "VisitController.recordPrintAudit",
+      "egressType": "print-audit",
+      "sensitivity": "medical",
+      "permission": "Inherits controller @Perm(vpet:consultation).",
+      "isolation": "VisitService validates the visit against current tenantId, areaId, and current-staff scope before recording the print event.",
+      "audit": "Writes an EMR audit record with action=print before browser printing is allowed.",
+      "watermark": "Audit-only print flow; the frontend print layout carries patient and visit context while this endpoint records the mandatory print audit.",
       "reason": "Records an audited medical-record print event before browser printing; returns no medical payload and validates tenantId, areaId, and current-staff scope through VisitService."
     }
   ]

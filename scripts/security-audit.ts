@@ -39,6 +39,12 @@ interface DataEgressAllowlist {
     method: string
     path: string
     target: string
+    egressType: 'download-link' | 'file-stream' | 'print-audit' | 'export' | 'preview-token' | 'other'
+    sensitivity: 'internal' | 'personal' | 'medical' | 'financial' | 'system'
+    permission: string
+    isolation: string
+    audit: string
+    watermark: string
     reason: string
   }>
 }
@@ -3392,22 +3398,91 @@ function readDataEgressAllowlist() {
       rule: 'missing-data-egress-allowlist',
       message: 'Routes that return files, download links, exports, or printable data packages must be documented in security/data-egress-allowlist.json.',
     })
-    return new Set<string>()
+    return new Map<string, DataEgressAllowlist['routes'][number]>()
   }
 
   const parsed = JSON.parse(readFileSync(allowlistPath, 'utf8')) as DataEgressAllowlist
-  const allowlist = new Set<string>()
+  const allowlist = new Map<string, DataEgressAllowlist['routes'][number]>()
   parsed.routes.forEach((route, index) => {
-    if (!route.method || !route.path || !route.target || !route.reason?.trim()) {
+    const governanceFields = [
+      route.egressType,
+      route.sensitivity,
+      route.permission,
+      route.isolation,
+      route.audit,
+      route.watermark,
+      route.reason,
+    ]
+    if (!route.method || !route.path || !route.target || governanceFields.some(field => !field?.trim())) {
       findings.push({
         file: 'security/data-egress-allowlist.json',
         line: index + 1,
         rule: 'data-egress-allowlist-incomplete',
-        message: 'Each data egress allowlist item must include method, path, target, and reason.',
+        message: 'Each data egress allowlist item must include method, path, target, egressType, sensitivity, permission, isolation, audit, watermark, and reason.',
       })
       return
     }
-    allowlist.add(dataEgressKey(route))
+
+    if (!['download-link', 'file-stream', 'print-audit', 'export', 'preview-token', 'other'].includes(route.egressType)) {
+      findings.push({
+        file: 'security/data-egress-allowlist.json',
+        line: index + 1,
+        rule: 'data-egress-allowlist-invalid-egress-type',
+        message: `Invalid data egress type for ${route.target}.`,
+      })
+      return
+    }
+
+    if (!['internal', 'personal', 'medical', 'financial', 'system'].includes(route.sensitivity)) {
+      findings.push({
+        file: 'security/data-egress-allowlist.json',
+        line: index + 1,
+        rule: 'data-egress-allowlist-invalid-sensitivity',
+        message: `Invalid data sensitivity for ${route.target}.`,
+      })
+      return
+    }
+
+    if (!/Perm|AllowAnon|opaque token|token/i.test(route.permission)) {
+      findings.push({
+        file: 'security/data-egress-allowlist.json',
+        line: index + 1,
+        rule: 'data-egress-permission-governance-missing',
+        message: `Data egress route ${route.target} must document its permission or explicit opaque-token access model.`,
+      })
+      return
+    }
+
+    if (!/tenant|area|院区|租户|token|scoped|scope/i.test(route.isolation)) {
+      findings.push({
+        file: 'security/data-egress-allowlist.json',
+        line: index + 1,
+        rule: 'data-egress-isolation-governance-missing',
+        message: `Data egress route ${route.target} must document tenant/area isolation or an equivalent scoped-token boundary.`,
+      })
+      return
+    }
+
+    if (!/audit|log|审计|记录|allowlist|no-store|preview token/i.test(route.audit)) {
+      findings.push({
+        file: 'security/data-egress-allowlist.json',
+        line: index + 1,
+        rule: 'data-egress-audit-governance-missing',
+        message: `Data egress route ${route.target} must document audit logging or a security-reviewed audit exemption.`,
+      })
+      return
+    }
+
+    if (!/watermark|水印|not applicable|N\/A|audit-only|inline preview|binary/i.test(route.watermark)) {
+      findings.push({
+        file: 'security/data-egress-allowlist.json',
+        line: index + 1,
+        rule: 'data-egress-watermark-governance-missing',
+        message: `Data egress route ${route.target} must document watermark handling or a concrete exemption.`,
+      })
+      return
+    }
+    allowlist.set(dataEgressKey(route), route)
   })
   return allowlist
 }
@@ -3465,14 +3540,69 @@ function auditDataEgressRoutes(absPath: string, lines: string[]) {
     }
     const key = dataEgressKey(routeInfo)
     dataEgressSeen.add(key)
-    if (!dataEgressAllowlist.has(key)) {
+    const allowlistEntry = dataEgressAllowlist.get(key)
+    if (!allowlistEntry) {
       findings.push({
         file: relative(root, absPath),
         line: i + 1,
         rule: 'data-egress-route-not-allowlisted',
         message: `Data egress route ${routeInfo.method} ${routeInfo.path} (${routeInfo.target}) must be documented in security/data-egress-allowlist.json with its permission and isolation reason.`,
       })
+      continue
     }
+
+    auditDataEgressRouteGovernance(absPath, lines, allowlistEntry, classLine, i, methodLine)
+  }
+}
+
+function auditDataEgressRouteGovernance(
+  absPath: string,
+  lines: string[],
+  allowlistEntry: DataEgressAllowlist['routes'][number],
+  classLine: number,
+  routeLine: number,
+  methodLine: number,
+) {
+  const relPath = normalizePath(relative(root, absPath))
+  const methodDecoratorPreview = lines.slice(Math.max(0, routeLine - 8), methodLine + 1).join('\n')
+  const classDecoratorPreview = lines.slice(Math.max(0, classLine - 8), classLine + 1).join('\n')
+  const decoratorPreview = `${classDecoratorPreview}\n${methodDecoratorPreview}`
+  const permissionText = allowlistEntry.permission
+
+  if (/@Perm/i.test(permissionText) && !/@Perm\s*\(/.test(decoratorPreview)) {
+    findings.push({
+      file: relPath,
+      line: routeLine + 1,
+      rule: 'data-egress-permission-decorator-missing',
+      message: `Data egress route ${allowlistEntry.target} declares a permission-governed model but no @Perm decorator is visible on the handler or controller.`,
+    })
+  }
+
+  if (/AllowAnon/i.test(permissionText) && !/@AllowAnon\s*\(/.test(methodDecoratorPreview)) {
+    findings.push({
+      file: relPath,
+      line: routeLine + 1,
+      rule: 'data-egress-allowanon-decorator-missing',
+      message: `Data egress route ${allowlistEntry.target} declares an AllowAnon opaque-token model but no @AllowAnon decorator is visible on the handler.`,
+    })
+  }
+
+  if (/opaque token|preview token|token/i.test(permissionText) && !/token/i.test(`${allowlistEntry.path} ${allowlistEntry.isolation} ${allowlistEntry.audit}`)) {
+    findings.push({
+      file: 'security/data-egress-allowlist.json',
+      line: 1,
+      rule: 'data-egress-token-boundary-undocumented',
+      message: `Data egress route ${allowlistEntry.target} uses token access and must document the token boundary in path, isolation, or audit fields.`,
+    })
+  }
+
+  if (allowlistEntry.egressType === 'print-audit' && !/print.*audit|audit.*print/i.test(`${allowlistEntry.path} ${allowlistEntry.audit} ${allowlistEntry.reason}`)) {
+    findings.push({
+      file: 'security/data-egress-allowlist.json',
+      line: 1,
+      rule: 'data-egress-print-audit-undocumented',
+      message: `Print egress route ${allowlistEntry.target} must explicitly document print audit handling.`,
+    })
   }
 }
 
