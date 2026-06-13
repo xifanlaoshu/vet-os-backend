@@ -25,6 +25,7 @@ import { SseModule } from './modules/sse/sse.module'
 import { SystemModule } from './modules/system/system.module'
 import { TasksModule } from './modules/tasks/tasks.module'
 import { TenantAdminModule } from './modules/tenant-admin/tenant-admin.module'
+import { LegacyStorageModule } from './modules/tools/storage/legacy-storage.module'
 import { ToolsModule } from './modules/tools/tools.module'
 import { VpetAiModule } from './modules/vpet-ai/ai.module'
 
@@ -83,6 +84,7 @@ import { SocketModule } from './socket/socket.module'
     SystemModule,
     TenantAdminModule,
     TasksModule.forRoot(),
+    LegacyStorageModule,
     ToolsModule,
     SocketModule,
     HealthModule,

@@ -6,6 +6,7 @@ import { BusinessException } from '~/common/exceptions/biz.exception'
 import { requireTenantAreaContext, requireTenantContext } from '~/common/utils/tenant-context.util'
 import { BaseService } from '~/helper/crud/base.service'
 import { paginate } from '~/helper/paginate'
+import { Storage } from '../tools/storage/storage.entity'
 import { AppointmentEntity } from '../vpet-appointment/entities/appointment.entity'
 import { DoctorEntity } from '../vpet-appointment/entities/doctor.entity'
 import { OperationAuditLogEntity } from '../vpet-billing/entities/operation-audit-log.entity'
@@ -106,6 +107,8 @@ export class VisitService extends BaseService<VisitEntity> {
     private prescriptionRepository: Repository<PrescriptionEntity>,
     @InjectRepository(OperationAuditLogEntity)
     private operationAuditRepository: Repository<OperationAuditLogEntity>,
+    @InjectRepository(Storage)
+    private storageRepository: Repository<Storage>,
   ) {
     super(visitRepository)
   }
@@ -933,6 +936,9 @@ export class VisitService extends BaseService<VisitEntity> {
 
     const safeUrl = this.validateVisitMediaUrl(dto.storageType, dto.url)
     this.validateVisitMediaMimeType(dto.fileType, dto.mimeType)
+    const storageId = dto.storageType === 'local'
+      ? await this.resolveVisitMediaStorageId(dto.storageId, safeUrl, visit.tenantId, visit.areaId)
+      : null
 
     await this.mediaFileRepository.save(this.mediaFileRepository.create({
       tenantId: visit.tenantId,
@@ -941,6 +947,7 @@ export class VisitService extends BaseService<VisitEntity> {
       visitId,
       fileType: dto.fileType,
       storageType: dto.storageType,
+      storageId,
       fileName: dto.fileName ?? null,
       originalName: dto.originalName ?? null,
       url: safeUrl,
@@ -962,7 +969,7 @@ export class VisitService extends BaseService<VisitEntity> {
       throw new BusinessException('Unsupported media URL protocol')
 
     if (storageType === 'local') {
-      if (!url.startsWith('/api/storage/file/'))
+      if (!url.startsWith('/api/storage/file/') && !url.startsWith('/api/tools/storage/file/'))
         throw new BusinessException('Local media URL must reference an uploaded file')
       if (url.includes('..') || url.includes('\\'))
         throw new BusinessException('Invalid local media URL')
@@ -986,6 +993,21 @@ export class VisitService extends BaseService<VisitEntity> {
         throw error
       throw new BusinessException('Invalid media URL')
     }
+  }
+
+  private extractStorageToken(url: string) {
+    const match = url.match(/^\/api\/(?:tools\/)?storage\/file\/([^/?#]+)$/)
+    return match?.[1] ? decodeURIComponent(match[1]) : ''
+  }
+
+  private async resolveVisitMediaStorageId(storageId: number | undefined, url: string, tenantId: number, areaId: number) {
+    const where = storageId
+      ? { id: storageId, tenantId, areaId, scanStatus: 2 }
+      : { accessToken: this.extractStorageToken(url), tenantId, areaId, scanStatus: 2 }
+    const storage = await this.storageRepository.findOneBy(where)
+    if (!storage)
+      throw new BusinessException('Local media file not found or no permission')
+    return storage.id
   }
 
   private getAllowedMediaHosts() {
@@ -1332,6 +1354,7 @@ export class VisitService extends BaseService<VisitEntity> {
           visitId: file.visitId,
           fileType: file.fileType,
           storageType: file.storageType,
+          storageId: file.storageId,
           fileName: file.fileName,
           originalName: file.originalName,
           url: file.url,

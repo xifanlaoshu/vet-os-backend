@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common'
 import { TypeOrmModule } from '@nestjs/typeorm'
+import { Storage } from '../tools/storage/storage.entity'
 import { AppointmentEntity } from '../vpet-appointment/entities/appointment.entity'
 import { DoctorEntity } from '../vpet-appointment/entities/doctor.entity'
 import { OperationAuditLogEntity } from '../vpet-billing/entities/operation-audit-log.entity'
@@ -54,6 +55,7 @@ import { VisitService } from './visit.service'
       PrescriptionEntity,
       OperationAuditLogEntity,
       DoctorEntity,
+      Storage,
     ]),
   ],
   controllers: [VisitController],

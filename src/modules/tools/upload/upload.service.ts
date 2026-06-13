@@ -80,7 +80,7 @@ export class UploadService {
     const accessToken = randomBytes(32).toString('base64url')
     const tokenExpiresAt = dayjs().add(this.anonymousTokenTtlMinutes, 'minute').toDate()
     const diskPath = getProtectedUploadPath(tenantId, areaId, name, currentDate, type)
-    const path = `/api/storage/file/${accessToken}`
+    const path = `/api/tools/storage/file/${accessToken}`
 
     await saveLocalFile(buffer, name, currentDate, type, tenantId, areaId)
 

@@ -5,6 +5,7 @@ import { VisitService } from './visit.service'
 function createVisitService(overrides: {
   visitRepository?: any
   operationAuditRepository?: any
+  storageRepository?: any
 } = {}) {
   return new VisitService(
     overrides.visitRepository ?? {} as any,
@@ -31,6 +32,7 @@ function createVisitService(overrides: {
     {} as any,
     {} as any,
     overrides.operationAuditRepository ?? {} as any,
+    overrides.storageRepository ?? {} as any,
   ) as any
 }
 
@@ -56,6 +58,8 @@ describe('visitService media file safety', () => {
 
     expect(service.validateVisitMediaUrl('local', '/api/storage/file/token-123'))
       .toBe('/api/storage/file/token-123')
+    expect(service.validateVisitMediaUrl('local', '/api/tools/storage/file/token-456'))
+      .toBe('/api/tools/storage/file/token-456')
     expect(() => service.validateVisitMediaUrl('local', '/upload/tenant/2/area/3/image.png'))
       .toThrow(BusinessException)
     expect(() => service.validateVisitMediaUrl('local', '/assets/public.png'))

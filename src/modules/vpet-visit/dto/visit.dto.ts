@@ -296,6 +296,10 @@ export class CreateVisitMediaFileDto {
   storageType: 'local' | 'oss'
 
   @IsOptional()
+  @IsInt()
+  storageId?: number
+
+  @IsOptional()
   @IsString()
   fileName?: string
 

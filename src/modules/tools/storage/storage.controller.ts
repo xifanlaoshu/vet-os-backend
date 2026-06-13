@@ -10,9 +10,9 @@ import { setProtectedFileResponseHeaders } from '~/common/utils/file-response.ut
 
 import { Pagination } from '~/helper/paginate/pagination'
 
-import { AllowAnon } from '~/modules/auth/decorators/allow-anon.decorator'
 import { AuthUser } from '~/modules/auth/decorators/auth-user.decorator'
 import { definePermission, Perm } from '~/modules/auth/decorators/permission.decorator'
+import { Public } from '~/modules/auth/decorators/public.decorator'
 
 import { StorageDeleteDto, StoragePageDto } from './storage.dto'
 import { StorageInfo } from './storage.modal'
@@ -40,7 +40,7 @@ export class StorageController {
   }
 
   @Get('file/:token')
-  @AllowAnon()
+  @Public()
   @ApiOperation({ summary: 'Get protected uploaded file by opaque token' })
   async file(@Param('token') token: string, @Res() reply: FastifyReply) {
     const { storage, filePath, mimeType } = await this.storageService.getAuthorizedFileByToken(token)
@@ -62,6 +62,13 @@ export class StorageController {
   @ApiOperation({ summary: 'Refresh protected uploaded file preview token' })
   async refreshFileToken(@Param('token') token: string, @AuthUser() user: IAuthUser) {
     return this.storageService.refreshAnonymousToken(token, user)
+  }
+
+  @Post('file/id/:id/refresh')
+  @Perm(permissions.SIGN)
+  @ApiOperation({ summary: 'Refresh protected uploaded file preview token by storage id' })
+  async refreshFileTokenById(@Param('id') id: string, @AuthUser() user: IAuthUser) {
+    return this.storageService.refreshAnonymousTokenById(Number(id), user)
   }
 
   @Post('delete')

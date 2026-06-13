@@ -74,18 +74,16 @@ export class StorageService {
     if (!storage)
       throw new BadRequestException('File not found or no permission')
 
-    const nextToken = randomBytes(32).toString('base64url')
-    const tokenExpiresAt = dayjs().add(this.anonymousTokenTtlMinutes, 'minute').toDate()
-    storage.accessToken = nextToken
-    storage.tokenExpiresAt = tokenExpiresAt
-    storage.path = `/api/storage/file/${nextToken}`
-    await this.storageRepository.save(storage)
+    return this.extendAnonymousToken(storage)
+  }
 
-    return {
-      id: storage.id,
-      path: storage.path,
-      tokenExpiresAt,
-    }
+  async refreshAnonymousTokenById(id: number, context: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
+    const { tenantId, areaId } = requireTenantAreaContext(context)
+    const storage = await this.storageRepository.findOneBy({ id, tenantId, areaId, scanStatus: 2 })
+    if (!storage)
+      throw new BadRequestException('File not found or no permission')
+
+    return this.extendAnonymousToken(storage)
   }
 
   async list({
@@ -168,6 +166,21 @@ export class StorageService {
       pdf: 'application/pdf',
     }
     return mapping[normalized] || 'application/octet-stream'
+  }
+
+  private async extendAnonymousToken(storage: Storage) {
+    if (!storage.accessToken)
+      storage.accessToken = randomBytes(32).toString('base64url')
+    storage.path = `/api/tools/storage/file/${storage.accessToken}`
+    const tokenExpiresAt = dayjs().add(this.anonymousTokenTtlMinutes, 'minute').toDate()
+    storage.tokenExpiresAt = tokenExpiresAt
+    await this.storageRepository.save(storage)
+
+    return {
+      id: storage.id,
+      path: storage.path,
+      tokenExpiresAt,
+    }
   }
 
   private async resolveAuthorizedStorageFile(storage?: Storage | null) {

@@ -93,7 +93,7 @@ describe('storageService security boundaries', () => {
     await expect(service.getAuthorizedFileByToken('legacy-token')).rejects.toBeInstanceOf(BadRequestException)
   })
 
-  it('refreshes anonymous file tokens only within the current tenant and area', async () => {
+  it('extends anonymous file tokens only within the current tenant and area without rotating saved URLs', async () => {
     const save = jest.fn(async item => item)
     const repository = {
       findOneBy: jest.fn().mockResolvedValue({
@@ -122,15 +122,15 @@ describe('storageService security boundaries', () => {
     })
     expect(save).toHaveBeenCalledWith(expect.objectContaining({
       id: 10,
-      accessToken: expect.not.stringMatching(/^old-token$/),
-      path: expect.stringMatching(/^\/api\/storage\/file\//),
+      accessToken: 'old-token',
+      path: '/api/tools/storage/file/old-token',
       tokenExpiresAt: expect.any(Date),
     }))
     const savedStorage = save.mock.calls[0][0]
     expect(savedStorage.tokenExpiresAt.getTime()).toBeLessThanOrEqual(Date.now() + 10 * 60 * 1000)
     expect(result).toMatchObject({
       id: 10,
-      path: expect.stringMatching(/^\/api\/storage\/file\//),
+      path: '/api/tools/storage/file/old-token',
     })
   })
 })

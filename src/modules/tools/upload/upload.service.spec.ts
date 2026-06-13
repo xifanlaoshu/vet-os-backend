@@ -37,7 +37,7 @@ describe('uploadService file safety', () => {
       toBuffer: jest.fn(async () => Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])),
     } as any, { uid: 9, tenantId: 2, areaId: 3 } as any)).resolves.toMatchObject({
       id: 10,
-      path: expect.stringMatching(/^\/api\/storage\/file\//),
+      path: expect.stringMatching(/^\/api\/tools\/storage\/file\//),
       tokenExpiresAt: expect.any(Date),
     })
 
