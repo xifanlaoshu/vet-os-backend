@@ -61,6 +61,7 @@ auditVisitMediaFileSafety()
 auditBillingMemberCardPaymentBoundaries()
 auditPrescriptionCurrentStaffTenantBoundary()
 auditVisitDerivedRecordConsistency()
+auditAppointmentWorkflowStateBoundaries()
 auditTrustedClientIpResolution()
 auditSanitizedExceptionLogging()
 auditExternalHttpTimeouts()
@@ -959,6 +960,80 @@ function auditVisitDerivedRecordConsistency() {
         message: `${target.domain} visit-derived record consistency tests must cover customer mismatch, pet mismatch, and linked billing mismatch where applicable.`,
       })
     }
+  })
+}
+
+function auditAppointmentWorkflowStateBoundaries() {
+  const serviceFile = 'src/modules/vpet-appointment/appointment.service.ts'
+  const specFile = 'src/modules/vpet-appointment/appointment.service.spec.ts'
+  const servicePath = join(root, ...serviceFile.split('/'))
+  const specPath = join(root, ...specFile.split('/'))
+  if (!existsSync(servicePath))
+    return
+
+  const serviceContent = readFileSync(servicePath, 'utf8')
+  const requiredServicePatterns = [
+    {
+      pattern: /Appointment status must be changed through workflow actions/,
+      rule: 'appointment-direct-status-update-block-required',
+      message: 'Appointment status must not be mutable through generic update; use explicit workflow actions for check-in, cancel, and completion.',
+    },
+    {
+      pattern: /Checked-in appointment cannot change core scheduling data/,
+      rule: 'appointment-checked-in-core-update-block-required',
+      message: 'Checked-in appointments must not allow customer, pet, doctor, or appointment time changes that would desynchronize the visit chain.',
+    },
+    {
+      pattern: /Checked-in appointment cannot be canceled/,
+      rule: 'appointment-checked-in-cancel-block-required',
+      message: 'Checked-in or completed appointments must not be cancelable because they may already have generated clinical records.',
+    },
+    {
+      pattern: /Appointment has generated a visit and cannot be canceled/,
+      rule: 'appointment-visit-cancel-block-required',
+      message: 'Appointments with an existing visit must not be cancelable because canceling would orphan clinical records.',
+    },
+  ]
+
+  requiredServicePatterns.forEach(({ pattern, rule, message }) => {
+    if (pattern.test(serviceContent))
+      return
+    findings.push({
+      file: serviceFile,
+      line: 1,
+      rule,
+      message,
+    })
+  })
+
+  if (!existsSync(specPath)) {
+    findings.push({
+      file: specFile,
+      line: 1,
+      rule: 'missing-appointment-workflow-state-tests',
+      message: 'Appointment workflow state boundaries must have regression tests for direct status changes, checked-in core edits, checked-in cancel, and visit cancel.',
+    })
+    return
+  }
+
+  const specContent = readFileSync(specPath, 'utf8')
+  const requiredSpecPatterns = [
+    /direct status changes/i,
+    /core scheduling changes after check-in/i,
+    /already checked in/i,
+    /generated a visit/i,
+    /already canceled/i,
+    /outside the current area/i,
+  ]
+  requiredSpecPatterns.forEach((pattern) => {
+    if (pattern.test(specContent))
+      return
+    findings.push({
+      file: specFile,
+      line: 1,
+      rule: 'incomplete-appointment-workflow-state-tests',
+      message: 'Appointment workflow state tests must cover direct status changes, checked-in core edits, checked-in cancel, visit cancel, idempotent cancel, and scoped missing records.',
+    })
   })
 }
 

@@ -90,10 +90,24 @@ export class AppointmentService {
       || dto.petId !== undefined
       || dto.doctorId !== undefined
       || dto.appointmentTime !== undefined
+      || dto.status !== undefined
     ) {
       const current = await this.appointmentRepository.findOneBy({ id, tenantId, areaId })
       if (!current)
         throw new BusinessException('Appointment not found')
+      if (dto.status !== undefined && Number(dto.status) !== Number(current.status))
+        throw new BusinessException('Appointment status must be changed through workflow actions')
+      if (
+        [2, 3].includes(Number(current.status))
+        && (
+          dto.customerId !== undefined
+          || dto.petId !== undefined
+          || dto.doctorId !== undefined
+          || dto.appointmentTime !== undefined
+        )
+      ) {
+        throw new BusinessException('Checked-in appointment cannot change core scheduling data')
+      }
       if (dto.customerId !== undefined || dto.petId !== undefined) {
         await this.validateCustomerPetRelation(
           dto.customerId ?? current.customerId,
@@ -161,6 +175,16 @@ export class AppointmentService {
 
   async cancel(id: number, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>): Promise<void> {
     const { tenantId, areaId } = requireTenantAreaContext(context)
+    const appointment = await this.appointmentRepository.findOneBy({ id, tenantId, areaId })
+    if (!appointment)
+      throw new BusinessException('Appointment not found')
+    if (appointment.status === 4)
+      return
+    if (appointment.status === 2 || appointment.status === 3)
+      throw new BusinessException('Checked-in appointment cannot be canceled')
+    const existingVisit = await this.visitService.findByAppointmentId(id, { tenantId, areaId })
+    if (existingVisit)
+      throw new BusinessException('Appointment has generated a visit and cannot be canceled')
     await this.appointmentRepository.update({
       id,
       tenantId,
