@@ -1471,6 +1471,26 @@ function auditAppointmentWorkflowStateBoundaries() {
       rule: 'appointment-visit-cancel-block-required',
       message: 'Appointments with an existing visit must not be cancelable because canceling would orphan clinical records.',
     },
+    {
+      pattern: /async updateDoctor[\s\S]*Medical staff not found[\s\S]*doctorRepository\.update\(\{ id, tenantId \}/,
+      rule: 'appointment-doctor-update-scoped-record-required',
+      message: 'Medical staff updates must first load the record in the current tenant instead of silently updating zero rows for out-of-scope IDs.',
+    },
+    {
+      pattern: /async deleteDoctor[\s\S]*Medical staff not found[\s\S]*doctorRepository\.delete\(\{ id, tenantId \}/,
+      rule: 'appointment-doctor-delete-scoped-record-required',
+      message: 'Medical staff deletes must reject out-of-scope IDs before deleting.',
+    },
+    {
+      pattern: /async deleteShift[\s\S]*Shift not found[\s\S]*shiftRepository\.delete\(\{ id, tenantId \}/,
+      rule: 'appointment-shift-delete-scoped-record-required',
+      message: 'Shift deletes must reject out-of-scope IDs before deleting.',
+    },
+    {
+      pattern: /validateDoctorUser[\s\S]*userAreaRepository\.findOneBy\(\{ userId, tenantId \}\)[\s\S]*System user is not assigned to current tenant/,
+      rule: 'appointment-doctor-user-tenant-assignment-required',
+      message: 'Binding medical staff to a system user must verify that the user belongs to or is assigned to the current tenant.',
+    },
   ]
 
   requiredServicePatterns.forEach(({ pattern, rule, message }) => {
@@ -1502,6 +1522,10 @@ function auditAppointmentWorkflowStateBoundaries() {
     /generated a visit/i,
     /already canceled/i,
     /outside the current area/i,
+    /users outside the current tenant/i,
+    /users granted to the current tenant/i,
+    /medical staff outside the current tenant/i,
+    /shifts outside the current tenant/i,
   ]
   requiredSpecPatterns.forEach((pattern) => {
     if (pattern.test(specContent))

@@ -4,6 +4,7 @@ import { Brackets, FindOptionsWhere, Repository } from 'typeorm'
 import { BusinessException } from '~/common/exceptions/biz.exception'
 import { requireTenantAreaContext, requireTenantContext } from '~/common/utils/tenant-context.util'
 import { paginate } from '~/helper/paginate'
+import { UserAreaEntity } from '../system/tenant/user-area.entity'
 import { UserEntity } from '../user/user.entity'
 import { PetEntity } from '../vpet-pet/entities/pet.entity'
 import { VisitService } from '../vpet-visit/visit.service'
@@ -30,6 +31,8 @@ export class AppointmentService {
     private petRepository: Repository<PetEntity>,
     @InjectRepository(UserEntity)
     private userRepository: Repository<UserEntity>,
+    @InjectRepository(UserAreaEntity)
+    private userAreaRepository: Repository<UserAreaEntity>,
     private visitService: VisitService,
   ) {}
 
@@ -85,6 +88,9 @@ export class AppointmentService {
 
   async update(id: number, dto: UpdateAppointmentDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>): Promise<void> {
     const { tenantId, areaId } = requireTenantAreaContext(context)
+    const current = await this.appointmentRepository.findOneBy({ id, tenantId, areaId })
+    if (!current)
+      throw new BusinessException('Appointment not found')
     if (
       dto.customerId !== undefined
       || dto.petId !== undefined
@@ -92,9 +98,6 @@ export class AppointmentService {
       || dto.appointmentTime !== undefined
       || dto.status !== undefined
     ) {
-      const current = await this.appointmentRepository.findOneBy({ id, tenantId, areaId })
-      if (!current)
-        throw new BusinessException('Appointment not found')
       if (dto.status !== undefined && Number(dto.status) !== Number(current.status))
         throw new BusinessException('Appointment status must be changed through workflow actions')
       if (
@@ -218,19 +221,25 @@ export class AppointmentService {
 
   async createDoctor(dto: CreateDoctorDto, context?: Pick<IAuthUser, 'tenantId'>): Promise<DoctorEntity> {
     const { tenantId } = requireTenantContext(context)
-    await this.validateDoctorUser(dto.userId)
+    await this.validateDoctorUser(dto.userId, tenantId)
     const doctor = this.doctorRepository.create({ ...dto, tenantId })
     return this.doctorRepository.save(doctor)
   }
 
   async updateDoctor(id: number, dto: UpdateDoctorDto, context?: Pick<IAuthUser, 'tenantId'>): Promise<void> {
     const { tenantId } = requireTenantContext(context)
-    await this.validateDoctorUser(dto.userId)
+    const current = await this.doctorRepository.findOneBy({ id, tenantId })
+    if (!current)
+      throw new BusinessException('Medical staff not found')
+    await this.validateDoctorUser(dto.userId, tenantId)
     await this.doctorRepository.update({ id, tenantId }, dto)
   }
 
   async deleteDoctor(id: number, context?: Pick<IAuthUser, 'tenantId'>): Promise<void> {
     const { tenantId } = requireTenantContext(context)
+    const current = await this.doctorRepository.findOneBy({ id, tenantId })
+    if (!current)
+      throw new BusinessException('Medical staff not found')
     await this.doctorRepository.delete({ id, tenantId })
   }
 
@@ -294,6 +303,9 @@ export class AppointmentService {
 
   async deleteShift(id: number, context?: Pick<IAuthUser, 'tenantId'>) {
     const { tenantId } = requireTenantContext(context)
+    const current = await this.shiftRepository.findOneBy({ id, tenantId })
+    if (!current)
+      throw new BusinessException('Shift not found')
     const used = await this.staffScheduleRepository.count({ where: { shiftId: id, tenantId } })
     if (used > 0)
       throw new BusinessException('Shift is used by schedules and cannot be deleted')
@@ -333,7 +345,7 @@ export class AppointmentService {
 
     if (!dto.shiftId) {
       if (existing)
-        await this.staffScheduleRepository.delete(existing.id)
+        await this.staffScheduleRepository.delete({ id: existing.id, tenantId, areaId })
       return null
     }
 
@@ -428,12 +440,17 @@ export class AppointmentService {
     return current >= start || current < end
   }
 
-  private async validateDoctorUser(userId?: number) {
+  private async validateDoctorUser(userId: number | undefined, tenantId: number) {
     if (!userId)
       return
-    const user = await this.userRepository.findOneBy({ id: userId })
+    const user = await this.userRepository.findOneBy({ id: userId, status: 1 })
     if (!user)
       throw new BusinessException('System user not found')
+    if (Number(user.tenantId) === Number(tenantId))
+      return
+    const grant = await this.userAreaRepository.findOneBy({ userId, tenantId })
+    if (!grant)
+      throw new BusinessException('System user is not assigned to current tenant')
   }
 
   private async resolveScopedDoctorId(scope: string | undefined, currentUserId: number | undefined, tenantId: number) {
