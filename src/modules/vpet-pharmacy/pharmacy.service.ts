@@ -133,6 +133,9 @@ export class PharmacyService {
 
   async updateChargeItem(id: number, dto: UpdateChargeItemDto, context?: Pick<IAuthUser, 'tenantId'>) {
     const { tenantId } = requireTenantContext(context)
+    const item = await this.chargeItemRepository.findOneBy({ id, tenantId })
+    if (!item)
+      throw new BusinessException('Charge item not found')
     const { consentTemplateIds, ...payload } = dto
     await this.chargeItemRepository.update({ id, tenantId }, payload)
     if (consentTemplateIds !== undefined)
@@ -308,6 +311,9 @@ export class PharmacyService {
 
   async updateBatch(id: number, dto: any, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>): Promise<void> {
     const { tenantId, areaId } = requireTenantAreaContext(context)
+    const batch = await this.batchRepository.findOneBy({ id, tenantId, areaId })
+    if (!batch)
+      throw new BusinessException('Drug batch not found')
     await this.batchRepository.update({
       id,
       tenantId,

@@ -745,6 +745,29 @@ function auditPharmacyStockOutTransactionSafety() {
     return
 
   const serviceContent = readFileSync(servicePath, 'utf8')
+  const requiredAdminPatterns = [
+    {
+      pattern: /async updateChargeItem[\s\S]*Charge item not found[\s\S]*chargeItemRepository\.update\(\{ id, tenantId \}/,
+      rule: 'pharmacy-charge-item-update-scoped-record-required',
+      message: 'Charge item updates must first load the record in the current tenant before mutating service pricing data.',
+    },
+    {
+      pattern: /async updateBatch[\s\S]*Drug batch not found[\s\S]*batchRepository\.update\(\{\s*id,\s*tenantId,\s*areaId,/,
+      rule: 'pharmacy-batch-update-scoped-record-required',
+      message: 'Drug batch updates must reject out-of-scope tenant-area IDs before mutating area-scoped stock metadata.',
+    },
+  ]
+  requiredAdminPatterns.forEach(({ pattern, rule, message }) => {
+    if (pattern.test(serviceContent))
+      return
+    findings.push({
+      file: serviceFile,
+      line: 1,
+      rule,
+      message,
+    })
+  })
+
   const requiredServicePatterns = [
     {
       pattern: /dataSource\.transaction/,
@@ -795,6 +818,21 @@ function auditPharmacyStockOutTransactionSafety() {
   }
 
   const specContent = readFileSync(specPath, 'utf8')
+  const adminSpecPatterns = [
+    /charge item updates outside the current tenant/i,
+    /batch updates outside the current area/i,
+  ]
+  adminSpecPatterns.forEach((pattern) => {
+    if (pattern.test(specContent))
+      return
+    findings.push({
+      file: specFile,
+      line: 1,
+      rule: 'incomplete-pharmacy-admin-boundary-tests',
+      message: 'Pharmacy admin boundary tests must cover charge item and batch updates outside the current scope.',
+    })
+  })
+
   const requiredSpecPatterns = [
     /locks tenant-area drug batches before stock out/i,
     /pessimistic_write/,

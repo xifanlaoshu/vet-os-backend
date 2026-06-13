@@ -73,6 +73,7 @@ describe('pharmacyService tenant boundaries', () => {
     }
     const service = createService({
       chargeItemRepository: {
+        findOneBy: jest.fn(async () => ({ id: 10, tenantId: 2 })),
         update: jest.fn(async () => undefined),
       },
       consentTemplateRepository: {
@@ -92,6 +93,43 @@ describe('pharmacyService tenant boundaries', () => {
     expect(templateQb.where).toHaveBeenCalledWith('template.id IN (:...ids)', { ids: [99] })
     expect(templateQb.andWhere).toHaveBeenCalledWith('template.tenantId = :tenantId', { tenantId: 2 })
     expect(templateQb.andWhere).toHaveBeenCalledWith('template.isActive = :isActive', { isActive: 1 })
+  })
+
+  it('rejects charge item updates outside the current tenant', async () => {
+    const update = jest.fn()
+    const linkDelete = jest.fn()
+    const service = createService({
+      chargeItemRepository: {
+        findOneBy: jest.fn(async () => null),
+        update,
+      },
+      consentTemplateChargeItemRepository: {
+        delete: linkDelete,
+      },
+    })
+
+    await expect(service.updateChargeItem(10, { itemName: 'Cross tenant service', consentTemplateIds: [] }, { tenantId: 2 }))
+      .rejects
+      .toBeInstanceOf(BusinessException)
+
+    expect(update).not.toHaveBeenCalled()
+    expect(linkDelete).not.toHaveBeenCalled()
+  })
+
+  it('rejects batch updates outside the current area', async () => {
+    const update = jest.fn()
+    const service = createService({
+      batchRepository: {
+        findOneBy: jest.fn(async () => null),
+        update,
+      },
+    })
+
+    await expect(service.updateBatch(11, { batchNo: 'B-CROSS' }, { tenantId: 2, areaId: 3 }))
+      .rejects
+      .toBeInstanceOf(BusinessException)
+
+    expect(update).not.toHaveBeenCalled()
   })
 })
 
