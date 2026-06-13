@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Put, Query } from '@nestjs/common'
+import { Body, Controller, ForbiddenException, Get, Post, Put, Query } from '@nestjs/common'
 import { ApiOperation, ApiTags } from '@nestjs/swagger'
 
 import { IdParam } from '~/common/decorators/id-param.decorator'
@@ -35,56 +35,69 @@ export class TenantController {
   @Get()
   @ApiOperation({ summary: 'Tenant list' })
   @Perm(permissions.LIST)
-  async listTenants(@Query() dto: TenantQueryDto) {
+  async listTenants(@Query() dto: TenantQueryDto, @AuthUser() user: IAuthUser) {
+    this.assertPlatformAdmin(user)
     return this.tenantService.listTenants(dto)
   }
 
   @Get('options')
   @ApiOperation({ summary: 'Tenant options' })
   @Perm(permissions.LIST)
-  async tenantOptions() {
+  async tenantOptions(@AuthUser() user: IAuthUser) {
+    this.assertPlatformAdmin(user)
     return this.tenantService.tenantOptions()
   }
 
   @Post()
   @ApiOperation({ summary: 'Create tenant' })
   @Perm(permissions.CREATE)
-  async createTenant(@Body() dto: TenantDto) {
+  async createTenant(@Body() dto: TenantDto, @AuthUser() user: IAuthUser) {
+    this.assertPlatformAdmin(user)
     return this.tenantService.createTenant(dto)
   }
 
   @Put(':id')
   @ApiOperation({ summary: 'Update tenant' })
   @Perm(permissions.UPDATE)
-  async updateTenant(@IdParam() id: number, @Body() dto: TenantDto) {
+  async updateTenant(@IdParam() id: number, @Body() dto: TenantDto, @AuthUser() user: IAuthUser) {
+    this.assertPlatformAdmin(user)
     return this.tenantService.updateTenant(id, dto)
   }
 
   @Get('areas')
   @ApiOperation({ summary: 'Tenant area list' })
   @Perm(permissions.AREA_LIST)
-  async listAreas(@Query() dto: TenantAreaQueryDto) {
+  async listAreas(@Query() dto: TenantAreaQueryDto, @AuthUser() user: IAuthUser) {
+    this.assertPlatformAdmin(user)
     return this.tenantService.listAreas(dto)
   }
 
   @Get('areas/options')
   @ApiOperation({ summary: 'Tenant area options' })
   @Perm(permissions.LIST)
-  async areaOptions(@Query('tenantId') tenantId?: string) {
+  async areaOptions(@Query('tenantId') tenantId: string | undefined, @AuthUser() user: IAuthUser) {
+    this.assertPlatformAdmin(user)
     return this.tenantService.areaOptions(tenantId ? Number(tenantId) : undefined)
   }
 
   @Post('areas')
   @ApiOperation({ summary: 'Create tenant area' })
   @Perm(permissions.AREA_CREATE)
-  async createArea(@Body() dto: TenantAreaDto) {
+  async createArea(@Body() dto: TenantAreaDto, @AuthUser() user: IAuthUser) {
+    this.assertPlatformAdmin(user)
     return this.tenantService.createArea(dto)
   }
 
   @Put('areas/:id')
   @ApiOperation({ summary: 'Update tenant area' })
   @Perm(permissions.AREA_UPDATE)
-  async updateArea(@IdParam() id: number, @Body() dto: TenantAreaDto) {
+  async updateArea(@IdParam() id: number, @Body() dto: TenantAreaDto, @AuthUser() user: IAuthUser) {
+    this.assertPlatformAdmin(user)
     return this.tenantService.updateArea(id, dto)
+  }
+
+  private assertPlatformAdmin(user: IAuthUser) {
+    if (!user?.platformAdmin)
+      throw new ForbiddenException('Tenant platform management requires platform administrator privileges')
   }
 }

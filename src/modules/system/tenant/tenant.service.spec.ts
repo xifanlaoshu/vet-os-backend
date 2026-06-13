@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common'
+import { BadRequestException, ForbiddenException } from '@nestjs/common'
 
 import { TenantController } from './tenant.controller'
 import { TenantService } from './tenant.service'
@@ -192,5 +192,43 @@ describe('tenantController security boundaries', () => {
     await controller.context({ uid: 1, platformAdmin: true } as any)
 
     expect(tenantService.resolveDefaultContext).toHaveBeenCalledWith(1, true)
+  })
+
+  it('rejects tenant platform management for non-platform administrators', async () => {
+    const tenantService = {
+      listTenants: jest.fn(async () => ({ items: [] })),
+    }
+    const controller = new TenantController(tenantService as any)
+
+    await expect(controller.listTenants({ page: 1, pageSize: 10 } as any, {
+      uid: 7,
+      platformAdmin: false,
+    } as any)).rejects.toBeInstanceOf(ForbiddenException)
+    expect(tenantService.listTenants).not.toHaveBeenCalled()
+  })
+
+  it('allows platform administrators to manage tenants', async () => {
+    const tenantService = {
+      listTenants: jest.fn(async () => ({ items: [] })),
+    }
+    const controller = new TenantController(tenantService as any)
+
+    await expect(controller.listTenants({ page: 1, pageSize: 10 } as any, {
+      uid: 1,
+      platformAdmin: true,
+    } as any)).resolves.toEqual({ items: [] })
+    expect(tenantService.listTenants).toHaveBeenCalledWith({ page: 1, pageSize: 10 })
+  })
+
+  it('keeps current context bootstrap available for non-platform users', async () => {
+    const tenantService = {
+      resolveDefaultContext: jest.fn(async () => ({ tenantId: 2, areaId: 3 })),
+    }
+    const controller = new TenantController(tenantService as any)
+
+    await expect(controller.context({ uid: 7, platformAdmin: false } as any))
+      .resolves
+      .toEqual({ tenantId: 2, areaId: 3 })
+    expect(tenantService.resolveDefaultContext).toHaveBeenCalledWith(7, false)
   })
 })

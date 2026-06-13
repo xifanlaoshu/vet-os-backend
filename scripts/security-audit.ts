@@ -58,6 +58,7 @@ auditTenantScopedRolePermissionBoundaries()
 auditTenantScopedUniqueConstraints()
 auditTenantScopedDepartmentBoundaries()
 auditPlatformOnlySystemUserManagement()
+auditPlatformOnlyTenantManagement()
 auditPublicAuthEndpointHardening()
 auditStorageTokenExpiration()
 auditProtectedUploadPersistenceAwait()
@@ -1032,6 +1033,84 @@ function auditPlatformOnlySystemUserManagement() {
       message: 'System user platform-only management must have regression tests.',
     })
   }
+}
+
+function auditPlatformOnlyTenantManagement() {
+  const controllerFile = 'src/modules/system/tenant/tenant.controller.ts'
+  const controllerPath = join(root, ...controllerFile.split('/'))
+  if (!existsSync(controllerPath)) {
+    findings.push({
+      file: controllerFile,
+      line: 1,
+      rule: 'missing-system-tenant-controller',
+      message: 'System tenant management controller is required for platform-only boundary checks.',
+    })
+    return
+  }
+
+  const content = readFileSync(controllerPath, 'utf8')
+  const requiredPatterns = [
+    {
+      pattern: /ForbiddenException/,
+      rule: 'tenant-management-platform-forbidden-required',
+      message: 'Tenant platform management must reject non-platform administrators.',
+    },
+    {
+      pattern: /assertPlatformAdmin\(user\)/,
+      rule: 'tenant-management-platform-check-required',
+      message: 'Tenant platform management handlers must assert platformAdmin before invoking tenant administration services.',
+    },
+    {
+      pattern: /user\?\.platformAdmin/,
+      rule: 'tenant-management-platform-admin-flag-required',
+      message: 'Tenant platform management must use the explicit platformAdmin token flag.',
+    },
+    {
+      pattern: /Tenant platform management requires platform administrator privileges/,
+      rule: 'tenant-management-platform-denial-message-required',
+      message: 'Tenant platform management denial must be explicit for auditability.',
+    },
+    {
+      pattern: /resolveDefaultContext\(user\.uid,\s*user\.platformAdmin\)/,
+      rule: 'tenant-context-bootstrap-remains-user-scoped',
+      message: 'Current tenant context bootstrap must remain user-scoped and pass platformAdmin into service resolution.',
+    },
+  ]
+
+  requiredPatterns.forEach(({ pattern, rule, message }) => {
+    if (pattern.test(content))
+      return
+    findings.push({ file: controllerFile, line: 1, rule, message })
+  })
+
+  const specFile = 'src/modules/system/tenant/tenant.service.spec.ts'
+  const specPath = join(root, ...specFile.split('/'))
+  if (!existsSync(specPath)) {
+    findings.push({
+      file: specFile,
+      line: 1,
+      rule: 'missing-tenant-management-platform-boundary-tests',
+      message: 'Tenant platform-only management must have regression tests.',
+    })
+    return
+  }
+
+  const specContent = readFileSync(specPath, 'utf8')
+  const requiredSpecPatterns = [
+    /rejects tenant platform management for non-platform administrators/i,
+    /allows platform administrators to manage tenants/i,
+    /keeps current context bootstrap available for non-platform users/i,
+  ]
+  requiredSpecPatterns.forEach((pattern) => {
+    if (pattern.test(specContent))
+      return
+    findings.push({
+      file: specFile,
+      line: 1,
+      rule: 'incomplete-tenant-management-platform-boundary-tests',
+      message: 'Tenant platform-only management tests must cover non-platform denial, platform access, and current-context availability.',
+    })
+  })
 }
 
 function auditPublicAuthEndpointHardening() {
