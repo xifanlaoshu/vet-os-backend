@@ -58,6 +58,7 @@ auditTenantScopedRolePermissionBoundaries()
 auditTenantScopedUniqueConstraints()
 auditTenantScopedDepartmentBoundaries()
 auditTenantScopedDictionaryItemTypeBoundary()
+auditNoRuntimeTodoModule()
 auditPlatformOnlySystemUserManagement()
 auditPlatformOnlyTenantManagement()
 auditPlatformOnlyMenuManagement()
@@ -1102,6 +1103,8 @@ function auditTenantScopedDictionaryItemTypeBoundary() {
 function auditPlatformOnlySystemUserManagement() {
   const controllerFile = 'src/modules/user/user.controller.ts'
   const controllerPath = join(root, ...controllerFile.split('/'))
+  const serviceFile = 'src/modules/user/user.service.ts'
+  const servicePath = join(root, ...serviceFile.split('/'))
   if (!existsSync(controllerPath)) {
     findings.push({
       file: controllerFile,
@@ -1151,6 +1154,69 @@ function auditPlatformOnlySystemUserManagement() {
       message: 'System user platform-only management must have regression tests.',
     })
   }
+
+  if (!existsSync(servicePath)) {
+    findings.push({
+      file: serviceFile,
+      line: 1,
+      rule: 'missing-system-user-service',
+      message: 'System user service is required for platform user tenant relation boundary checks.',
+    })
+    return
+  }
+
+  const serviceContent = readFileSync(servicePath, 'utf8')
+  const requiredServicePatterns = [
+    {
+      pattern: /resolveTenantRelations/,
+      rule: 'system-user-tenant-relation-validation-required',
+      message: 'System user create/update must validate related role and department ids inside the target tenant.',
+    },
+    {
+      pattern: /manager\.findBy\(RoleEntity,\s*\{\s*id:\s*In\(normalizedRoleIds\),\s*tenantId\s*\}/,
+      rule: 'system-user-role-tenant-validation-required',
+      message: 'System user role assignment must fetch roles by id and tenantId together.',
+    },
+    {
+      pattern: /manager\.findOneBy\(DeptEntity,\s*\{\s*id:\s*Number\(deptId\),\s*tenantId\s*\}/,
+      rule: 'system-user-dept-tenant-validation-required',
+      message: 'System user department assignment must fetch department by id and tenantId together.',
+    },
+    {
+      pattern: /Changing user tenant requires role reassignment/,
+      rule: 'system-user-tenant-change-role-reassignment-required',
+      message: 'Changing a user base tenant must require role reassignment to avoid stale cross-tenant role bindings.',
+    },
+    {
+      pattern: /Changing user tenant requires department reassignment/,
+      rule: 'system-user-tenant-change-dept-reassignment-required',
+      message: 'Changing a user base tenant must require department reassignment to avoid stale cross-tenant department bindings.',
+    },
+  ]
+
+  requiredServicePatterns.forEach(({ pattern, rule, message }) => {
+    if (pattern.test(serviceContent))
+      return
+    findings.push({ file: serviceFile, line: 1, rule, message })
+  })
+}
+
+function auditNoRuntimeTodoModule() {
+  const appModuleFile = 'src/app.module.ts'
+  const appModulePath = join(root, ...appModuleFile.split('/'))
+  if (!existsSync(appModulePath))
+    return
+
+  const content = readFileSync(appModulePath, 'utf8')
+  if (!/TodoModule/.test(content))
+    return
+
+  findings.push({
+    file: appModuleFile,
+    line: 1,
+    rule: 'no-runtime-unscoped-todo-module',
+    message: 'Legacy TodoModule has no tenant boundary and must not be mounted in the public SaaS runtime.',
+  })
 }
 
 function auditPlatformOnlyTenantManagement() {

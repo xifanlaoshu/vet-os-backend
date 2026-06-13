@@ -151,6 +151,7 @@ export class UserService {
     username,
     password,
     roleIds,
+    tenantId,
     deptId,
     ...data
   }: UserDto): Promise<void> {
@@ -172,13 +173,15 @@ export class UserService {
       else {
         password = await hashPassword(this.assertStrongInitialPassword(password), salt)
       }
+      const { roles, dept } = await this.resolveTenantRelations(manager, tenantId, roleIds, deptId)
       const u = manager.create(UserEntity, {
         username,
         password,
         ...data,
+        tenantId,
         psalt: salt,
-        roles: await this.roleRepository.findBy({ id: In(roleIds) }),
-        dept: await DeptEntity.findOneBy({ id: deptId }),
+        roles,
+        dept,
       })
 
       const result = await manager.save(u)
@@ -191,36 +194,47 @@ export class UserService {
    */
   async update(
     id: number,
-    { password, deptId, roleIds, status, ...data }: UserUpdateDto,
+    { password, deptId, roleIds, status, tenantId, ...data }: UserUpdateDto,
   ): Promise<void> {
     await this.entityManager.transaction(async (manager) => {
       if (password)
         await this.forceUpdatePassword(id, password)
 
-      await manager.update(UserEntity, id, {
-        ...data,
-        status,
-      })
-
-      const user = await this.userRepository
-        .createQueryBuilder('user')
+      const current = await manager
+        .createQueryBuilder(UserEntity, 'user')
         .leftJoinAndSelect('user.roles', 'roles')
         .leftJoinAndSelect('user.dept', 'dept')
         .where('user.id = :id', { id })
         .getOne()
+      if (!current)
+        throw new BusinessException(ErrorEnum.USER_NOT_FOUND)
+
+      const targetTenantId = tenantId ?? current.tenantId
+      if (tenantId && tenantId !== current.tenantId && !roleIds?.length)
+        throw new BadRequestException('Changing user tenant requires role reassignment')
+      if (tenantId && tenantId !== current.tenantId && current.dept && deptId === undefined)
+        throw new BadRequestException('Changing user tenant requires department reassignment')
+      const resolved = await this.resolveTenantRelations(manager, targetTenantId, roleIds, deptId)
+
+      await manager.update(UserEntity, id, {
+        ...data,
+        tenantId: targetTenantId,
+        status,
+      })
+
       if (roleIds) {
         await manager
           .createQueryBuilder()
           .relation(UserEntity, 'roles')
           .of(id)
-          .addAndRemove(roleIds, user.roles)
+          .addAndRemove(resolved.roles.map(role => role.id), current.roles || [])
       }
-      if (deptId) {
+      if (deptId !== undefined) {
         await manager
           .createQueryBuilder()
           .relation(UserEntity, 'dept')
           .of(id)
-          .set(deptId)
+          .set(resolved.dept?.id ?? null)
       }
 
       if (status === 0) {
@@ -277,6 +291,7 @@ export class UserService {
     pageSize,
     username,
     nickname,
+    tenantId,
     deptId,
     email,
     status,
@@ -289,6 +304,7 @@ export class UserService {
       .where({
         ...(username ? { username: Like(`%${username}%`) } : null),
         ...(nickname ? { nickname: Like(`%${nickname}%`) } : null),
+        ...(tenantId ? { tenantId } : null),
         ...(email ? { email: Like(`%${email}%`) } : null),
         ...(!isNil(status) ? { status } : null),
       })
@@ -389,5 +405,32 @@ export class UserService {
     if (!password || !isStrongPassword(password))
       throw new BadRequestException('Initial password must be 12-64 characters and contain letters and numbers')
     return password
+  }
+
+  private async resolveTenantRelations(
+    manager: EntityManager,
+    tenantId: number,
+    roleIds?: number[],
+    deptId?: number,
+  ) {
+    if (!Number.isInteger(Number(tenantId)) || Number(tenantId) <= 0)
+      throw new BadRequestException('User tenant is required')
+
+    const normalizedRoleIds = roleIds
+      ? Array.from(new Set(roleIds.map(Number).filter(Boolean)))
+      : undefined
+    const roles = normalizedRoleIds
+      ? await manager.findBy(RoleEntity, { id: In(normalizedRoleIds), tenantId })
+      : []
+    if (normalizedRoleIds && roles.length !== normalizedRoleIds.length)
+      throw new BadRequestException('User roles must belong to the target tenant')
+
+    const dept = deptId
+      ? await manager.findOneBy(DeptEntity, { id: Number(deptId), tenantId })
+      : null
+    if (deptId && !dept)
+      throw new BadRequestException('User department must belong to the target tenant')
+
+    return { roles, dept }
   }
 }
