@@ -2,15 +2,23 @@ import { BusinessException } from '~/common/exceptions/biz.exception'
 
 import { PrescriptionService } from './prescription.service'
 
-function createPrescriptionService(overrides: { doctorRepository?: any, rxRepository?: any, pharmacyService?: any } = {}) {
+function createPrescriptionService(overrides: {
+  doctorRepository?: any
+  rxRepository?: any
+  templateRepository?: any
+  templateItemRepository?: any
+  drugRepository?: any
+  chargeItemRepository?: any
+  pharmacyService?: any
+} = {}) {
   return new PrescriptionService(
     overrides.rxRepository ?? {} as any,
     {} as any,
+    overrides.templateRepository ?? {} as any,
+    overrides.templateItemRepository ?? {} as any,
     {} as any,
-    {} as any,
-    {} as any,
-    {} as any,
-    {} as any,
+    overrides.drugRepository ?? {} as any,
+    overrides.chargeItemRepository ?? {} as any,
     overrides.doctorRepository ?? {} as any,
     overrides.pharmacyService ?? {} as any,
   ) as any
@@ -147,5 +155,89 @@ describe('prescriptionService workflow state boundaries', () => {
     service.getDetail = jest.fn(async () => null)
 
     await expect(service.dispenseRx(8, {}, { tenantId: 2, areaId: 3 })).rejects.toBeInstanceOf(BusinessException)
+  })
+})
+
+describe('prescriptionService template tenant boundaries', () => {
+  it('rejects deleting prescription templates outside the current tenant', async () => {
+    const deleteTemplateItems = jest.fn()
+    const deleteTemplate = jest.fn()
+    const service = createPrescriptionService({
+      templateRepository: {
+        findOneBy: jest.fn(async () => null),
+        delete: deleteTemplate,
+      },
+      templateItemRepository: {
+        delete: deleteTemplateItems,
+      },
+    })
+
+    await expect(service.deleteTemplate(8, { tenantId: 2 })).rejects.toBeInstanceOf(BusinessException)
+    expect(deleteTemplateItems).not.toHaveBeenCalled()
+    expect(deleteTemplate).not.toHaveBeenCalled()
+  })
+
+  it('deletes prescription template items and template only after tenant-scoped lookup succeeds', async () => {
+    const deleteTemplateItems = jest.fn(async () => ({ affected: 2 }))
+    const deleteTemplate = jest.fn(async () => ({ affected: 1 }))
+    const service = createPrescriptionService({
+      templateRepository: {
+        findOneBy: jest.fn(async () => ({ id: 8, tenantId: 2 })),
+        delete: deleteTemplate,
+      },
+      templateItemRepository: {
+        delete: deleteTemplateItems,
+      },
+    })
+
+    await expect(service.deleteTemplate(8, { tenantId: 2 })).resolves.toBeUndefined()
+    expect(deleteTemplateItems).toHaveBeenCalledWith({ templateId: 8, tenantId: 2 })
+    expect(deleteTemplate).toHaveBeenCalledWith({ id: 8, tenantId: 2 })
+  })
+
+  it('rejects prescription template details referencing drugs outside the current tenant', async () => {
+    const save = jest.fn()
+    const service = createPrescriptionService({
+      templateRepository: {
+        create: jest.fn((entity: any) => entity),
+        save,
+      },
+      templateItemRepository: {
+        create: jest.fn((entity: any) => entity),
+      },
+      drugRepository: {
+        findOneBy: jest.fn(async () => null),
+      },
+    })
+
+    await expect(service.createTemplate({
+      templateCode: 'TPL001',
+      templateName: 'Cross tenant drug template',
+      items: [{ itemKind: 1, drugId: 99, quantity: 1, unitPrice: 1 }],
+    }, { tenantId: 2 })).rejects.toBeInstanceOf(BusinessException)
+    expect(save).not.toHaveBeenCalled()
+  })
+
+  it('rejects prescription template details referencing charge items outside the current tenant', async () => {
+    const save = jest.fn()
+    const service = createPrescriptionService({
+      templateRepository: {
+        create: jest.fn((entity: any) => entity),
+        save,
+      },
+      templateItemRepository: {
+        create: jest.fn((entity: any) => entity),
+      },
+      chargeItemRepository: {
+        findOneBy: jest.fn(async () => null),
+      },
+    })
+
+    await expect(service.createTemplate({
+      templateCode: 'TPL002',
+      templateName: 'Cross tenant service template',
+      items: [{ itemKind: 2, chargeItemId: 77, quantity: 1, unitPrice: 1 }],
+    }, { tenantId: 2 })).rejects.toBeInstanceOf(BusinessException)
+    expect(save).not.toHaveBeenCalled()
   })
 })

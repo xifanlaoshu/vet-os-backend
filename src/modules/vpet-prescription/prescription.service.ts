@@ -342,6 +342,11 @@ export class PrescriptionService extends BaseService<PrescriptionEntity> {
 
   async deleteTemplate(id: number, context?: Pick<IAuthUser, 'tenantId'>) {
     const { tenantId } = requireTenantContext(context)
+    const template = await this.templateRepository.findOneBy({ id, tenantId })
+    if (!template)
+      throw new BusinessException('Prescription template not found')
+
+    await this.templateItemRepository.delete({ templateId: id, tenantId })
     await this.templateRepository.delete({ id, tenantId })
   }
 

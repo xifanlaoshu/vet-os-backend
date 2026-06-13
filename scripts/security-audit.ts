@@ -65,6 +65,7 @@ auditBillingPaymentTransactionSafety()
 auditBillingMemberCardPaymentBoundaries()
 auditPrescriptionCurrentStaffTenantBoundary()
 auditPrescriptionWorkflowStateBoundaries()
+auditPrescriptionTemplateTenantBoundaries()
 auditVisitDerivedRecordConsistency()
 auditConsentVisitDerivedRecordConsistency()
 auditInsuranceWorkflowStateBoundaries()
@@ -1296,6 +1297,78 @@ function auditPrescriptionWorkflowStateBoundaries() {
       line: 1,
       rule: 'incomplete-prescription-workflow-state-tests',
       message: 'Prescription workflow tests must cover non-draft submit, non-pending review, unsupported review target status, and dispensing before approval.',
+    })
+  })
+}
+
+function auditPrescriptionTemplateTenantBoundaries() {
+  const serviceFile = 'src/modules/vpet-prescription/prescription.service.ts'
+  const specFile = 'src/modules/vpet-prescription/prescription.service.spec.ts'
+  const servicePath = join(root, ...serviceFile.split('/'))
+  const specPath = join(root, ...specFile.split('/'))
+  if (!existsSync(servicePath))
+    return
+
+  const serviceContent = readFileSync(servicePath, 'utf8')
+  const requiredServicePatterns = [
+    {
+      pattern: /templateRepository\.findOneBy\(\{\s*id,\s*tenantId\s*\}\)/,
+      rule: 'prescription-template-delete-tenant-lookup-required',
+      message: 'Prescription template deletion must first verify the template exists in the current tenant.',
+    },
+    {
+      pattern: /templateItemRepository\.delete\(\{\s*templateId:\s*id,\s*tenantId\s*\}\)/,
+      rule: 'prescription-template-item-tenant-delete-required',
+      message: 'Prescription template deletion must remove template items using templateId and tenantId criteria.',
+    },
+    {
+      pattern: /drugRepository\.findOneBy\(\{\s*id:\s*drugId,\s*tenantId\s*\}\)/,
+      rule: 'prescription-template-drug-tenant-lookup-required',
+      message: 'Prescription template drug details must resolve drugs inside the current tenant.',
+    },
+    {
+      pattern: /chargeItemRepository\.findOneBy\(\{\s*id:\s*chargeItemId,\s*tenantId\s*\}\)/,
+      rule: 'prescription-template-charge-item-tenant-lookup-required',
+      message: 'Prescription template service details must resolve charge items inside the current tenant.',
+    },
+  ]
+
+  requiredServicePatterns.forEach(({ pattern, rule, message }) => {
+    if (pattern.test(serviceContent))
+      return
+    findings.push({
+      file: serviceFile,
+      line: 1,
+      rule,
+      message,
+    })
+  })
+
+  if (!existsSync(specPath)) {
+    findings.push({
+      file: specFile,
+      line: 1,
+      rule: 'missing-prescription-template-tenant-tests',
+      message: 'Prescription template tenant boundaries must have regression tests for deletion and referenced drug/service item resolution.',
+    })
+    return
+  }
+
+  const specContent = readFileSync(specPath, 'utf8')
+  const requiredSpecPatterns = [
+    /outside the current tenant/i,
+    /tenant-scoped lookup succeeds/i,
+    /referencing drugs outside the current tenant/i,
+    /referencing charge items outside the current tenant/i,
+  ]
+  requiredSpecPatterns.forEach((pattern) => {
+    if (pattern.test(specContent))
+      return
+    findings.push({
+      file: specFile,
+      line: 1,
+      rule: 'incomplete-prescription-template-tenant-tests',
+      message: 'Prescription template tests must cover out-of-tenant delete, tenant-scoped delete, drug boundary, and charge-item boundary cases.',
     })
   })
 }
