@@ -69,6 +69,7 @@ auditVisitDerivedRecordConsistency()
 auditInsuranceWorkflowStateBoundaries()
 auditAppointmentWorkflowStateBoundaries()
 auditClinicalWorkflowStateBoundaries()
+auditEmrActionMissingRecordBoundaries()
 auditTrustedClientIpResolution()
 auditSanitizedExceptionLogging()
 auditExternalHttpTimeouts()
@@ -1211,6 +1212,11 @@ function auditPrescriptionWorkflowStateBoundaries() {
       rule: 'prescription-dispense-reviewed-only-required',
       message: 'Prescription dispensing must only allow reviewed prescriptions so stock cannot be deducted from draft or pending orders.',
     },
+    {
+      pattern: /Prescription not found/,
+      rule: 'prescription-dispense-missing-record-required',
+      message: 'Prescription dispensing must reject missing or out-of-scope prescriptions instead of silently returning null.',
+    },
   ]
 
   requiredServicePatterns.forEach(({ pattern, rule, message }) => {
@@ -1240,6 +1246,7 @@ function auditPrescriptionWorkflowStateBoundaries() {
     /not pending review/i,
     /unsupported review target statuses/i,
     /before review approval/i,
+    /outside the current area/i,
   ]
   requiredSpecPatterns.forEach((pattern) => {
     if (pattern.test(specContent))
@@ -1588,6 +1595,61 @@ function auditClinicalWorkflowStateBoundaries() {
         rule: `incomplete-${target.domain}-clinical-workflow-tests`,
         message: `${target.domain} clinical workflow state tests are missing a required terminal-state case.`,
       })
+    })
+  })
+}
+
+function auditEmrActionMissingRecordBoundaries() {
+  const serviceFile = 'src/modules/vpet-visit/visit.service.ts'
+  const specFile = 'src/modules/vpet-visit/visit.service.spec.ts'
+  const servicePath = join(root, ...serviceFile.split('/'))
+  const specPath = join(root, ...specFile.split('/'))
+  if (!existsSync(servicePath))
+    return
+
+  const serviceContent = readFileSync(servicePath, 'utf8')
+  const requiredActionBlocks = [
+    /async lockEmr[\s\S]*throw new BusinessException\(['"`]Visit not found['"`]\)/,
+    /async requestUnlockEmr[\s\S]*throw new BusinessException\(['"`]Visit not found['"`]\)/,
+    /async signEmr[\s\S]*throw new BusinessException\(['"`]Visit not found['"`]\)/,
+    /async recordPrintAudit[\s\S]*throw new BusinessException\(['"`]Visit not found['"`]\)/,
+    /async endConsultation[\s\S]*throw new BusinessException\(['"`]Visit not found['"`]\)/,
+  ]
+  requiredActionBlocks.forEach((pattern) => {
+    if (pattern.test(serviceContent))
+      return
+    findings.push({
+      file: serviceFile,
+      line: 1,
+      rule: 'emr-action-missing-record-rejection-required',
+      message: 'EMR and visit action endpoints must reject missing or out-of-scope visits instead of silently returning null.',
+    })
+  })
+
+  if (!existsSync(specPath)) {
+    findings.push({
+      file: specFile,
+      line: 1,
+      rule: 'missing-emr-action-missing-record-tests',
+      message: 'EMR and visit actions must have regression tests for missing or out-of-scope visit rejection.',
+    })
+    return
+  }
+
+  const specContent = readFileSync(specPath, 'utf8')
+  const requiredSpecPatterns = [
+    /locking EMR records outside the current area/i,
+    /signing EMR records outside the current area/i,
+    /print audit records outside the current area/i,
+  ]
+  requiredSpecPatterns.forEach((pattern) => {
+    if (pattern.test(specContent))
+      return
+    findings.push({
+      file: specFile,
+      line: 1,
+      rule: 'incomplete-emr-action-missing-record-tests',
+      message: 'EMR action missing-record tests must cover lock, sign, and print audit rejection.',
     })
   })
 }

@@ -211,8 +211,7 @@ export class VisitService extends BaseService<VisitEntity> {
   async startConsultation(id: number, options: CurrentStaffScopeOptions = {}): Promise<any> {
     const visit = await this.findScopedVisit(id, options)
     if (!visit) {
-      await this.findOne(id)
-      return null
+      throw new BusinessException('Visit not found')
     }
     await this.assertVisitBelongsToScopedDoctor(visit, options)
 
@@ -252,8 +251,7 @@ export class VisitService extends BaseService<VisitEntity> {
   async saveSoap(id: number, dto: UpdateVisitDto, options: CurrentStaffScopeOptions = {}): Promise<void> {
     const visit = await this.findScopedVisit(id, options)
     if (!visit) {
-      await this.findOne(id)
-      return
+      throw new BusinessException('Visit not found')
     }
     await this.assertVisitBelongsToScopedDoctor(visit, options)
 
@@ -393,8 +391,7 @@ export class VisitService extends BaseService<VisitEntity> {
       relations: ['emr'],
     })
     if (!visit) {
-      await this.findOne(id)
-      return null
+      throw new BusinessException('Visit not found')
     }
     await this.assertVisitBelongsToScopedDoctor(visit, options)
 
@@ -423,8 +420,7 @@ export class VisitService extends BaseService<VisitEntity> {
       relations: ['emr'],
     })
     if (!visit) {
-      await this.findOne(id)
-      return null
+      throw new BusinessException('Visit not found')
     }
     await this.assertVisitBelongsToScopedDoctor(visit, options)
 
@@ -522,8 +518,7 @@ export class VisitService extends BaseService<VisitEntity> {
       relations: ['emr', 'diagnoses', 'progressBatches', 'planBatches'],
     })
     if (!visit) {
-      await this.findOne(id)
-      return null
+      throw new BusinessException('Visit not found')
     }
     await this.assertVisitBelongsToScopedDoctor(visit, options)
 
@@ -584,8 +579,7 @@ export class VisitService extends BaseService<VisitEntity> {
   async recordPrintAudit(id: number, options: CurrentStaffScopeOptions = {}) {
     const visit = await this.findScopedVisit(id, options)
     if (!visit) {
-      await this.findOne(id)
-      return null
+      throw new BusinessException('Visit not found')
     }
     await this.assertVisitBelongsToScopedDoctor(visit, options)
 
@@ -637,8 +631,7 @@ export class VisitService extends BaseService<VisitEntity> {
   async endConsultation(id: number, options: CurrentStaffScopeOptions = {}): Promise<void> {
     const visit = await this.findScopedVisit(id, options)
     if (!visit) {
-      await this.findOne(id)
-      return
+      throw new BusinessException('Visit not found')
     }
     await this.assertVisitBelongsToScopedDoctor(visit, options)
     if (Number(visit.status) === 4 && visit.endTime) {

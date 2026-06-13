@@ -179,7 +179,7 @@ export class PrescriptionService extends BaseService<PrescriptionEntity> {
     const { tenantId, areaId } = requireTenantAreaContext(options)
     const rx = await this.getDetail(id, { tenantId, areaId })
     if (!rx)
-      return null
+      throw new BusinessException('Prescription not found')
     if (Number(rx.status) === 5)
       throw new BusinessException('Prescription is cancelled')
     if (Number(rx.status) === 4)

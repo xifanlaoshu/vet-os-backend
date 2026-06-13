@@ -141,4 +141,11 @@ describe('prescriptionService workflow state boundaries', () => {
     expect(stockOut).not.toHaveBeenCalled()
     expect(update).not.toHaveBeenCalled()
   })
+
+  it('rejects dispensing prescriptions that are outside the current area', async () => {
+    const service = createPrescriptionService()
+    service.getDetail = jest.fn(async () => null)
+
+    await expect(service.dispenseRx(8, {}, { tenantId: 2, areaId: 3 })).rejects.toBeInstanceOf(BusinessException)
+  })
 })

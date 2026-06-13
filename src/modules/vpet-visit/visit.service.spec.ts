@@ -2,8 +2,12 @@ import { BusinessException } from '~/common/exceptions/biz.exception'
 
 import { VisitService } from './visit.service'
 
-function createVisitService() {
+function createVisitService(overrides: {
+  visitRepository?: any
+  operationAuditRepository?: any
+} = {}) {
   return new VisitService(
+    overrides.visitRepository ?? {} as any,
     {} as any,
     {} as any,
     {} as any,
@@ -26,8 +30,7 @@ function createVisitService() {
     {} as any,
     {} as any,
     {} as any,
-    {} as any,
-    {} as any,
+    overrides.operationAuditRepository ?? {} as any,
   ) as any
 }
 
@@ -96,5 +99,44 @@ describe('visitService media file safety', () => {
     expect(() => service.validateVisitMediaMimeType('video', 'video/mp4'))
       .not
       .toThrow()
+  })
+})
+
+describe('visitService action missing-record boundaries', () => {
+  function createMissingVisitService() {
+    return createVisitService({
+      visitRepository: {
+        findOneBy: jest.fn(async () => null),
+        findOne: jest.fn(async () => null),
+      },
+      operationAuditRepository: {
+        save: jest.fn(),
+        create: jest.fn((value: any) => value),
+      },
+    })
+  }
+
+  it('rejects locking EMR records outside the current area', async () => {
+    const service = createMissingVisitService()
+
+    await expect(service.lockEmr(8, { reason: 'lock' }, { tenantId: 2, areaId: 3 }))
+      .rejects
+      .toBeInstanceOf(BusinessException)
+  })
+
+  it('rejects signing EMR records outside the current area', async () => {
+    const service = createMissingVisitService()
+
+    await expect(service.signEmr(8, {}, { tenantId: 2, areaId: 3 }))
+      .rejects
+      .toBeInstanceOf(BusinessException)
+  })
+
+  it('rejects print audit records outside the current area', async () => {
+    const service = createMissingVisitService()
+
+    await expect(service.recordPrintAudit(8, { tenantId: 2, areaId: 3 }))
+      .rejects
+      .toBeInstanceOf(BusinessException)
   })
 })
