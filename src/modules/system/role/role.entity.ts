@@ -1,5 +1,5 @@
 import { ApiHideProperty, ApiProperty } from '@nestjs/swagger'
-import { Column, Entity, JoinTable, ManyToMany, Relation } from 'typeorm'
+import { Column, Entity, Index, JoinTable, ManyToMany, Relation } from 'typeorm'
 
 import { CompleteEntity } from '~/common/entity/common.entity'
 
@@ -7,28 +7,30 @@ import { UserEntity } from '../../user/user.entity'
 import { MenuEntity } from '../menu/menu.entity'
 
 @Entity({ name: 'sys_role' })
+@Index('uk_sys_role_tenant_name', ['tenantId', 'name'], { unique: true })
+@Index('uk_sys_role_tenant_value', ['tenantId', 'value'], { unique: true })
 export class RoleEntity extends CompleteEntity {
   @Column({ name: 'tenant_id', default: 1 })
   tenantId: number
 
-  @Column({ length: 50, unique: true })
-  @ApiProperty({ description: '角色名' })
+  @Column({ length: 50 })
+  @ApiProperty({ description: 'Role name' })
   name: string
 
-  @Column({ unique: true, comment: '角色标识' })
-  @ApiProperty({ description: '角色标识' })
+  @Column({ comment: 'Role value' })
+  @ApiProperty({ description: 'Role value' })
   value: string
 
   @Column({ nullable: true })
-  @ApiProperty({ description: '角色描述' })
+  @ApiProperty({ description: 'Role remark' })
   remark: string
 
   @Column({ type: 'tinyint', nullable: true, default: 1 })
-  @ApiProperty({ description: '状态：1启用，0禁用' })
+  @ApiProperty({ description: 'Status: 1 enabled, 0 disabled' })
   status: number
 
   @Column({ nullable: true })
-  @ApiProperty({ description: '是否默认用户' })
+  @ApiProperty({ description: 'Default user role' })
   default: boolean
 
   @ApiHideProperty()

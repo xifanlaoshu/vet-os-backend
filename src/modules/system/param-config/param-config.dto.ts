@@ -7,28 +7,28 @@ import { IsUnique } from '~/shared/database/constraints/unique.constraint'
 import { ParamConfigEntity } from './param-config.entity'
 
 export class ParamConfigDto {
-  @ApiProperty({ description: '参数名称' })
+  @ApiProperty({ description: 'Parameter name' })
   @IsString()
   name: string
 
-  @ApiProperty({ description: '参数键名' })
-  @IsUnique({ entity: ParamConfigEntity, message: '该键名已存在' })
+  @ApiProperty({ description: 'Parameter key' })
+  @IsUnique({ entity: ParamConfigEntity, tenantScoped: true, message: 'Parameter key already exists in current tenant' })
   @IsString()
   @MinLength(3)
   key: string
 
-  @ApiProperty({ description: '参数值' })
+  @ApiProperty({ description: 'Parameter value' })
   @IsString()
   value: string
 
-  @ApiProperty({ description: '备注' })
+  @ApiProperty({ description: 'Remark' })
   @IsOptional()
   @IsString()
   remark?: string
 }
 
 export class ParamConfigQueryDto extends PagerDto {
-  @ApiProperty({ description: '参数名称' })
+  @ApiProperty({ description: 'Parameter name' })
   @IsString()
   @IsOptional()
   name: string

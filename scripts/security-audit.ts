@@ -55,6 +55,7 @@ auditTenantContextGuard()
 auditJwtAuthGuardRegressionCoverage()
 auditTenantAreaLifecycleFilters()
 auditTenantScopedRolePermissionBoundaries()
+auditTenantScopedUniqueConstraints()
 auditPublicAuthEndpointHardening()
 auditStorageTokenExpiration()
 auditProtectedUploadPersistenceAwait()
@@ -712,6 +713,181 @@ function auditTenantScopedRolePermissionBoundaries() {
       message: 'Tenant-scoped role and permission boundaries must have regression tests.',
     })
   })
+}
+
+function auditTenantScopedUniqueConstraints() {
+  const checks: Array<{
+    file: string
+    forbidden?: Array<{ pattern: RegExp, rule: string, message: string }>
+    required?: Array<{ pattern: RegExp, rule: string, message: string }>
+  }> = [
+    {
+      file: 'src/shared/database/constraints/unique.constraint.ts',
+      required: [
+        {
+          pattern: /tenantScoped\?:\s*boolean/,
+          rule: 'unique-validator-tenant-scoped-option-required',
+          message: 'The shared unique validator must support tenant-scoped uniqueness.',
+        },
+        {
+          pattern: /cls(?:\s+as\s+any)?\)\.get\(['"`]tenantId['"`]\)|cls\.get\(['"`]tenantId['"`]\)/,
+          rule: 'unique-validator-tenant-context-required',
+          message: 'Tenant-scoped unique validation must read tenantId from CLS.',
+        },
+      ],
+    },
+    {
+      file: 'src/modules/auth/guards/jwt-auth.guard.ts',
+      required: [
+        {
+          pattern: /cls(?:\s+as\s+any)?\)\.set\(['"`]tenantId['"`],\s*request\.user\.tenantId\)|cls\.set\(['"`]tenantId['"`],\s*request\.user\.tenantId\)/,
+          rule: 'jwt-guard-cls-tenant-required',
+          message: 'JWT guard must store resolved tenantId in CLS for downstream validators.',
+        },
+      ],
+    },
+    {
+      file: 'src/modules/system/dict-type/dict-type.entity.ts',
+      forbidden: [
+        {
+          pattern: /@Column\([^)]*unique:\s*true/,
+          rule: 'dict-type-no-global-unique-column',
+          message: 'Dictionary type must not use global unique columns in a multi-tenant system.',
+        },
+      ],
+      required: [
+        {
+          pattern: /uk_sys_dict_type_tenant_code/,
+          rule: 'dict-type-tenant-code-unique-required',
+          message: 'Dictionary type code must be unique per tenant.',
+        },
+        {
+          pattern: /uk_sys_dict_type_tenant_name/,
+          rule: 'dict-type-tenant-name-unique-required',
+          message: 'Dictionary type name must be unique per tenant.',
+        },
+      ],
+    },
+    {
+      file: 'src/modules/system/param-config/param-config.entity.ts',
+      forbidden: [
+        {
+          pattern: /@Column\([^)]*unique:\s*true/,
+          rule: 'param-config-no-global-unique-column',
+          message: 'Parameter config must not use global unique columns in a multi-tenant system.',
+        },
+      ],
+      required: [
+        {
+          pattern: /uk_sys_config_tenant_key/,
+          rule: 'param-config-tenant-key-unique-required',
+          message: 'Parameter config key must be unique per tenant.',
+        },
+      ],
+    },
+    {
+      file: 'src/modules/system/role/role.entity.ts',
+      forbidden: [
+        {
+          pattern: /@Column\([^)]*unique:\s*true/,
+          rule: 'role-no-global-unique-column',
+          message: 'Role name and value must not be globally unique in a multi-tenant system.',
+        },
+      ],
+      required: [
+        {
+          pattern: /uk_sys_role_tenant_name/,
+          rule: 'role-tenant-name-unique-required',
+          message: 'Role name must be unique per tenant.',
+        },
+        {
+          pattern: /uk_sys_role_tenant_value/,
+          rule: 'role-tenant-value-unique-required',
+          message: 'Role value must be unique per tenant.',
+        },
+      ],
+    },
+    {
+      file: 'src/modules/system/dict-type/dict-type.dto.ts',
+      required: [
+        {
+          pattern: /DictTypeEntity,\s*tenantScoped:\s*true/,
+          rule: 'dict-type-dto-tenant-scoped-unique-required',
+          message: 'Dictionary type DTO uniqueness validation must be tenant scoped.',
+        },
+      ],
+    },
+    {
+      file: 'src/modules/system/param-config/param-config.dto.ts',
+      required: [
+        {
+          pattern: /ParamConfigEntity,\s*tenantScoped:\s*true/,
+          rule: 'param-config-dto-tenant-scoped-unique-required',
+          message: 'Parameter config DTO uniqueness validation must be tenant scoped.',
+        },
+      ],
+    },
+    {
+      file: 'src/modules/system/role/role.dto.ts',
+      required: [
+        {
+          pattern: /RoleEntity,\s*(?:field:\s*['"`]name['"`],\s*)?tenantScoped:\s*true/,
+          rule: 'role-dto-tenant-scoped-unique-required',
+          message: 'Role DTO uniqueness validation must be tenant scoped.',
+        },
+      ],
+    },
+    {
+      file: 'src/migrations/1718000000050-scope-system-unique-indexes.ts',
+      required: [
+        {
+          pattern: /DROP INDEX/,
+          rule: 'tenant-unique-migration-drops-global-indexes',
+          message: 'Tenant unique migration must drop previous global single-column unique indexes.',
+        },
+        {
+          pattern: /CREATE UNIQUE INDEX/,
+          rule: 'tenant-unique-migration-creates-composite-indexes',
+          message: 'Tenant unique migration must create tenant-scoped composite unique indexes.',
+        },
+      ],
+    },
+  ]
+
+  checks.forEach(({ file, forbidden = [], required = [] }) => {
+    const absPath = join(root, ...file.split('/'))
+    if (!existsSync(absPath)) {
+      findings.push({
+        file,
+        line: 1,
+        rule: 'missing-tenant-scoped-unique-file',
+        message: `${file} is required for tenant-scoped uniqueness.`,
+      })
+      return
+    }
+
+    const content = readFileSync(absPath, 'utf8')
+    forbidden.forEach(({ pattern, rule, message }) => {
+      if (!pattern.test(content))
+        return
+      findings.push({ file, line: 1, rule, message })
+    })
+    required.forEach(({ pattern, rule, message }) => {
+      if (pattern.test(content))
+        return
+      findings.push({ file, line: 1, rule, message })
+    })
+  })
+
+  const specFile = 'src/shared/database/constraints/unique.constraint.spec.ts'
+  if (!existsSync(join(root, ...specFile.split('/')))) {
+    findings.push({
+      file: specFile,
+      line: 1,
+      rule: 'missing-tenant-scoped-unique-tests',
+      message: 'Tenant-scoped unique validator behavior must have regression tests.',
+    })
+  }
 }
 
 function auditPublicAuthEndpointHardening() {

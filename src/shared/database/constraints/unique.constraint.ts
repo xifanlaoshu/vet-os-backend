@@ -14,6 +14,8 @@ interface Condition {
   entity: ObjectType<any>
   /** 如果没有指定字段则使用当前验证的属性作为查询依据 */
   field?: string
+  tenantScoped?: boolean
+  tenantField?: string
   /** 验证失败的错误信息 */
   message?: string
 }
@@ -61,9 +63,17 @@ export class UniqueConstraint implements ValidatorConstraintInterface {
         andWhere = { id: Not(operateId) }
       }
 
+      const tenantWhere: Record<string, number> = {}
+      if (condition.tenantScoped) {
+        const tenantId = Number((this.cls as any).get('tenantId'))
+        if (!tenantId)
+          return false
+        tenantWhere[condition.tenantField || 'tenantId'] = tenantId
+      }
+
       return isNil(
         await repo.findOne({
-          where: { [condition.field]: value, ...andWhere },
+          where: { [condition.field]: value, ...tenantWhere, ...andWhere },
         }),
       )
     }

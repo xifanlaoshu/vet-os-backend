@@ -77,17 +77,21 @@ function createGuard(overrides: {
     multiDeviceLogin: false,
     ...overrides.appConfig,
   }
+  const cls = {
+    set: jest.fn(),
+  }
   const reflector = {
     getAllAndOverride: jest.fn(() => false),
     ...overrides.reflector,
   }
 
   return {
-    guard: new JwtAuthGuard(reflector, authService, tokenService, tenantService, redis, appConfig),
+    guard: new JwtAuthGuard(reflector, authService, tokenService, tenantService, redis, appConfig, cls as any),
     authService,
     tokenService,
     tenantService,
     redis,
+    cls,
   }
 }
 
@@ -186,5 +190,14 @@ describe('jwtAuthGuard security boundaries', () => {
       expect.objectContaining({ uid: 7 }),
       '99',
     )
+  })
+
+  it('stores resolved tenant context in CLS for downstream validators', async () => {
+    const { guard, cls } = createGuard()
+
+    await expect(guard.canActivate(createExecutionContext(createRequest()))).resolves.toBe(true)
+
+    expect(cls.set).toHaveBeenCalledWith('tenantId', 2)
+    expect(cls.set).toHaveBeenCalledWith('areaId', 3)
   })
 })

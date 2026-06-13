@@ -9,6 +9,7 @@ import { AuthGuard } from '@nestjs/passport'
 import { FastifyRequest } from 'fastify'
 import Redis from 'ioredis'
 import { isEmpty, isNil } from 'lodash'
+import { ClsService } from 'nestjs-cls'
 import { ExtractJwt } from 'passport-jwt'
 
 import { InjectRedis } from '~/common/decorators/inject-redis.decorator'
@@ -40,6 +41,7 @@ export class JwtAuthGuard extends AuthGuard(AuthStrategy.JWT) {
     private tenantService: TenantService,
     @InjectRedis() private readonly redis: Redis,
     @Inject(AppConfig.KEY) private appConfig: IAppConfig,
+    private readonly cls: ClsService,
   ) {
     super()
   }
@@ -112,6 +114,8 @@ export class JwtAuthGuard extends AuthGuard(AuthStrategy.JWT) {
       ...request.user,
       ...contextUser,
     }
+    ;(this.cls as any).set('tenantId', request.user.tenantId)
+    ;(this.cls as any).set('areaId', request.user.areaId)
 
     if (!this.appConfig.multiDeviceLogin) {
       const cacheToken = await this.authService.getTokenByUid(request.user.uid)
