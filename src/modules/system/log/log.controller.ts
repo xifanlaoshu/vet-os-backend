@@ -1,9 +1,10 @@
-import { Controller, Get, Query } from '@nestjs/common'
+import { Controller, ForbiddenException, Get, Query } from '@nestjs/common'
 import { ApiOperation, ApiTags } from '@nestjs/swagger'
 
 import { ApiResult } from '~/common/decorators/api-result.decorator'
 import { ApiSecurityAuth } from '~/common/decorators/swagger.decorator'
 import { Pagination } from '~/helper/paginate/pagination'
+import { AuthUser } from '~/modules/auth/decorators/auth-user.decorator'
 import { definePermission, Perm } from '~/modules/auth/decorators/permission.decorator'
 
 import {
@@ -37,18 +38,21 @@ export class LogController {
   @Get('login/list')
   @ApiOperation({ summary: '查询登录日志列表' })
   @ApiResult({ type: [LoginLogInfo], isPage: true })
-  @Perm(permissions.TaskList)
+  @Perm(permissions.LogList)
   async loginLogPage(
     @Query() dto: LoginLogQueryDto,
+    @AuthUser() user: IAuthUser,
   ): Promise<Pagination<LoginLogInfo>> {
+    this.assertPlatformAdmin(user)
     return this.loginLogService.list(dto)
   }
 
   @Get('task/list')
   @ApiOperation({ summary: '查询任务日志列表' })
   @ApiResult({ type: [TaskLogEntity], isPage: true })
-  @Perm(permissions.LogList)
-  async taskList(@Query() dto: TaskLogQueryDto) {
+  @Perm(permissions.TaskList)
+  async taskList(@Query() dto: TaskLogQueryDto, @AuthUser() user: IAuthUser) {
+    this.assertPlatformAdmin(user)
     return this.taskService.list(dto)
   }
 
@@ -58,7 +62,14 @@ export class LogController {
   @Perm(permissions.CaptchaList)
   async captchaList(
     @Query() dto: CaptchaLogQueryDto,
+    @AuthUser() user: IAuthUser,
   ): Promise<Pagination<CaptchaLogEntity>> {
+    this.assertPlatformAdmin(user)
     return this.captchaLogService.paginate(dto)
+  }
+
+  private assertPlatformAdmin(user: IAuthUser) {
+    if (!user?.platformAdmin)
+      throw new ForbiddenException('System logs require platform administrator privileges')
   }
 }

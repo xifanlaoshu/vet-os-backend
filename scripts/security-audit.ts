@@ -61,6 +61,7 @@ auditPlatformOnlySystemUserManagement()
 auditPlatformOnlyTenantManagement()
 auditPlatformOnlyMenuManagement()
 auditPlatformOnlyTaskManagement()
+auditPlatformOnlySystemOperations()
 auditPublicAuthEndpointHardening()
 auditStorageTokenExpiration()
 auditProtectedUploadPersistenceAwait()
@@ -1266,6 +1267,141 @@ function auditPlatformOnlyTaskManagement() {
       line: 1,
       rule: 'incomplete-task-management-platform-boundary-tests',
       message: 'Task platform-only tests must cover list, mutation, execution control, and deletion boundaries.',
+    })
+  })
+}
+
+function auditPlatformOnlySystemOperations() {
+  const checks: Array<{
+    controllerFile: string
+    specFile: string
+    name: string
+    denialMessage: RegExp
+    extraControllerPatterns?: Array<{ pattern: RegExp, rule: string, message: string }>
+    specPatterns: RegExp[]
+  }> = [
+    {
+      controllerFile: 'src/modules/system/log/log.controller.ts',
+      specFile: 'src/modules/system/log/log.controller.spec.ts',
+      name: 'system-log',
+      denialMessage: /System logs require platform administrator privileges/,
+      extraControllerPatterns: [
+        {
+          pattern: /@Perm\(permissions\.LogList\)[\s\S]*loginLogPage/,
+          rule: 'system-log-login-permission-correct',
+          message: 'Login log route must use the login log permission code.',
+        },
+        {
+          pattern: /@Perm\(permissions\.TaskList\)[\s\S]*taskList/,
+          rule: 'system-log-task-permission-correct',
+          message: 'Task log route must use the task log permission code.',
+        },
+      ],
+      specPatterns: [
+        /rejects login, task, and captcha log access for non-platform administrators/i,
+        /allows platform administrators to inspect system logs/i,
+      ],
+    },
+    {
+      controllerFile: 'src/modules/system/online/online.controller.ts',
+      specFile: 'src/modules/system/online/online.controller.spec.ts',
+      name: 'online-user',
+      denialMessage: /Online user management requires platform administrator privileges/,
+      specPatterns: [
+        /rejects online user list access for non-platform administrators/i,
+        /allows platform administrators to list online users/i,
+        /rejects kicking online users for non-platform administrators/i,
+        /allows platform administrators to kick online users/i,
+      ],
+    },
+    {
+      controllerFile: 'src/modules/system/serve/serve.controller.ts',
+      specFile: 'src/modules/system/serve/serve.controller.spec.ts',
+      name: 'server-monitoring',
+      denialMessage: /Server monitoring requires platform administrator privileges/,
+      extraControllerPatterns: [
+        {
+          pattern: /@Perm\(permissions\.STAT\)/,
+          rule: 'server-monitoring-permission-required',
+          message: 'Server monitoring must use an explicit permission code instead of anonymous access.',
+        },
+        {
+          pattern: /^(?![\s\S]*AllowAnon)[\s\S]*$/,
+          rule: 'server-monitoring-no-anonymous-access',
+          message: 'Server monitoring must not be exposed through AllowAnon.',
+        },
+      ],
+      specPatterns: [
+        /rejects server monitoring for non-platform administrators/i,
+        /allows platform administrators to inspect server monitoring/i,
+      ],
+    },
+  ]
+
+  checks.forEach(({ controllerFile, specFile, name, denialMessage, extraControllerPatterns = [], specPatterns }) => {
+    const controllerPath = join(root, ...controllerFile.split('/'))
+    if (!existsSync(controllerPath)) {
+      findings.push({
+        file: controllerFile,
+        line: 1,
+        rule: `missing-${name}-controller`,
+        message: `${name} controller is required for platform-only operation boundary checks.`,
+      })
+      return
+    }
+
+    const content = readFileSync(controllerPath, 'utf8')
+    const controllerPatterns = [
+      {
+        pattern: /ForbiddenException/,
+        rule: `${name}-platform-forbidden-required`,
+        message: `${name} operations must reject non-platform administrators.`,
+      },
+      {
+        pattern: /assertPlatformAdmin\(user\)/,
+        rule: `${name}-platform-check-required`,
+        message: `${name} handlers must assert platformAdmin before invoking services.`,
+      },
+      {
+        pattern: /user\?\.platformAdmin/,
+        rule: `${name}-platform-admin-flag-required`,
+        message: `${name} operations must use the explicit platformAdmin token flag.`,
+      },
+      {
+        pattern: denialMessage,
+        rule: `${name}-platform-denial-message-required`,
+        message: `${name} denial must be explicit for auditability.`,
+      },
+      ...extraControllerPatterns,
+    ]
+
+    controllerPatterns.forEach(({ pattern, rule, message }) => {
+      if (pattern.test(content))
+        return
+      findings.push({ file: controllerFile, line: 1, rule, message })
+    })
+
+    const specPath = join(root, ...specFile.split('/'))
+    if (!existsSync(specPath)) {
+      findings.push({
+        file: specFile,
+        line: 1,
+        rule: `missing-${name}-platform-boundary-tests`,
+        message: `${name} platform-only boundary must have regression tests.`,
+      })
+      return
+    }
+
+    const specContent = readFileSync(specPath, 'utf8')
+    specPatterns.forEach((pattern) => {
+      if (pattern.test(specContent))
+        return
+      findings.push({
+        file: specFile,
+        line: 1,
+        rule: `incomplete-${name}-platform-boundary-tests`,
+        message: `${name} platform-only tests are missing a required boundary case.`,
+      })
     })
   })
 }

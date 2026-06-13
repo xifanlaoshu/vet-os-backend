@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Req } from '@nestjs/common'
+import { Body, Controller, ForbiddenException, Get, Post, Req } from '@nestjs/common'
 import { ApiExtraModels, ApiOperation, ApiTags } from '@nestjs/swagger'
 
 import { FastifyRequest } from 'fastify'
@@ -29,7 +29,8 @@ export class OnlineController {
   @ApiOperation({ summary: '查询当前在线用户' })
   @ApiResult({ type: [OnlineUserInfo] })
   @Perm(permissions.LIST)
-  async list(@Req() req: FastifyRequest): Promise<OnlineUserInfo[]> {
+  async list(@Req() req: FastifyRequest, @AuthUser() user: IAuthUser): Promise<OnlineUserInfo[]> {
+    this.assertPlatformAdmin(user)
     if (!req.accessToken)
       throw new BusinessException(ErrorEnum.INVALID_LOGIN)
 
@@ -40,6 +41,12 @@ export class OnlineController {
   @ApiOperation({ summary: '下线指定在线用户' })
   @Perm(permissions.KICK)
   async kick(@Body() dto: KickDto, @AuthUser() user: IAuthUser): Promise<void> {
+    this.assertPlatformAdmin(user)
     await this.onlineService.kickUser(dto.tokenId, user)
+  }
+
+  private assertPlatformAdmin(user: IAuthUser) {
+    if (!user?.platformAdmin)
+      throw new ForbiddenException('Online user management requires platform administrator privileges')
   }
 }
