@@ -41,10 +41,10 @@ export class TokenService {
       if (now.isAfter(refreshToken.expired_at))
         return null
 
-      const roleIds = await this.roleService.getRoleIdsByUser(user.id)
-      const roleValues = await this.roleService.getRoleValues(roleIds)
-
       const context = await this.verifyAccessToken(accessToken.value).catch(() => ({} as IAuthUser))
+      const roleTenantId = context.platformAdmin ? undefined : context.tenantId
+      const roleIds = await this.roleService.getRoleIdsByUser(user.id, roleTenantId)
+      const roleValues = await this.roleService.getRoleValues(roleIds, roleTenantId)
 
       // 如果没过期则生成新的access_token和refresh_token
       const token = await this.generateAccessToken(user.id, roleValues, context)
@@ -73,8 +73,9 @@ export class TokenService {
 
     const accessToken = refreshToken.accessToken
     const context = await this.verifyAccessToken(accessToken.value).catch(() => ({} as IAuthUser))
-    const roleIds = await this.roleService.getRoleIdsByUser(accessToken.user.id)
-    const roleValues = await this.roleService.getRoleValues(roleIds)
+    const roleTenantId = context.platformAdmin ? undefined : context.tenantId
+    const roleIds = await this.roleService.getRoleIdsByUser(accessToken.user.id, roleTenantId)
+    const roleValues = await this.roleService.getRoleValues(roleIds, roleTenantId)
     const token = await this.generateAccessToken(accessToken.user.id, roleValues, context)
 
     this.redis.del(genOnlineUserKey(accessToken.id))

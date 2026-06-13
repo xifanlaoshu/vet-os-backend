@@ -70,11 +70,11 @@ export class RbacGuard implements CanActivate {
     if (!payloadPermission)
       throw new BusinessException(ErrorEnum.NO_PERMISSION)
 
-    if (user.roles.includes(Roles.ADMIN))
+    if (user.platformAdmin || user.roles.includes(Roles.ADMIN))
       return true
 
     const cachedPermissions = await this.authService.getPermissionsCache(user.uid)
-    const allPermissions = cachedPermissions ?? await this.authService.getPermissions(user.uid)
+    const allPermissions = cachedPermissions ?? await this.authService.getPermissions(user)
     if (!cachedPermissions)
       await this.authService.setPermissionsCache(user.uid, allPermissions)
 

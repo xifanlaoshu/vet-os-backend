@@ -88,8 +88,7 @@ export class AuthService {
     await this.redis.set(genAuthPVKey(user.id), 1)
 
     // 设置菜单权限
-    const permissions = await this.menuService.getPermissions(user.id)
-    await this.setPermissionsCache(user.id, permissions)
+    await this.setPermissionsCache(user.id, [])
 
     await this.loginLogService.create(user.id, ip, ua)
 
@@ -145,15 +144,15 @@ export class AuthService {
   /**
    * 获取菜单列表
    */
-  async getMenus(uid: number) {
-    return this.menuService.getMenus(uid)
+  async getMenus(user: Pick<IAuthUser, 'uid' | 'tenantId' | 'platformAdmin'>) {
+    return this.menuService.getMenus(user.uid, user)
   }
 
   /**
    * 获取权限列表
    */
-  async getPermissions(uid: number): Promise<string[]> {
-    return this.menuService.getPermissions(uid)
+  async getPermissions(user: Pick<IAuthUser, 'uid' | 'tenantId' | 'platformAdmin'>): Promise<string[]> {
+    return this.menuService.getPermissions(user.uid, user)
   }
 
   async getPermissionsCache(uid: number): Promise<string[] | null> {
@@ -197,8 +196,9 @@ export class AuthService {
   async selectContext(user: IAuthUser, tenantId: number, areaId: number) {
     const options = await this.tenantService.assertUserArea(user.uid, tenantId, areaId, user.platformAdmin)
     const selected = options.find(item => item.tenantId === tenantId && item.areaId === areaId)
-    const roleIds = await this.roleService.getRoleIdsByUser(user.uid)
-    const roles = await this.roleService.getRoleValues(roleIds)
+    const roleTenantId = user.platformAdmin ? undefined : tenantId
+    const roleIds = await this.roleService.getRoleIdsByUser(user.uid, roleTenantId)
+    const roles = await this.roleService.getRoleValues(roleIds, roleTenantId)
 
     const token = await this.tokenService.generateAccessToken(user.uid, roles, {
       accountId: user.accountId ?? user.uid,
@@ -214,6 +214,10 @@ export class AuthService {
     })
 
     await this.redis.set(genAuthTokenKey(user.uid), token.accessToken, 'EX', this.securityConfig.jwtExprire)
+    await this.setPermissionsCache(user.uid, await this.menuService.getPermissions(user.uid, {
+      tenantId,
+      platformAdmin: user.platformAdmin,
+    }))
     return {
       token: token.accessToken,
       refreshToken: token.refreshToken,

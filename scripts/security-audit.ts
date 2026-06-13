@@ -54,6 +54,7 @@ auditPermissionMatrix()
 auditTenantContextGuard()
 auditJwtAuthGuardRegressionCoverage()
 auditTenantAreaLifecycleFilters()
+auditTenantScopedRolePermissionBoundaries()
 auditPublicAuthEndpointHardening()
 auditStorageTokenExpiration()
 auditProtectedUploadPersistenceAwait()
@@ -531,6 +532,186 @@ function auditTenantAreaLifecycleFilters() {
       message: 'Tenant context bootstrap must pass platformAdmin so platform administrators can resolve all active areas safely.',
     })
   }
+}
+
+function auditTenantScopedRolePermissionBoundaries() {
+  const checks: Array<{
+    file: string
+    patterns: Array<{ pattern: RegExp, rule: string, message: string }>
+  }> = [
+    {
+      file: 'src/modules/system/role/role.controller.ts',
+      patterns: [
+        {
+          pattern: /AuthUser/,
+          rule: 'role-controller-auth-user-required',
+          message: 'Role management handlers must receive the current auth user so role CRUD is scoped to the selected tenant.',
+        },
+        {
+          pattern: /roleService\.list\(dto,\s*user\)/,
+          rule: 'role-list-tenant-context-required',
+          message: 'Role list must pass tenant context to the service layer.',
+        },
+        {
+          pattern: /roleService\.update\(id,\s*dto,\s*user\)/,
+          rule: 'role-update-tenant-context-required',
+          message: 'Role update must pass tenant context to the service layer.',
+        },
+        {
+          pattern: /roleService\.delete\(id,\s*user\)/,
+          rule: 'role-delete-tenant-context-required',
+          message: 'Role delete must pass tenant context to the service layer.',
+        },
+      ],
+    },
+    {
+      file: 'src/modules/system/role/role.service.ts',
+      patterns: [
+        {
+          pattern: /requireTenantContext\(context\)/,
+          rule: 'role-service-require-tenant-context',
+          message: 'Role management service methods must fail closed when tenant context is missing.',
+        },
+        {
+          pattern: /role\.tenantId\s*=\s*:tenantId/,
+          rule: 'role-query-tenant-filter-required',
+          message: 'Role list/detail queries must filter by the selected tenant.',
+        },
+        {
+          pattern: /roleRepository\.update\(\{\s*id,\s*tenantId\s*\}/,
+          rule: 'role-update-scoped-criteria-required',
+          message: 'Role updates must use id + tenantId criteria.',
+        },
+        {
+          pattern: /roleRepository\.delete\(\{\s*id,\s*tenantId\s*\}/,
+          rule: 'role-delete-scoped-criteria-required',
+          message: 'Role deletes must use id + tenantId criteria.',
+        },
+        {
+          pattern: /getRoleIdsByUser\(id:\s*number,\s*tenantId\?:\s*number\)/,
+          rule: 'role-user-resolution-tenant-filter-required',
+          message: 'User role resolution must support selected-tenant filtering.',
+        },
+      ],
+    },
+    {
+      file: 'src/modules/auth/auth.service.ts',
+      patterns: [
+        {
+          pattern: /const roleTenantId = user\.platformAdmin \? undefined : tenantId/,
+          rule: 'auth-select-context-role-tenant-filter-required',
+          message: 'Selecting tenant context must rebuild role values from the selected tenant unless the user is a platform administrator.',
+        },
+        {
+          pattern: /setPermissionsCache\(user\.uid,\s*await this\.menuService\.getPermissions\(user\.uid,\s*\{/,
+          rule: 'auth-select-context-permission-cache-refresh-required',
+          message: 'Selecting tenant context must refresh permission cache with selected-tenant permissions.',
+        },
+        {
+          pattern: /setPermissionsCache\(user\.id,\s*\[\]\)/,
+          rule: 'auth-login-no-global-permission-cache',
+          message: 'Login before tenant selection must not cache global permissions.',
+        },
+      ],
+    },
+    {
+      file: 'src/modules/system/menu/menu.service.ts',
+      patterns: [
+        {
+          pattern: /getRoleIdsByUser\(uid,\s*roleTenantId\)/,
+          rule: 'menu-permission-role-tenant-filter-required',
+          message: 'Menu and permission calculation must resolve roles with the selected tenant context.',
+        },
+        {
+          pattern: /context\?\.platformAdmin \|\| this\.roleService\.hasAdminRole/,
+          rule: 'menu-platform-admin-explicit-bypass-required',
+          message: 'Menu and permission calculation must explicitly respect platformAdmin context.',
+        },
+        {
+          pattern: /redis\.del\(genAuthPermKey\(uid\)\)/,
+          rule: 'menu-refresh-clear-contextual-permission-cache',
+          message: 'Menu refresh must clear permission cache instead of writing global permissions without tenant context.',
+        },
+      ],
+    },
+    {
+      file: 'src/modules/auth/guards/rbac.guard.ts',
+      patterns: [
+        {
+          pattern: /user\.platformAdmin \|\| user\.roles\.includes/,
+          rule: 'rbac-platform-admin-explicit-bypass-required',
+          message: 'RBAC must authorize platform administrators through explicit platformAdmin context.',
+        },
+        {
+          pattern: /authService\.getPermissions\(user\)/,
+          rule: 'rbac-permission-load-with-token-context',
+          message: 'RBAC must reload permissions with the full token context when cache is missing.',
+        },
+      ],
+    },
+    {
+      file: 'src/modules/tenant-admin/tenant-admin.service.ts',
+      patterns: [
+        {
+          pattern: /validateTenantRoles\(tenantId,\s*dto\.roleIds\)/,
+          rule: 'tenant-admin-role-validation-tenant-required',
+          message: 'Tenant user management must validate assignable roles inside the current tenant.',
+        },
+        {
+          pattern: /findBy\(RoleEntity,\s*\{\s*id:\s*In\(dto\.roleIds\),\s*tenantId\s*\}\)/,
+          rule: 'tenant-admin-role-assignment-tenant-required',
+          message: 'Tenant user creation must assign roles only from the current tenant.',
+        },
+        {
+          pattern: /role\.tenant_id\s*=\s*:tenantId/,
+          rule: 'tenant-admin-role-replacement-current-tenant-only',
+          message: 'Tenant user updates must replace only current-tenant role assignments.',
+        },
+      ],
+    },
+  ]
+
+  checks.forEach(({ file, patterns }) => {
+    const absPath = join(root, ...file.split('/'))
+    if (!existsSync(absPath)) {
+      findings.push({
+        file,
+        line: 1,
+        rule: 'missing-tenant-role-permission-boundary-file',
+        message: `${file} is required for tenant-scoped role and permission boundaries.`,
+      })
+      return
+    }
+
+    const content = readFileSync(absPath, 'utf8')
+    patterns.forEach(({ pattern, rule, message }) => {
+      if (pattern.test(content))
+        return
+      findings.push({
+        file,
+        line: 1,
+        rule,
+        message,
+      })
+    })
+  })
+
+  const requiredSpecFiles = [
+    'src/modules/system/role/role.service.spec.ts',
+    'src/modules/auth/auth.service.spec.ts',
+    'src/modules/auth/guards/rbac.guard.spec.ts',
+  ]
+  requiredSpecFiles.forEach((file) => {
+    const absPath = join(root, ...file.split('/'))
+    if (existsSync(absPath))
+      return
+    findings.push({
+      file,
+      line: 1,
+      rule: 'missing-tenant-role-permission-boundary-tests',
+      message: 'Tenant-scoped role and permission boundaries must have regression tests.',
+    })
+  })
 }
 
 function auditPublicAuthEndpointHardening() {

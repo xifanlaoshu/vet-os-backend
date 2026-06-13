@@ -1,9 +1,10 @@
-import { Injectable } from '@nestjs/common'
+import { BadRequestException, Injectable } from '@nestjs/common'
 import { InjectEntityManager, InjectRepository } from '@nestjs/typeorm'
 import { isEmpty, isNil } from 'lodash'
-import { EntityManager, In, Like, Repository } from 'typeorm'
+import { EntityManager, In, Repository } from 'typeorm'
 
 import { PagerDto } from '~/common/dto/pager.dto'
+import { requireTenantContext } from '~/common/utils/tenant-context.util'
 import { ROOT_ROLE_ID } from '~/constants/system.constant'
 import { paginate } from '~/helper/paginate'
 import { Pagination } from '~/helper/paginate/pagination'
@@ -28,8 +29,13 @@ export class RoleService {
   async findAll({
     page,
     pageSize,
-  }: PagerDto): Promise<Pagination<RoleEntity>> {
-    return paginate(this.roleRepository, { page, pageSize })
+  }: PagerDto, context?: Pick<IAuthUser, 'tenantId'>): Promise<Pagination<RoleEntity>> {
+    const { tenantId } = requireTenantContext(context)
+    const queryBuilder = this.roleRepository
+      .createQueryBuilder('role')
+      .where('role.tenantId = :tenantId', { tenantId })
+
+    return paginate<RoleEntity>(queryBuilder, { page, pageSize })
   }
 
   /**
@@ -42,15 +48,20 @@ export class RoleService {
     value,
     remark,
     status,
-  }: RoleQueryDto): Promise<Pagination<RoleEntity>> {
+  }: RoleQueryDto, context?: Pick<IAuthUser, 'tenantId'>): Promise<Pagination<RoleEntity>> {
+    const { tenantId } = requireTenantContext(context)
     const queryBuilder = await this.roleRepository
       .createQueryBuilder('role')
-      .where({
-        ...(name ? { name: Like(`%${name}%`) } : null),
-        ...(value ? { value: Like(`%${value}%`) } : null),
-        ...(remark ? { remark: Like(`%${remark}%`) } : null),
-        ...(!isNil(status) ? { status } : null),
-      })
+      .where('role.tenantId = :tenantId', { tenantId })
+
+    if (name)
+      queryBuilder.andWhere('role.name LIKE :name', { name: `%${name}%` })
+    if (value)
+      queryBuilder.andWhere('role.value LIKE :value', { value: `%${value}%` })
+    if (remark)
+      queryBuilder.andWhere('role.remark LIKE :remark', { remark: `%${remark}%` })
+    if (!isNil(status))
+      queryBuilder.andWhere('role.status = :status', { status })
 
     return paginate<RoleEntity>(queryBuilder, {
       page,
@@ -61,13 +72,15 @@ export class RoleService {
   /**
    * 根据角色获取角色信息
    */
-  async info(id: number) {
+  async info(id: number, context?: Pick<IAuthUser, 'tenantId'>) {
+    const { tenantId } = requireTenantContext(context)
     const info = await this.roleRepository
       .createQueryBuilder('role')
-      .where({
-        id,
-      })
+      .where('role.id = :id', { id })
+      .andWhere('role.tenantId = :tenantId', { tenantId })
       .getOne()
+    if (!info)
+      throw new BadRequestException('Role not found or not accessible')
 
     const menus = await this.menuRepository.find({
       where: { roles: { id } },
@@ -77,18 +90,24 @@ export class RoleService {
     return { ...info, menuIds: menus.map(m => m.id) }
   }
 
-  async delete(id: number): Promise<void> {
+  async delete(id: number, context?: Pick<IAuthUser, 'tenantId'>): Promise<void> {
+    const { tenantId } = requireTenantContext(context)
     if (id === ROOT_ROLE_ID)
       throw new Error('不能删除超级管理员')
-    await this.roleRepository.delete(id)
+    const role = await this.roleRepository.findOneBy({ id, tenantId })
+    if (!role)
+      throw new BadRequestException('Role not found or not accessible')
+    await this.roleRepository.delete({ id, tenantId })
   }
 
   /**
    * 增加角色
    */
-  async create({ menuIds, ...data }: RoleDto): Promise<{ roleId: number }> {
+  async create({ menuIds, ...data }: RoleDto, context?: Pick<IAuthUser, 'tenantId'>): Promise<{ roleId: number }> {
+    const { tenantId } = requireTenantContext(context)
     const role = await this.roleRepository.save({
       ...data,
+      tenantId,
       menus: menuIds
         ? await this.menuRepository.findBy({ id: In(menuIds) })
         : [],
@@ -101,10 +120,17 @@ export class RoleService {
    * 更新角色信息
    * 如果传入的menuIds为空，则清空sys_role_menus表中存有的关联数据，参考新增
    */
-  async update(id, { menuIds, ...data }: RoleUpdateDto): Promise<void> {
-    await this.roleRepository.update(id, data)
+  async update(id, { menuIds, ...data }: RoleUpdateDto, context?: Pick<IAuthUser, 'tenantId'>): Promise<void> {
+    const { tenantId } = requireTenantContext(context)
+    const current = await this.roleRepository.findOneBy({ id, tenantId })
+    if (!current)
+      throw new BadRequestException('Role not found or not accessible')
+
+    await this.roleRepository.update({ id, tenantId }, data)
     await this.entityManager.transaction(async (manager) => {
-      const role = await this.roleRepository.findOne({ where: { id } })
+      const role = await this.roleRepository.findOne({ where: { id, tenantId } })
+      if (!role)
+        throw new BadRequestException('Role not found or not accessible')
       role.menus = menuIds?.length
         ? await this.menuRepository.findBy({ id: In(menuIds) })
         : []
@@ -115,10 +141,11 @@ export class RoleService {
   /**
    * 根据用户id查找角色信息
    */
-  async getRoleIdsByUser(id: number): Promise<number[]> {
+  async getRoleIdsByUser(id: number, tenantId?: number): Promise<number[]> {
     const roles = await this.roleRepository.find({
       where: {
         users: { id },
+        ...(tenantId ? { tenantId } : null),
       },
     })
 
@@ -128,18 +155,23 @@ export class RoleService {
     return []
   }
 
-  async getRoleValues(ids: number[]): Promise<string[]> {
+  async getRoleValues(ids: number[], tenantId?: number): Promise<string[]> {
+    if (!ids.length)
+      return []
+
     return (
       await this.roleRepository.findBy({
         id: In(ids),
+        ...(tenantId ? { tenantId } : null),
       })
     ).map(r => r.value)
   }
 
-  async isAdminRoleByUser(uid: number): Promise<boolean> {
+  async isAdminRoleByUser(uid: number, tenantId?: number): Promise<boolean> {
     const roles = await this.roleRepository.find({
       where: {
         users: { id: uid },
+        ...(tenantId ? { tenantId } : null),
       },
     })
 
@@ -158,9 +190,16 @@ export class RoleService {
   /**
    * 根据角色ID查找是否有关联用户
    */
-  async checkUserByRoleId(id: number): Promise<boolean> {
+  async checkUserByRoleId(id: number, context?: Pick<IAuthUser, 'tenantId'>): Promise<boolean> {
+    const { tenantId } = requireTenantContext(context)
+    const role = await this.roleRepository.findOneBy({ id, tenantId })
+    if (!role)
+      return false
+
     return this.roleRepository.exist({
       where: {
+        id,
+        tenantId,
         users: {
           roles: { id },
         },

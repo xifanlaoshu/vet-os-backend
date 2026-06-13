@@ -47,7 +47,7 @@ export class AccountController {
   @ApiResult({ type: [AccountMenus] })
   @AllowAnon()
   async menu(@AuthUser() user: IAuthUser) {
-    return this.authService.getMenus(user.uid)
+    return this.authService.getMenus(user)
   }
 
   @Get('permissions')
@@ -55,7 +55,7 @@ export class AccountController {
   @ApiResult({ type: [String] })
   @AllowAnon()
   async permissions(@AuthUser() user: IAuthUser): Promise<string[]> {
-    return this.authService.getPermissions(user.uid)
+    return this.authService.getPermissions(user)
   }
 
   @Get('context')

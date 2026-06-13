@@ -72,14 +72,15 @@ export class MenuService {
   /**
    * 根据角色获取所有菜单
    */
-  async getMenus(uid: number) {
-    const roleIds = await this.roleService.getRoleIdsByUser(uid)
+  async getMenus(uid: number, context?: Pick<IAuthUser, 'tenantId' | 'platformAdmin'>) {
+    const roleTenantId = context?.platformAdmin ? undefined : context?.tenantId
+    const roleIds = await this.roleService.getRoleIdsByUser(uid, roleTenantId)
     let menus: MenuEntity[] = []
 
     if (isEmpty(roleIds))
       return generatorRouters([])
 
-    if (this.roleService.hasAdminRole(roleIds)) {
+    if (context?.platformAdmin || this.roleService.hasAdminRole(roleIds)) {
       menus = await this.menuRepository.find({ order: { orderNo: 'ASC' } })
     }
     else {
@@ -170,11 +171,12 @@ export class MenuService {
   /**
    * 获取当前用户的所有权限
    */
-  async getPermissions(uid: number): Promise<string[]> {
-    const roleIds = await this.roleService.getRoleIdsByUser(uid)
+  async getPermissions(uid: number, context?: Pick<IAuthUser, 'tenantId' | 'platformAdmin'>): Promise<string[]> {
+    const roleTenantId = context?.platformAdmin ? undefined : context?.tenantId
+    const roleIds = await this.roleService.getRoleIdsByUser(uid, roleTenantId)
     let permission: any[] = []
     let result: any = null
-    if (this.roleService.hasAdminRole(roleIds)) {
+    if (context?.platformAdmin || this.roleService.hasAdminRole(roleIds)) {
       result = await this.menuRepository.findBy({
         permission: Not(IsNull()),
         type: In([1, 2]),
@@ -213,11 +215,10 @@ export class MenuService {
    * 刷新指定用户ID的权限
    */
   async refreshPerms(uid: number): Promise<void> {
-    const perms = await this.getPermissions(uid)
     const online = await this.redis.get(genAuthTokenKey(uid))
     if (online) {
       // 判断是否在线
-      await this.redis.set(genAuthPermKey(uid), JSON.stringify(perms))
+      await this.redis.del(genAuthPermKey(uid))
 
       this.sseService.noticeClientToUpdateMenusByUserIds([uid])
     }
@@ -233,8 +234,7 @@ export class MenuService {
         .map(i => Number.parseInt(i.split(RedisKeys.AUTH_TOKEN_PREFIX)[1]))
         .filter(i => i)
         .map(async (uid) => {
-          const perms = await this.getPermissions(uid)
-          await this.redis.set(genAuthPermKey(uid), JSON.stringify(perms))
+          await this.redis.del(genAuthPermKey(uid))
           return uid
         })
       const uids = await Promise.all(promiseArr)

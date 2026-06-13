@@ -158,7 +158,7 @@ export class TenantAdminService {
   async createUser(dto: TenantAdminUserDto, user: IAuthUser) {
     const tenantId = this.requireTenant(user)
     await this.validateAreas(tenantId, dto.areaIds)
-    await this.validateTenantRoles(dto.roleIds)
+    await this.validateTenantRoles(tenantId, dto.roleIds)
 
     const exists = await this.userRepository.findOneBy({ username: dto.username })
     if (!isEmpty(exists))
@@ -182,7 +182,7 @@ export class TenantAdminService {
         phone: dto.phone,
         remark: dto.remark,
         status: dto.status ?? 1,
-        roles: await manager.findBy(RoleEntity, { id: In(dto.roleIds) }),
+        roles: await manager.findBy(RoleEntity, { id: In(dto.roleIds), tenantId }),
       }))
       await this.replaceTenantAreaGrants(manager, created.id, tenantId, dto.areaIds, dto.defaultAreaId)
     })
@@ -192,7 +192,7 @@ export class TenantAdminService {
     const tenantId = this.requireTenant(user)
     await this.assertUserInTenant(id, tenantId)
     await this.validateAreas(tenantId, dto.areaIds)
-    await this.validateTenantRoles(dto.roleIds)
+    await this.validateTenantRoles(tenantId, dto.roleIds)
 
     await this.entityManager.transaction(async (manager) => {
       const updatePayload: Partial<UserEntity> = {
@@ -213,7 +213,7 @@ export class TenantAdminService {
 
       const current = await manager
         .createQueryBuilder(UserEntity, 'user')
-        .leftJoinAndSelect('user.roles', 'role')
+        .leftJoinAndSelect('user.roles', 'role', 'role.tenant_id = :tenantId', { tenantId })
         .where('user.id = :id', { id })
         .getOne()
       await manager
@@ -226,9 +226,10 @@ export class TenantAdminService {
     })
   }
 
-  async tenantRoleOptions() {
+  async tenantRoleOptions(user: IAuthUser) {
+    const tenantId = this.requireTenant(user)
     return this.roleRepository.find({
-      where: { status: 1 },
+      where: { tenantId, status: 1 },
       order: { id: 'ASC' },
     }).then(rows => rows.filter(role => role.id !== ROOT_ROLE_ID && role.value !== 'admin'))
   }
@@ -260,14 +261,14 @@ export class TenantAdminService {
       throw new BadRequestException('存在无效或停用的院区')
   }
 
-  private async validateTenantRoles(roleIds: number[]) {
+  private async validateTenantRoles(tenantId: number, roleIds: number[]) {
     const normalized = Array.from(new Set((roleIds || []).map(Number).filter(Boolean)))
     if (!normalized.length)
       throw new BadRequestException('至少需要选择一个角色')
     if (normalized.includes(ROOT_ROLE_ID))
       throw new BadRequestException('租户级用户不能分配系统超级管理员角色')
 
-    const roles = await this.roleRepository.findBy({ id: In(normalized), status: 1 })
+    const roles = await this.roleRepository.findBy({ id: In(normalized), tenantId, status: 1 })
     if (roles.length !== normalized.length || roles.some(role => role.value === 'admin'))
       throw new BadRequestException('存在无效或不可分配的角色')
   }

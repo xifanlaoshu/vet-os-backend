@@ -77,8 +77,8 @@ export class TenantAdminController {
   @Get('users/role-options')
   @ApiOperation({ summary: 'Assignable role options for tenant user management' })
   @Perm(permissions.USER_LIST)
-  async roleOptions() {
-    return this.tenantAdminService.tenantRoleOptions()
+  async roleOptions(@AuthUser() user: IAuthUser) {
+    return this.tenantAdminService.tenantRoleOptions(user)
   }
 
   @Get('users/:id')
