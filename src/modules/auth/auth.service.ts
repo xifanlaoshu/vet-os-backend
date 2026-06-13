@@ -99,7 +99,16 @@ export class AuthService {
   }
 
   async refreshLoginToken(refreshToken: string) {
-    return this.tokenService.rotateRefreshToken(refreshToken)
+    const token = await this.tokenService.rotateRefreshToken(refreshToken)
+    const previousTokenTtl = Math.max(
+      1,
+      Math.ceil((new Date(token.previousAccessTokenExpiresAt).getTime() - Date.now()) / 1000),
+    )
+    await Promise.all([
+      this.redis.set(genTokenBlacklistKey(token.previousAccessToken), token.previousAccessToken, 'EX', previousTokenTtl),
+      this.redis.set(genAuthTokenKey(token.uid), token.accessToken, 'EX', this.securityConfig.jwtExprire),
+    ])
+    return token
   }
 
   /**

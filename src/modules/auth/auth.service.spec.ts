@@ -34,6 +34,13 @@ function createService(overrides: {
       accessToken: 'tenant-token',
       refreshToken: 'refresh-token',
     })),
+    rotateRefreshToken: jest.fn(async () => ({
+      uid: 7,
+      accessToken: 'rotated-access-token',
+      refreshToken: 'rotated-refresh-token',
+      previousAccessToken: 'previous-access-token',
+      previousAccessTokenExpiresAt: new Date(Date.now() + 60_000),
+    })),
     ...overrides.tokenService,
   }
 
@@ -101,5 +108,28 @@ describe('authService tenant permission boundaries', () => {
       tenantId: 2,
       platformAdmin: true,
     })
+  })
+
+  it('blacklists the previous access token and refreshes the current-token cache when rotating refresh tokens', async () => {
+    const { service, redis, tokenService } = createService()
+
+    await expect(service.refreshLoginToken('refresh-token')).resolves.toEqual(expect.objectContaining({
+      accessToken: 'rotated-access-token',
+      refreshToken: 'rotated-refresh-token',
+    }))
+
+    expect(tokenService.rotateRefreshToken).toHaveBeenCalledWith('refresh-token')
+    expect(redis.set).toHaveBeenCalledWith(
+      'token:blacklist:previous-access-token',
+      'previous-access-token',
+      'EX',
+      expect.any(Number),
+    )
+    expect(redis.set).toHaveBeenCalledWith(
+      'auth:token:7',
+      'rotated-access-token',
+      'EX',
+      3600,
+    )
   })
 })

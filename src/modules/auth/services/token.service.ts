@@ -16,6 +16,14 @@ import { generateUUID, sha256 } from '~/utils'
 import { AccessTokenEntity } from '../entities/access-token.entity'
 import { RefreshTokenEntity } from '../entities/refresh-token.entity'
 
+export interface RotatedRefreshTokenResult {
+  uid: number
+  accessToken: string
+  refreshToken: string
+  previousAccessToken: string
+  previousAccessTokenExpiresAt: Date
+}
+
 /**
  * 令牌服务
  */
@@ -55,7 +63,7 @@ export class TokenService {
     return null
   }
 
-  async rotateRefreshToken(refreshTokenValue: string) {
+  async rotateRefreshToken(refreshTokenValue: string): Promise<RotatedRefreshTokenResult> {
     const tokenHash = this.hashRefreshToken(refreshTokenValue)
     const refreshToken = await RefreshTokenEntity.findOne({
       where: { value: tokenHash },
@@ -77,11 +85,19 @@ export class TokenService {
     const roleIds = await this.roleService.getRoleIdsByUser(accessToken.user.id, roleTenantId)
     const roleValues = await this.roleService.getRoleValues(roleIds, roleTenantId)
     const token = await this.generateAccessToken(accessToken.user.id, roleValues, context)
+    const previousAccessToken = accessToken.value
+    const previousAccessTokenExpiresAt = accessToken.expired_at
 
-    this.redis.del(genOnlineUserKey(accessToken.id))
+    await this.redis.del(genOnlineUserKey(accessToken.id))
     await accessToken.remove()
 
-    return token
+    return {
+      uid: accessToken.user.id,
+      accessToken: token.accessToken,
+      refreshToken: token.refreshToken,
+      previousAccessToken,
+      previousAccessTokenExpiresAt,
+    }
   }
 
   generateJwtSign(payload: any) {

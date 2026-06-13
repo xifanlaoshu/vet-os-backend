@@ -59,6 +59,7 @@ auditHttpRuntimeSecurityBootstrap()
 auditPermissionMatrix()
 auditTenantContextGuard()
 auditJwtAuthGuardRegressionCoverage()
+auditRefreshTokenRotationSafety()
 auditTenantAreaLifecycleFilters()
 auditTenantScopedRolePermissionBoundaries()
 auditNoRoleValuePlatformBypass()
@@ -496,6 +497,115 @@ function auditJwtAuthGuardRegressionCoverage() {
       rule: 'incomplete-jwt-auth-guard-security-regression-tests',
       message,
     })
+  })
+}
+
+function auditRefreshTokenRotationSafety() {
+  const authServicePath = join(root, 'src', 'modules', 'auth', 'auth.service.ts')
+  const tokenServicePath = join(root, 'src', 'modules', 'auth', 'services', 'token.service.ts')
+  const authSpecPath = join(root, 'src', 'modules', 'auth', 'auth.service.spec.ts')
+  const tokenSpecPath = join(root, 'src', 'modules', 'auth', 'services', 'token.service.spec.ts')
+  if (!existsSync(authServicePath) || !existsSync(tokenServicePath))
+    return
+
+  const authContent = readFileSync(authServicePath, 'utf8')
+  const tokenContent = readFileSync(tokenServicePath, 'utf8')
+  const requiredAuthPatterns = [
+    {
+      pattern: /tokenService\.rotateRefreshToken\(refreshToken\)/,
+      rule: 'refresh-token-rotation-required',
+      message: 'Refreshing login tokens must use TokenService.rotateRefreshToken() so the previous server-side session is removed.',
+    },
+    {
+      pattern: /genTokenBlacklistKey\(token\.previousAccessToken\)/,
+      rule: 'refresh-token-previous-access-token-blacklist-required',
+      message: 'Refresh-token rotation must blacklist the previous access token until its original expiry.',
+    },
+    {
+      pattern: /genAuthTokenKey\(token\.uid\)/,
+      rule: 'refresh-token-current-session-cache-refresh-required',
+      message: 'Refresh-token rotation must update the current-token Redis cache for single-device login enforcement.',
+    },
+  ]
+
+  requiredAuthPatterns.forEach(({ pattern, rule, message }) => {
+    if (pattern.test(authContent))
+      return
+    findings.push({
+      file: 'src/modules/auth/auth.service.ts',
+      line: 1,
+      rule,
+      message,
+    })
+  })
+
+  const requiredTokenPatterns = [
+    {
+      pattern: /interface\s+RotatedRefreshTokenResult/,
+      rule: 'refresh-token-rotation-result-contract-required',
+      message: 'TokenService.rotateRefreshToken() must expose the previous access-token metadata needed for server-side invalidation.',
+    },
+    {
+      pattern: /previousAccessToken\s*=\s*accessToken\.value/,
+      rule: 'refresh-token-previous-access-token-capture-required',
+      message: 'TokenService.rotateRefreshToken() must capture the previous access token before removing the access-token row.',
+    },
+    {
+      pattern: /previousAccessTokenExpiresAt\s*=\s*accessToken\.expired_at/,
+      rule: 'refresh-token-previous-access-token-expiry-capture-required',
+      message: 'TokenService.rotateRefreshToken() must return the previous access-token expiry so blacklist TTL is bounded.',
+    },
+  ]
+
+  requiredTokenPatterns.forEach(({ pattern, rule, message }) => {
+    if (pattern.test(tokenContent))
+      return
+    findings.push({
+      file: 'src/modules/auth/services/token.service.ts',
+      line: 1,
+      rule,
+      message,
+    })
+  })
+
+  if (!existsSync(authSpecPath)) {
+    findings.push({
+      file: 'src/modules/auth/auth.service.spec.ts',
+      line: 1,
+      rule: 'missing-refresh-token-rotation-auth-regression-tests',
+      message: 'AuthService must have regression tests for previous-token blacklist and current-token cache refresh during refresh rotation.',
+    })
+  }
+  else {
+    const authSpecContent = readFileSync(authSpecPath, 'utf8')
+    if (!/blacklists the previous access token and refreshes the current-token cache/i.test(authSpecContent)) {
+      findings.push({
+        file: 'src/modules/auth/auth.service.spec.ts',
+        line: 1,
+        rule: 'incomplete-refresh-token-rotation-auth-regression-tests',
+        message: 'AuthService regression tests must cover previous access-token blacklist and current-token cache refresh.',
+      })
+    }
+  }
+
+  if (!existsSync(tokenSpecPath)) {
+    findings.push({
+      file: 'src/modules/auth/services/token.service.spec.ts',
+      line: 1,
+      rule: 'missing-refresh-token-rotation-token-regression-tests',
+      message: 'TokenService must have regression tests for refresh-token rotation metadata and previous-session cleanup.',
+    })
+    return
+  }
+
+  const tokenSpecContent = readFileSync(tokenSpecPath, 'utf8')
+  if (/rotates refresh tokens by removing the previous access-token session and returning blacklist metadata/i.test(tokenSpecContent))
+    return
+  findings.push({
+    file: 'src/modules/auth/services/token.service.spec.ts',
+    line: 1,
+    rule: 'incomplete-refresh-token-rotation-token-regression-tests',
+    message: 'TokenService regression tests must cover previous access-token metadata and previous-session cleanup during refresh rotation.',
   })
 }
 
