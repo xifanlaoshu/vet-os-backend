@@ -42,6 +42,7 @@ import { VpetMemberModule } from './modules/vpet-member/member.module'
 import { VpetPetModule } from './modules/vpet-pet/pet.module'
 import { VpetPharmacyModule } from './modules/vpet-pharmacy/pharmacy.module'
 import { VpetPrescriptionModule } from './modules/vpet-prescription/prescription.module'
+import { VpetPrintTemplateModule } from './modules/vpet-print-template/print-template.module'
 import { VpetQueueModule } from './modules/vpet-queue/queue.module'
 import { VpetReminderModule } from './modules/vpet-reminder/reminder.module'
 import { VpetReportModule } from './modules/vpet-report/report.module'
@@ -105,6 +106,7 @@ import { SocketModule } from './socket/socket.module'
     VpetMemberModule,
     VpetQueueModule,
     VpetPharmacyModule,
+    VpetPrintTemplateModule,
     VpetAppointmentModule,
     VpetLabModule,
     VpetHospitalizationModule,

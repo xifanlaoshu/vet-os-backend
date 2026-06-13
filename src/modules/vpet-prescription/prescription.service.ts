@@ -125,7 +125,7 @@ export class PrescriptionService extends BaseService<PrescriptionEntity> {
   }
 
   async queryList(dto: QueryPrescriptionDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
-    const { page = 1, pageSize = 10, visitId, doctorId, status } = dto
+    const { page = 1, pageSize = 10, visitId, type, doctorId, status } = dto
     const { tenantId, areaId } = requireTenantAreaContext(context)
     const qb = this.rxRepository.createQueryBuilder('rx')
       .leftJoinAndSelect('rx.doctor', 'doctor')
@@ -135,6 +135,8 @@ export class PrescriptionService extends BaseService<PrescriptionEntity> {
 
     if (visitId)
       qb.andWhere('rx.visitId = :visitId', { visitId })
+    if (type !== undefined)
+      qb.andWhere('rx.type = :type', { type: Number(type) })
     if (doctorId)
       qb.andWhere('rx.doctorId = :doctorId', { doctorId })
     if (status !== undefined)

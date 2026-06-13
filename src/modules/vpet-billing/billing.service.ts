@@ -178,6 +178,7 @@ export class BillingService {
         itemSnapshot: {
           prescriptionId: prescription.id,
           rxNo: prescription.rxNo,
+          prescriptionType: prescription.type,
           itemKind: detail.itemKind ?? 1,
           itemId: detail.itemId ?? detail.drugId ?? detail.chargeItemId ?? null,
           itemName: detail.itemName || detail.drugName,

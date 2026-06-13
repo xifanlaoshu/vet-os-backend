@@ -150,6 +150,10 @@ export class QueryPrescriptionDto extends PagerDto {
 
   @IsOptional()
   @IsInt()
+  type?: number
+
+  @IsOptional()
+  @IsInt()
   doctorId?: number
 
   @IsOptional()
