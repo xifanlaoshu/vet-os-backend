@@ -57,6 +57,7 @@ auditTenantAreaLifecycleFilters()
 auditTenantScopedRolePermissionBoundaries()
 auditTenantScopedUniqueConstraints()
 auditTenantScopedDepartmentBoundaries()
+auditTenantScopedDictionaryItemTypeBoundary()
 auditPlatformOnlySystemUserManagement()
 auditPlatformOnlyTenantManagement()
 auditPlatformOnlyMenuManagement()
@@ -1001,6 +1002,101 @@ function auditTenantScopedDepartmentBoundaries() {
       message: 'Tenant-scoped department boundaries must have regression tests.',
     })
   }
+}
+
+function auditTenantScopedDictionaryItemTypeBoundary() {
+  const serviceFile = 'src/modules/system/dict-item/dict-item.service.ts'
+  const moduleFile = 'src/modules/system/dict-item/dict-item.module.ts'
+  const specFile = 'src/modules/system/dict-item/dict-item.service.spec.ts'
+
+  const checks: Array<{
+    file: string
+    patterns: Array<{ pattern: RegExp, rule: string, message: string }>
+  }> = [
+    {
+      file: serviceFile,
+      patterns: [
+        {
+          pattern: /DictTypeEntity/,
+          rule: 'dict-item-type-repository-required',
+          message: 'Dictionary item service must resolve dictionary types directly for tenant-boundary validation.',
+        },
+        {
+          pattern: /assertTypeInTenant\(typeId,\s*tenantId\)/,
+          rule: 'dict-item-type-tenant-validation-required',
+          message: 'Dictionary item create/update/list must validate typeId inside the current tenant.',
+        },
+        {
+          pattern: /dictTypeRepository\.findOneBy\(\{\s*id:\s*Number\(typeId\),\s*tenantId\s*\}\)/,
+          rule: 'dict-item-type-tenant-lookup-required',
+          message: 'Dictionary item type lookup must use typeId + tenantId.',
+        },
+        {
+          pattern: /Dictionary type not found in current tenant/,
+          rule: 'dict-item-type-cross-tenant-denial-required',
+          message: 'Dictionary item type boundary denial must be explicit for auditability.',
+        },
+      ],
+    },
+    {
+      file: moduleFile,
+      patterns: [
+        {
+          pattern: /TypeOrmModule\.forFeature\(\[DictItemEntity,\s*DictTypeEntity\]\)/,
+          rule: 'dict-item-module-type-repository-registered',
+          message: 'Dictionary item module must register DictTypeEntity for tenant-boundary validation.',
+        },
+      ],
+    },
+  ]
+
+  checks.forEach(({ file, patterns }) => {
+    const absPath = join(root, ...file.split('/'))
+    if (!existsSync(absPath)) {
+      findings.push({
+        file,
+        line: 1,
+        rule: 'missing-dict-item-type-boundary-file',
+        message: `${file} is required for dictionary item tenant-boundary checks.`,
+      })
+      return
+    }
+
+    const content = readFileSync(absPath, 'utf8')
+    patterns.forEach(({ pattern, rule, message }) => {
+      if (pattern.test(content))
+        return
+      findings.push({ file, line: 1, rule, message })
+    })
+  })
+
+  const specPath = join(root, ...specFile.split('/'))
+  if (!existsSync(specPath)) {
+    findings.push({
+      file: specFile,
+      line: 1,
+      rule: 'missing-dict-item-type-boundary-tests',
+      message: 'Dictionary item type tenant-boundary behavior must have regression tests.',
+    })
+    return
+  }
+
+  const specContent = readFileSync(specPath, 'utf8')
+  const requiredSpecPatterns = [
+    /type outside the current tenant/i,
+    /validates dictionary type tenant before inserting/i,
+    /validates dictionary type tenant before listing/i,
+  ]
+  requiredSpecPatterns.forEach((pattern) => {
+    if (pattern.test(specContent))
+      return
+    findings.push({
+      file: specFile,
+      line: 1,
+      rule: 'incomplete-dict-item-type-boundary-tests',
+      message: 'Dictionary item tests must cover cross-tenant type rejection and tenant-scoped type validation.',
+    })
+  })
 }
 
 function auditPlatformOnlySystemUserManagement() {
