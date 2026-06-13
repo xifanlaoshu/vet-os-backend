@@ -265,6 +265,10 @@ export class VisitService extends BaseService<VisitEntity> {
     }
 
     const physicalExam = dto.physicalExam ? JSON.parse(dto.physicalExam as string) : undefined
+    const vitalSigns = this.collectStructuredVitalSigns(dto)
+    const physicalExamWithVitals = physicalExam !== undefined
+      ? this.mergeVitalSignsIntoJson(physicalExam, vitalSigns)
+      : undefined
     const diagnosisList = dto.diagnosis ? this.normalizeDiagnoses(JSON.parse(dto.diagnosis as string)) : undefined
     const ongoingFlags = dto.ongoingFlags ? JSON.parse(dto.ongoingFlags as string) : undefined
     const structuredActions = dto.structuredActions ? JSON.parse(dto.structuredActions as string) : undefined
@@ -287,8 +291,16 @@ export class VisitService extends BaseService<VisitEntity> {
 
     if (dto.chiefComplaint !== undefined)
       emr.chiefComplaint = dto.chiefComplaint
-    if (physicalExam !== undefined)
-      emr.physicalExam = physicalExam
+    if (physicalExamWithVitals !== undefined)
+      emr.physicalExam = physicalExamWithVitals
+    if ('temperature' in vitalSigns)
+      emr.temperature = vitalSigns.temperature
+    if ('heartRate' in vitalSigns)
+      emr.heartRate = vitalSigns.heartRate
+    if ('respiratoryRate' in vitalSigns)
+      emr.respiratoryRate = vitalSigns.respiratoryRate
+    if ('weight' in vitalSigns)
+      emr.bodyWeight = vitalSigns.weight
     if (dto.assessmentText !== undefined)
       emr.assessmentText = dto.assessmentText
     if (dto.treatmentPlan !== undefined)
@@ -335,8 +347,8 @@ export class VisitService extends BaseService<VisitEntity> {
       visitUpdate.ongoingFlags = ongoingFlags
     if (dto.chiefComplaint !== undefined)
       visitUpdate.chiefComplaint = dto.chiefComplaint
-    if (physicalExam !== undefined)
-      visitUpdate.physicalExam = physicalExam
+    if (physicalExamWithVitals !== undefined)
+      visitUpdate.physicalExam = physicalExamWithVitals
     if (diagnosisList !== undefined)
       visitUpdate.diagnosis = diagnosisList
     if (dto.treatmentPlan !== undefined)
@@ -352,7 +364,7 @@ export class VisitService extends BaseService<VisitEntity> {
       dto.progressBatchNo
       || dto.symptomSummary !== undefined
       || dto.statusSummary !== undefined
-      || physicalExam !== undefined
+      || physicalExamWithVitals !== undefined
       || dto.progressAssessmentText !== undefined
       || diagnosisList !== undefined
     ) {
@@ -361,7 +373,7 @@ export class VisitService extends BaseService<VisitEntity> {
         careStage: dto.careStage,
         symptomSummary: dto.symptomSummary ?? dto.chiefComplaint,
         statusSummary: dto.statusSummary,
-        physicalExam,
+        physicalExam: physicalExamWithVitals,
         assessmentText: dto.progressAssessmentText ?? dto.assessmentText,
         diagnosisSnapshot: diagnosisList,
         recordedBy,
@@ -839,7 +851,11 @@ export class VisitService extends BaseService<VisitEntity> {
       careStage: dto.careStage ?? visit.careStage ?? null,
       symptomSummary: dto.symptomSummary ?? null,
       statusSummary: dto.statusSummary ?? null,
-      vitalSigns: dto.vitalSigns ? JSON.parse(dto.vitalSigns) : null,
+      vitalSigns: this.mergeVitalSignsIntoJson(dto.vitalSigns ? JSON.parse(dto.vitalSigns) : null, this.collectStructuredVitalSigns(dto)),
+      temperature: dto.temperature ?? null,
+      heartRate: dto.heartRate ?? null,
+      respiratoryRate: dto.respiratoryRate ?? null,
+      bodyWeight: dto.weight ?? null,
       objectiveNote: dto.objectiveNote ?? null,
       assessmentText: dto.assessmentText ?? null,
       planAdjustment: dto.planAdjustment ?? null,
@@ -1352,7 +1368,11 @@ export class VisitService extends BaseService<VisitEntity> {
         careStage: batch.careStage,
         symptomSummary: batch.symptomSummary,
         statusSummary: batch.statusSummary,
-        vitalSigns: batch.vitalSigns,
+        vitalSigns: this.mergeVitalSignsIntoJson(batch.vitalSigns, this.structuredVitalSignsFromEntity(batch)),
+        temperature: batch.temperature,
+        heartRate: batch.heartRate,
+        respiratoryRate: batch.respiratoryRate,
+        weight: batch.bodyWeight,
         objectiveNote: batch.objectiveNote,
         assessmentText: batch.assessmentText,
         planAdjustment: batch.planAdjustment,
@@ -1371,7 +1391,11 @@ export class VisitService extends BaseService<VisitEntity> {
     return {
       ...item,
       chiefComplaint: item.emr?.chiefComplaint ?? item.chiefComplaint,
-      physicalExam: item.emr?.physicalExam ?? item.physicalExam,
+      physicalExam: this.mergeVitalSignsIntoJson(item.emr?.physicalExam ?? item.physicalExam, this.structuredVitalSignsFromEntity(item.emr)),
+      temperature: item.emr?.temperature ?? null,
+      heartRate: item.emr?.heartRate ?? null,
+      respiratoryRate: item.emr?.respiratoryRate ?? null,
+      weight: item.emr?.bodyWeight ?? null,
       assessmentText: item.emr?.assessmentText ?? null,
       treatmentPlan: item.emr?.planText ?? item.treatmentPlan,
       doctorAdvice: item.emr?.doctorAdvice ?? item.doctorAdvice,
@@ -1486,7 +1510,11 @@ export class VisitService extends BaseService<VisitEntity> {
       careStage: item.careStage,
       symptomSummary: item.symptomSummary,
       statusSummary: item.statusSummary,
-      vitalSigns: item.vitalSigns,
+      vitalSigns: this.mergeVitalSignsIntoJson(item.vitalSigns, this.structuredVitalSignsFromEntity(item)),
+      temperature: item.temperature,
+      heartRate: item.heartRate,
+      respiratoryRate: item.respiratoryRate,
+      weight: item.bodyWeight,
       objectiveNote: item.objectiveNote,
       assessmentText: item.assessmentText,
       planAdjustment: item.planAdjustment,
@@ -1531,7 +1559,11 @@ export class VisitService extends BaseService<VisitEntity> {
       locked: emr?.locked ?? visit?.locked ?? 0,
       lockedAt: emr?.lockedAt ?? null,
       chiefComplaint: emr?.chiefComplaint ?? visit?.chiefComplaint ?? null,
-      physicalExam: emr?.physicalExam ?? visit?.physicalExam ?? null,
+      physicalExam: this.mergeVitalSignsIntoJson(emr?.physicalExam ?? visit?.physicalExam ?? null, this.structuredVitalSignsFromEntity(emr)),
+      temperature: emr?.temperature ?? null,
+      heartRate: emr?.heartRate ?? null,
+      respiratoryRate: emr?.respiratoryRate ?? null,
+      weight: emr?.bodyWeight ?? null,
       assessmentText: emr?.assessmentText ?? null,
       diagnosis: visit?.diagnosis ?? null,
       treatmentPlan: emr?.planText ?? visit?.treatmentPlan ?? null,
@@ -1580,6 +1612,59 @@ export class VisitService extends BaseService<VisitEntity> {
         }
       })
       .filter(item => item.code || item.name)
+  }
+
+  private collectStructuredVitalSigns(value: {
+    temperature?: number | string | null
+    heartRate?: number | string | null
+    respiratoryRate?: number | string | null
+    weight?: number | string | null
+  }) {
+    const result: Record<string, number> = {}
+    const temperature = this.normalizeNumber(value.temperature)
+    const heartRate = this.normalizeNumber(value.heartRate)
+    const respiratoryRate = this.normalizeNumber(value.respiratoryRate)
+    const weight = this.normalizeNumber(value.weight)
+    if (temperature !== undefined)
+      result.temperature = temperature
+    if (heartRate !== undefined)
+      result.heartRate = heartRate
+    if (respiratoryRate !== undefined)
+      result.respiratoryRate = respiratoryRate
+    if (weight !== undefined)
+      result.weight = weight
+    return result
+  }
+
+  private structuredVitalSignsFromEntity(entity?: {
+    temperature?: number | string | null
+    heartRate?: number | string | null
+    respiratoryRate?: number | string | null
+    bodyWeight?: number | string | null
+  } | null) {
+    if (!entity)
+      return {}
+    return this.collectStructuredVitalSigns({
+      temperature: entity.temperature,
+      heartRate: entity.heartRate,
+      respiratoryRate: entity.respiratoryRate,
+      weight: entity.bodyWeight,
+    })
+  }
+
+  private mergeVitalSignsIntoJson(base: Record<string, any> | null | undefined, vitalSigns: Record<string, number>) {
+    const normalizedBase = base && typeof base === 'object' && !Array.isArray(base) ? { ...base } : {}
+    return {
+      ...normalizedBase,
+      ...vitalSigns,
+    }
+  }
+
+  private normalizeNumber(value?: number | string | null) {
+    if (value === undefined || value === null || value === '')
+      return undefined
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? parsed : undefined
   }
 
   private resolveDiagnosisType(type?: string | number) {

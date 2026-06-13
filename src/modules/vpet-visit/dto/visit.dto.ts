@@ -1,4 +1,4 @@
-import { IsArray, IsDateString, IsIn, IsInt, IsJSON, IsOptional, IsString, MaxLength } from 'class-validator'
+import { IsArray, IsDateString, IsIn, IsInt, IsJSON, IsNumber, IsOptional, IsString, MaxLength } from 'class-validator'
 
 export class CreateVisitDto {
   @IsOptional()
@@ -43,6 +43,22 @@ export class UpdateVisitDto {
   @IsOptional()
   @IsJSON()
   physicalExam?: string
+
+  @IsOptional()
+  @IsNumber()
+  temperature?: number
+
+  @IsOptional()
+  @IsInt()
+  heartRate?: number
+
+  @IsOptional()
+  @IsInt()
+  respiratoryRate?: number
+
+  @IsOptional()
+  @IsNumber()
+  weight?: number
 
   @IsOptional()
   @IsJSON()
@@ -233,6 +249,22 @@ export class CreateVisitCareFollowupDto {
   @IsOptional()
   @IsJSON()
   vitalSigns?: string
+
+  @IsOptional()
+  @IsNumber()
+  temperature?: number
+
+  @IsOptional()
+  @IsInt()
+  heartRate?: number
+
+  @IsOptional()
+  @IsInt()
+  respiratoryRate?: number
+
+  @IsOptional()
+  @IsNumber()
+  weight?: number
 
   @IsOptional()
   @IsString()

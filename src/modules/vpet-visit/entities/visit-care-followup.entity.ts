@@ -41,6 +41,18 @@ export class VisitCareFollowupEntity extends CommonEntity {
   @Column({ type: 'json', nullable: true, name: 'vital_signs' })
   vitalSigns: Record<string, any> | null
 
+  @Column({ type: 'decimal', precision: 5, scale: 1, nullable: true })
+  temperature: number | null
+
+  @Column({ type: 'int', nullable: true, name: 'heart_rate' })
+  heartRate: number | null
+
+  @Column({ type: 'int', nullable: true, name: 'respiratory_rate' })
+  respiratoryRate: number | null
+
+  @Column({ type: 'decimal', precision: 6, scale: 2, nullable: true, name: 'body_weight' })
+  bodyWeight: number | null
+
   @Column({ type: 'text', nullable: true, name: 'objective_note' })
   objectiveNote: string | null
 
