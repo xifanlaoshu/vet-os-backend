@@ -213,10 +213,15 @@ export class PharmacyService {
       const batchRepository = manager.getRepository(DrugBatchEntity)
       const txnRepository = manager.getRepository(DrugStockTxnEntity)
       const { tenantId, areaId } = requireTenantAreaContext(options)
-      const batches = await batchRepository.find({
-        where: { drugId, tenantId, areaId, status: 1 },
-        order: { expireDate: 'ASC', id: 'ASC' },
-      })
+      const batches = await batchRepository.createQueryBuilder('batch')
+        .setLock('pessimistic_write')
+        .where('batch.drugId = :drugId', { drugId })
+        .andWhere('batch.tenantId = :tenantId', { tenantId })
+        .andWhere('batch.areaId = :areaId', { areaId })
+        .andWhere('batch.status = :status', { status: 1 })
+        .orderBy('batch.expireDate', 'ASC')
+        .addOrderBy('batch.id', 'ASC')
+        .getMany()
 
       const totalAvailable = batches.reduce((sum, batch) => sum + Number(batch.quantity), 0)
       if (totalAvailable < quantity) {

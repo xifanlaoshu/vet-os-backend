@@ -58,6 +58,7 @@ auditPublicAuthEndpointHardening()
 auditStorageTokenExpiration()
 auditProtectedUploadPersistenceAwait()
 auditVisitMediaFileSafety()
+auditPharmacyStockOutTransactionSafety()
 auditBillingMemberCardPaymentBoundaries()
 auditPrescriptionCurrentStaffTenantBoundary()
 auditPrescriptionWorkflowStateBoundaries()
@@ -724,6 +725,83 @@ function auditVisitMediaFileSafety() {
       line: 1,
       rule: 'incomplete-visit-media-safety-regression-tests',
       message: 'Visit media safety tests must cover protected local URLs, dangerous protocols, OSS trusted hosts, and MIME mismatches.',
+    })
+  })
+}
+
+function auditPharmacyStockOutTransactionSafety() {
+  const serviceFile = 'src/modules/vpet-pharmacy/pharmacy.service.ts'
+  const specFile = 'src/modules/vpet-pharmacy/pharmacy.service.spec.ts'
+  const servicePath = join(root, ...serviceFile.split('/'))
+  const specPath = join(root, ...specFile.split('/'))
+  if (!existsSync(servicePath))
+    return
+
+  const serviceContent = readFileSync(servicePath, 'utf8')
+  const requiredServicePatterns = [
+    {
+      pattern: /dataSource\.transaction/,
+      rule: 'pharmacy-stock-out-transaction-required',
+      message: 'Pharmacy stock out must run inside a database transaction so batch updates and stock transactions commit atomically.',
+    },
+    {
+      pattern: /\.setLock\(\s*['"`]pessimistic_write['"`]\s*\)/,
+      rule: 'pharmacy-stock-out-batch-lock-required',
+      message: 'Pharmacy stock out must pessimistically lock candidate batches before calculating available stock to prevent concurrent negative stock.',
+    },
+    {
+      pattern: /batch\.tenantId\s*=\s*:tenantId/,
+      rule: 'pharmacy-stock-out-tenant-scope-required',
+      message: 'Pharmacy stock out batch selection must stay within the current tenant.',
+    },
+    {
+      pattern: /batch\.areaId\s*=\s*:areaId/,
+      rule: 'pharmacy-stock-out-area-scope-required',
+      message: 'Pharmacy stock out batch selection must stay within the current area because stock is area scoped.',
+    },
+    {
+      pattern: /quantityBefore[\s\S]*quantityChange[\s\S]*quantityAfter/,
+      rule: 'pharmacy-stock-out-ledger-snapshot-required',
+      message: 'Pharmacy stock out must write before/change/after quantity snapshots into stock transaction ledger records.',
+    },
+  ]
+
+  requiredServicePatterns.forEach(({ pattern, rule, message }) => {
+    if (pattern.test(serviceContent))
+      return
+    findings.push({
+      file: serviceFile,
+      line: 1,
+      rule,
+      message,
+    })
+  })
+
+  if (!existsSync(specPath)) {
+    findings.push({
+      file: specFile,
+      line: 1,
+      rule: 'missing-pharmacy-stock-out-safety-tests',
+      message: 'Pharmacy stock out must have regression tests for batch locking, tenant-area scope, ledger snapshots, and insufficient stock.',
+    })
+    return
+  }
+
+  const specContent = readFileSync(specPath, 'utf8')
+  const requiredSpecPatterns = [
+    /locks tenant-area drug batches before stock out/i,
+    /pessimistic_write/,
+    /quantityBefore/,
+    /tenant-area stock is insufficient/i,
+  ]
+  requiredSpecPatterns.forEach((pattern) => {
+    if (pattern.test(specContent))
+      return
+    findings.push({
+      file: specFile,
+      line: 1,
+      rule: 'incomplete-pharmacy-stock-out-safety-tests',
+      message: 'Pharmacy stock out tests must cover pessimistic locking, tenant-area scope, ledger snapshots, and insufficient stock without mutation.',
     })
   })
 }

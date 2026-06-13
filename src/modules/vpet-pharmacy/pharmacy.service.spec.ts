@@ -94,3 +94,106 @@ describe('pharmacyService tenant boundaries', () => {
     expect(templateQb.andWhere).toHaveBeenCalledWith('template.isActive = :isActive', { isActive: 1 })
   })
 })
+
+describe('pharmacyService stock transaction safety', () => {
+  it('locks tenant-area drug batches before stock out and writes stock transaction snapshots', async () => {
+    const batch = { id: 11, drugId: 5, quantity: 3, status: 1 }
+    const qb: any = {
+      setLock: jest.fn(() => qb),
+      where: jest.fn(() => qb),
+      andWhere: jest.fn(() => qb),
+      orderBy: jest.fn(() => qb),
+      addOrderBy: jest.fn(() => qb),
+      getMany: jest.fn(async () => [batch]),
+    }
+    const saveBatch = jest.fn(async (value: any) => value)
+    const txnCreate = jest.fn((value: any) => value)
+    const txnSave = jest.fn(async (value: any) => value)
+    const service = createService({
+      dataSource: {
+        transaction: jest.fn(async (callback: any) => callback({
+          getRepository: jest.fn((entity: any) => {
+            if (entity.name === 'DrugBatchEntity') {
+              return {
+                createQueryBuilder: jest.fn(() => qb),
+                save: saveBatch,
+              }
+            }
+            return {
+              create: txnCreate,
+              save: txnSave,
+            }
+          }),
+        })),
+      },
+    })
+
+    await service.stockOut(5, 2, {
+      tenantId: 2,
+      areaId: 3,
+      refType: 'prescription',
+      refId: 9,
+      operatorId: 31,
+    })
+
+    expect(qb.setLock).toHaveBeenCalledWith('pessimistic_write')
+    expect(qb.where).toHaveBeenCalledWith('batch.drugId = :drugId', { drugId: 5 })
+    expect(qb.andWhere).toHaveBeenCalledWith('batch.tenantId = :tenantId', { tenantId: 2 })
+    expect(qb.andWhere).toHaveBeenCalledWith('batch.areaId = :areaId', { areaId: 3 })
+    expect(qb.andWhere).toHaveBeenCalledWith('batch.status = :status', { status: 1 })
+    expect(saveBatch).toHaveBeenCalledWith(expect.objectContaining({
+      id: 11,
+      quantity: 1,
+      status: 1,
+    }))
+    expect(txnSave).toHaveBeenCalledWith(expect.objectContaining({
+      drugId: 5,
+      batchId: 11,
+      refType: 'prescription',
+      refId: 9,
+      operatorId: 31,
+      tenantId: 2,
+      areaId: 3,
+      quantityBefore: 3,
+      quantityChange: -2,
+      quantityAfter: 1,
+    }))
+  })
+
+  it('rejects stock out without mutating batches when tenant-area stock is insufficient', async () => {
+    const qb: any = {
+      setLock: jest.fn(() => qb),
+      where: jest.fn(() => qb),
+      andWhere: jest.fn(() => qb),
+      orderBy: jest.fn(() => qb),
+      addOrderBy: jest.fn(() => qb),
+      getMany: jest.fn(async () => [{ id: 11, drugId: 5, quantity: 1, status: 1 }]),
+    }
+    const saveBatch = jest.fn()
+    const txnSave = jest.fn()
+    const service = createService({
+      dataSource: {
+        transaction: jest.fn(async (callback: any) => callback({
+          getRepository: jest.fn((entity: any) => {
+            if (entity.name === 'DrugBatchEntity') {
+              return {
+                createQueryBuilder: jest.fn(() => qb),
+                save: saveBatch,
+              }
+            }
+            return {
+              create: jest.fn((value: any) => value),
+              save: txnSave,
+            }
+          }),
+        })),
+      },
+    })
+
+    await expect(service.stockOut(5, 2, { tenantId: 2, areaId: 3 })).rejects.toBeInstanceOf(BusinessException)
+
+    expect(qb.setLock).toHaveBeenCalledWith('pessimistic_write')
+    expect(saveBatch).not.toHaveBeenCalled()
+    expect(txnSave).not.toHaveBeenCalled()
+  })
+})
