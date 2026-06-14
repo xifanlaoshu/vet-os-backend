@@ -24,6 +24,12 @@ export class ReminderController {
     return this.reminderService.create(dto, user)
   }
 
+  @Get(':id')
+  @ApiOperation({ summary: 'Reminder detail' })
+  async get(@IdParam() id: number, @AuthUser() user: IAuthUser) {
+    return this.reminderService.getDetail(id, user)
+  }
+
   @Put(':id')
   @ApiOperation({ summary: 'Update reminder' })
   async update(@IdParam() id: number, @Body() dto: UpdateReminderDto, @AuthUser() user: IAuthUser) {

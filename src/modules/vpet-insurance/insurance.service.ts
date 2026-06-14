@@ -90,6 +90,14 @@ export class InsuranceService {
     }))
   }
 
+  async getDetail(id: number, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
+    const { tenantId, areaId } = requireTenantAreaContext(context)
+    return this.claimRepository.findOne({
+      where: { id, tenantId, areaId },
+      relations: ['customer', 'pet', 'visit', 'billing'],
+    })
+  }
+
   async submit(id: number, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
     const { tenantId, areaId } = requireTenantAreaContext(context)
     const claim = await this.claimRepository.findOneBy({ id, tenantId, areaId })

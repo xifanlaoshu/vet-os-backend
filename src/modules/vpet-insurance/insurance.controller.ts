@@ -24,6 +24,12 @@ export class InsuranceController {
     return this.insuranceService.create(dto, user)
   }
 
+  @Get(':id')
+  @ApiOperation({ summary: 'Insurance claim detail' })
+  async get(@IdParam() id: number, @AuthUser() user: IAuthUser) {
+    return this.insuranceService.getDetail(id, user)
+  }
+
   @Post(':id/submit')
   @ApiOperation({ summary: 'Submit insurance claim' })
   async submit(@IdParam() id: number, @AuthUser() user: IAuthUser) {

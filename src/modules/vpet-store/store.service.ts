@@ -101,6 +101,14 @@ export class StoreService {
     return paginate(qb, { page, pageSize })
   }
 
+  async getTransferDetail(id: number, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
+    const { tenantId, areaId } = requireTenantAreaContext(context)
+    return this.transferRepository.findOne({
+      where: { id, tenantId, areaId },
+      relations: ['sourceStore', 'targetStore', 'items'],
+    })
+  }
+
   async createTransfer(dto: CreateTransferDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
     const { tenantId, areaId } = requireTenantAreaContext(context)
     if (dto.sourceStoreId === dto.targetStoreId) {

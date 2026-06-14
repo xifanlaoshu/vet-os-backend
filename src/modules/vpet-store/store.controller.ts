@@ -42,6 +42,12 @@ export class StoreController {
     return this.storeService.listTransfers(dto, user)
   }
 
+  @Get('transfer/:id')
+  @ApiOperation({ summary: 'Transfer detail' })
+  async transferDetail(@IdParam() id: number, @AuthUser() user: IAuthUser) {
+    return this.storeService.getTransferDetail(id, user)
+  }
+
   @Post('transfer')
   @ApiOperation({ summary: 'Create transfer' })
   async createTransfer(@Body() dto: CreateTransferDto, @AuthUser() user: IAuthUser) {

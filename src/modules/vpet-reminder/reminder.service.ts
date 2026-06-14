@@ -82,6 +82,14 @@ export class ReminderService {
     return this.reminderRepository.save(reminder)
   }
 
+  async getDetail(id: number, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
+    const { tenantId, areaId } = requireTenantAreaContext(context)
+    return this.reminderRepository.findOne({
+      where: { id, tenantId, areaId },
+      relations: ['customer', 'pet', 'visit'],
+    })
+  }
+
   async update(id: number, dto: UpdateReminderDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
     const { tenantId, areaId } = requireTenantAreaContext(context)
     const current = await this.reminderRepository.findOneBy({ id, tenantId, areaId })

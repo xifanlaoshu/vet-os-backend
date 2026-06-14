@@ -54,6 +54,12 @@ export class AppointmentController {
     await this.apptService.cancel(id, user)
   }
 
+  @Get('detail/:id')
+  @ApiOperation({ summary: '预约详情' })
+  async detail(@IdParam() id: number, @AuthUser() user: IAuthUser) {
+    return this.apptService.getDetail(id, user)
+  }
+
   // ---- 医护人员管理 ----
   @Get('doctors')
   @ApiOperation({ summary: '医护人员列表' })

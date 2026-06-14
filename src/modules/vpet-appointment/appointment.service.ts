@@ -86,6 +86,14 @@ export class AppointmentService {
     return this.appointmentRepository.save(appt)
   }
 
+  async getDetail(id: number, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>) {
+    const { tenantId, areaId } = requireTenantAreaContext(context)
+    return this.appointmentRepository.findOne({
+      where: { id, tenantId, areaId },
+      relations: ['customer', 'pet', 'doctor'],
+    })
+  }
+
   async update(id: number, dto: UpdateAppointmentDto, context?: Pick<IAuthUser, 'tenantId' | 'areaId'>): Promise<void> {
     const { tenantId, areaId } = requireTenantAreaContext(context)
     const current = await this.appointmentRepository.findOneBy({ id, tenantId, areaId })
